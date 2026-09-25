@@ -584,7 +584,9 @@ def test_appointments_from_about_respects_explicit_enabled_false():
     assert _appointments_from_about(about2) == "required"
 
 
-def test_gbp_facts_default_to_empty_never_none_when_absent():
+def test_gbp_attached_only_when_the_payload_carries_gbp_fields():
+    """R6: a payload with no GBP field gets no `gbp` key at all (it used to get an all-empty dict,
+    which then shadowed the Maps twin's real facts on merge — see the merge test below)."""
     icp = ICP.model_validate({
         "campaign": "t", "offer": {"what": "x"},
         "target": {"categories": ["auto repair shop"], "geography": {"areas": ["Manchester"], "country": "GB"}},
@@ -592,13 +594,46 @@ def test_gbp_facts_default_to_empty_never_none_when_absent():
     rows = _gbp_rows()
     biz = to_business(RawListing(provider="gosom", fetched_at=now_iso(), data=rows[1]), "run_x", icp, "GB")
     assert biz is not None
-    gbp = biz.enrich["gbp"]
-    assert gbp == {
-        "appointments": "none", "booking_links": [], "status": "", "owner_name": "",
-        "reply_signatures": [], "review_names": [], "reviews_captured": 0, "description": "",
-    }
-    for v in gbp.values():
-        assert v is not None
+    assert "gbp" not in biz.enrich
+
+
+def test_register_then_maps_merge_keeps_maps_gbp_and_writes_gbp_people_at_discover(cfg, monkeypatch):
+    """R6: the register row (no GBP facts) is upserted first, its Maps twin merges into it by phone.
+    The stored gbp must be the Maps one, and the GBP people + booking signal exist straight after
+    discover — no enrich pass needed."""
+    monkeypatch.setattr("leadforge.pipeline.ensure_ready", lambda c: None)
+    icp = _minimal_icp(max_leads=100)
+    icp_path = cfg.workspace / "icp.yaml"
+    icp_path.write_text(yaml.safe_dump(icp.model_dump(mode="json")), encoding="utf-8")
+    maps_row = _gbp_rows()[0]
+    register_row = {"title": maps_row["title"], "phone": maps_row["phone"],
+                    "complete_address": {"street": "12 Riverside Way", "city": "Manchester",
+                                         "postal_code": "M1 2AB", "country": "United Kingdom"}}
+
+    @register
+    class FakeRegisterThenMaps(DiscoveryProvider):
+        name = "fake_register_then_maps"
+
+        def available(self):
+            return True, "fake"
+
+        def fetch(self, query, limit=None):
+            return [RawListing(provider=self.name, fetched_at=now_iso(), data=d) for d in (register_row, maps_row)]
+
+    conn = db.connect(cfg.db_path)
+    run_id = db.create_run(conn, str(icp_path), icp.icp_hash())
+    db.add_queries(conn, run_id, [("garages in Manchester", None)])
+    from leadforge.pipeline import run_discover
+    run_discover(cfg, icp, icp_path, run_id=run_id, provider="fake_register_then_maps")
+    conn = db.connect(cfg.db_path)
+    rows = conn.execute("SELECT * FROM businesses").fetchall()
+    assert len(rows) == 1                                   # the Maps row merged into the register row
+    enrich = json.loads(rows[0]["enrich_json"])
+    assert enrich["gbp"]["booking_links"]                   # the Maps facts, not an empty register dict
+    assert enrich["signals"] == {"booking_hint": True, "booking_source": "gbp"}
+    gbp_people = {p["name"]: p for p in db.people_for(conn, rows[0]["id"]) if p["origin"] == "gbp"}
+    assert set(gbp_people) == {"Sam", "Ali"}
+    assert gbp_people["Sam"]["snippet"] == "signed an owner reply on Google"
 
 
 # --------------------------------------------------------------------------------------- A6

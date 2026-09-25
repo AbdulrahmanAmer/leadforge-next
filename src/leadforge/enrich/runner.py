@@ -6,6 +6,7 @@ and the needs_browser accounting. Called by `leadforge enrich` and the `run` orc
 
 from __future__ import annotations
 
+import json
 import queue
 import sqlite3
 import threading
@@ -241,29 +242,25 @@ def _people_fn(cfg: Config):
 def run_enrich(conn: sqlite3.Connection, cfg: Config, limit: int, stage: str = "all") -> dict:
     from leadforge.enrich.extract import configure_ner
     configure_ner(cfg.enrich.ner_parallel, cfg.enrich.ner_threads)
-    """stage: 'site' (crawl+extract), 'registry' (officer lookup incl. site-less), 'gbp' (Google
-    Business Profile facts for site-less businesses — the crawl stage covers sited ones inline),
-    'infer', 'validate', 'all'.
+    """stage: 'site' (crawl+extract), 'registry' (officer lookup incl. site-less), 'infer', 'validate',
+    'all'. Google Business Profile people and the booking signal are written at discover (R6).
 
     v0.3 speed unit (2026-09-02, build item 4): when stage='all' AND cfg.enrich.overlap_stages (default
     True), registry lookups (for businesses that don't need a crawl, then crawled ones as they finish)
     and email validation run CONCURRENTLY with the crawl instead of strictly after it — see
-    _run_overlapped. A SINGLE named stage (`enrich --stage site|registry|gbp|infer|validate`) ALWAYS
+    _run_overlapped. A SINGLE named stage (`enrich --stage site|registry|infer|validate`) ALWAYS
     uses the original serial per-stage function below, unaffected by this flag."""
     counts = {"sites_crawled": 0, "contacts": 0, "dm_candidates": 0, "needs_browser": 0, "emails_valid": 0}
     _start_ner_worker(cfg)
     try:
         if stage == "all" and cfg.enrich.overlap_stages:
             _run_overlapped(conn, cfg, limit, counts)
-            _gbp_stage(conn, cfg, counts)
             _infer_stage(conn, cfg, counts)
             return counts
         if stage in ("all", "site"):
             _crawl_stage(conn, cfg, limit, counts)
         if stage in ("all", "registry"):
             _registry_stage(conn, cfg, counts)
-        if stage in ("all", "gbp"):
-            _gbp_stage(conn, cfg, counts)
         if stage in ("all", "infer"):
             _infer_stage(conn, cfg, counts)
         if stage in ("all", "validate"):
@@ -606,7 +603,9 @@ def _persist(conn: sqlite3.Connection, cfg: Config, b, res: dict, counts: dict,
         _persist_registry_result(conn, b, counts, registry_people, profile)
     else:
         _registry_cross_check(conn, b, counts, registries or [])
-    _apply_gbp(conn, b, res["signals"], counts)
+    prior_signals = json.loads(b["enrich_json"] or "{}").get("signals") or {}
+    if prior_signals.get("booking_source") == "gbp":  # discover's GBP booking link outranks the site's
+        res["signals"].update(booking_hint=True, booking_source="gbp")
     res["signals"]["phone_confirmed"] = bool(b["phone_e164"]) and any(p == b["phone_e164"] for p in res["phones"])
     social_presence: dict = {}
     if social_ok:
@@ -704,65 +703,6 @@ def _registry_cross_check(conn: sqlite3.Connection, b, counts: dict, registries:
     _persist_registry_result(conn, b, counts, registry_people, profile)
 
 
-def _apply_gbp(conn: sqlite3.Connection, b, signals: dict, counts: dict) -> dict:
-    """Google Business Profile facts the discover stage already stored in enrich_json.gbp (unit A) —
-    a booking link is a strong contactability signal, and an owner-reply signer / repeatedly-credited
-    reviewer is a real decision-maker lead even with no website at all."""
-    import json
-    try:
-        enrich_json = json.loads(b["enrich_json"] or "{}") if "enrich_json" in b.keys() else {}
-    except (json.JSONDecodeError, TypeError):
-        enrich_json = {}
-    gbp = enrich_json.get("gbp") or {}
-    if not gbp:
-        return {}
-    if gbp.get("booking_links"):
-        signals["booking_hint"] = True
-        signals["booking_source"] = "gbp"
-    existing = {p["name"].casefold() for p in db.people_for(conn, b["id"]) if p["origin"] == "gbp"}
-    maps_url = b["maps_url"] if "maps_url" in b.keys() else ""
-    for name in (gbp.get("reply_signatures") or []):
-        if not name or name.casefold() in existing:
-            continue
-        db.add_person(conn, Person(business_id=b["id"], name=name, title="", origin="gbp",
-                                   snippet="signed an owner reply on Google", source_url=maps_url or "",
-                                   labeled_at=now_iso()))
-        existing.add(name.casefold())
-        counts["dm_candidates"] = counts.get("dm_candidates", 0) + 1
-    review_counts: dict[str, int] = {}
-    for name in (gbp.get("review_names") or []):
-        if name:
-            review_counts[name] = review_counts.get(name, 0) + 1
-    for name, n in review_counts.items():
-        if name.casefold() in existing:
-            continue
-        plural = "review" if n == 1 else "reviews"
-        db.add_person(conn, Person(business_id=b["id"], name=name, title="", origin="gbp",
-                                   snippet=f"credited by customers in {n} {plural}", source_url=maps_url or "",
-                                   labeled_at=now_iso()))
-        existing.add(name.casefold())
-        counts["dm_candidates"] = counts.get("dm_candidates", 0) + 1
-    return gbp
-
-
-def _gbp_stage(conn: sqlite3.Connection, cfg: Config, counts: dict) -> None:
-    """Site-less businesses never reach _crawl_stage (where _apply_gbp normally runs inline), so
-    their GBP facts — booking links, owner-reply signers, review-credited names — need their own pass."""
-    import json
-    rows = conn.execute(
-        """SELECT * FROM businesses b
-           WHERE json_extract(b.enrich_json,'$.gbp') IS NOT NULL
-             AND NOT EXISTS (SELECT 1 FROM people p WHERE p.business_id=b.id AND p.origin='gbp')"""
-    ).fetchall()
-    for b in rows:
-        signals: dict = {}
-        _apply_gbp(conn, b, signals, counts)
-        if signals:
-            prior = json.loads(b["enrich_json"] or "{}").get("signals") or {}
-            db.update_enrich(conn, b["id"], {"signals": {**prior, **signals}})
-    conn.commit()
-
-
 _CORPORATE_OFFICER_RE = None
 
 
@@ -824,5 +764,4 @@ def _validate_stage(conn: sqlite3.Connection, cfg: Config, counts: dict) -> None
 
 
 def _json(d: dict) -> str:
-    import json
     return json.dumps(d)

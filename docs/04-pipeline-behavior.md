@@ -195,7 +195,9 @@ latest run for the same ICP hash; every stage is idempotent (upserts, per-tile /
   invocation".
 - **Google Business Profile facts kept.** `businesses.enrich_json.gbp` holds appointment attributes, booking
   links (`order_online`), owner reply signatures (reviewer echoes rejected), review-credited first names,
-  `status` (unreliable in gosom v1.17.4 — never drives a hook), description.
+  `status` (unreliable in gosom v1.17.4 — never drives a hook), description. It is attached only when the
+  payload carries GBP fields, so a register row never shadows its Maps twin's facts on merge. Discover also
+  writes the GBP people (origin=gbp: owner-reply signers, review-credited names) and the booking signal.
 
 ### 3b.2 Enrichment
 - `crawled_at` is stamped **only** when the crawl succeeded; failures record `attempted_at` + `error`
@@ -207,14 +209,15 @@ latest run for the same ICP hash; every stage is idempotent (upserts, per-tile /
   `ref_id` pointing at the contact. Best-email ranking (`validate.rank_email_contacts`): own-domain valid >
   own-domain role > linked freemail valid > inferred > risky > unknown > invalid.
 - People: candidates inside review/testimonial context or form labels are skipped; `people.origin` records
-  heuristic | registry | gbp and survives agent labeling; `dm export` shows it.
+  heuristic | registry | gbp and is never rewritten (who decided the DM is `people.dm_decided_by`);
+  `dm export` shows it.
 - Registry: a Companies House hit must pass `name_similarity ≥ registry.min_name_similarity` **and** locality
   overlap, and be `active` when `registry.active_only`; the profile (`company_number, legal_name, company_status,
   incorporated, sic_codes, match_similarity`) is persisted on both the crawl path and the site-less path.
   Auto-pick (ADR-010) inherits both gates.
 - Signals: `booking_hint` reads nav anchors from HTML (not trafilatura text), knows the UK booking platforms,
   and is set from a GBP booking link (`booking_source=gbp`); `final_host` / `offsite_redirect` / `http_status`
-  / `phone_confirmed` are recorded. A `gbp` stage adds owner-reply names for site-less businesses.
+  / `phone_confirmed` are recorded. The crawl keeps a GBP booking signal written at discover.
 
 ### 3b.3 Scoring and export
 - **Fit and contactability are separate.** `total`/tier come from fit only (industry 25 via

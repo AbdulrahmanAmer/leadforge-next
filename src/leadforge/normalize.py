@@ -282,9 +282,11 @@ def _review_credited_names(reviews: list, business_name: str = "") -> list[str]:
     return [n for n, c in counts.items() if c >= 3]
 
 
-def gbp_facts(d: dict, g: dict, business_name: str = "") -> dict:
+def gbp_facts(d: dict, g: dict, business_name: str = "") -> dict | None:
     """Business.enrich["gbp"] (A5, docs/09): Google Business Profile facts the raw provider payload
-    already carries. Empty defaults, never None, so export/scoring never has to null-check this.
+    already carries, with empty defaults for the fields a GBP payload leaves out. None when the payload
+    has no GBP field at all (a register row, a list-view card): to_business then attaches no `gbp`, so
+    an empty register-row dict can never shadow the Maps twin's real facts when the rows merge (R6).
 
     `status` is UNRELIABLE (docs/09 item 4, measured 2026-09-02 against gosom v1.17.4 live cache):
     it is '' for 1335 of 1339 live places and a subtitle-like string (not a fixed vocabulary of
@@ -293,20 +295,22 @@ def gbp_facts(d: dict, g: dict, business_name: str = "") -> dict:
     about = _pick(d, g["about"])
     order_online = _pick(d, g["order_online"])
     reviews = _pick(d, g["reviews"])
-    reviews = reviews if isinstance(reviews, list) else []
-    status = _pick(d, g["status"]) or ""
+    status = _pick(d, g["status"])
     owner = _pick(d, g["owner"])
+    description = _pick(d, g["description"])
+    if all(v is None for v in (about, order_online, reviews, status, owner, description)):
+        return None
+    reviews = reviews if isinstance(reviews, list) else []
     owner_name = owner.get("name") if isinstance(owner, dict) else ""
-    description = _pick(d, g["description"]) or ""
     return {
         "appointments": _appointments_from_about(about),
         "booking_links": _booking_links_from_order_online(order_online),
-        "status": str(status),
+        "status": str(status or ""),
         "owner_name": str(owner_name or ""),
         "reply_signatures": _reply_signatures(reviews, business_name),
         "review_names": _review_credited_names(reviews, business_name),
         "reviews_captured": len(reviews),
-        "description": str(description)[:300],
+        "description": str(description or "")[:300],
     }
 
 
@@ -364,8 +368,9 @@ def to_business(raw: RawListing, run_id: str, icp: ICP | None, default_region: s
     rating = _pick(d, g["rating"])
     review_count = _pick(d, g["review_count"])
     hours = _pick(d, g["hours"])
+    gbp = gbp_facts(d, g, name)
     return Business(
-        enrich={"gbp": gbp_facts(d, g, name)},
+        enrich={"gbp": gbp} if gbp else {},
         id=f"biz_{sha1_hex(dedupe_key)}",
         place_id=str(place_id) if place_id else None,
         cid=str(cid) if cid else None,

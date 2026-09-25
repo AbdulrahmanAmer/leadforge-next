@@ -20,7 +20,7 @@ from leadforge.config import Config
 from leadforge.doctor import ensure_ready
 from leadforge.enrich import dm
 from leadforge.grid import ADDITIVE_PROVIDERS, PlannedQuery, build_plan, quarter_tile
-from leadforge.models import ICP
+from leadforge.models import ICP, Person
 from leadforge.normalize import to_business
 from leadforge.providers import base as providers_base
 from leadforge.providers.base import get_chain
@@ -29,6 +29,7 @@ from leadforge.util import (
     ProviderDegraded,
     ProviderFailed,
     emit_progress,
+    now_iso,
     open_artifact,
     open_progress_window,
     set_progress_file,
@@ -179,7 +180,9 @@ def _apply_query_result(conn, cfg: Config, icp: ICP, run_id: str, q, pq, listing
             biz.enrich.update(enrich_fn(raw.data))
         if db.is_suppressed(conn, biz.domain, biz.place_id):
             continue
-        _bid, created = db.upsert_business(conn, biz)
+        bid, created = db.upsert_business(conn, biz)
+        if "gbp" in biz.enrich:
+            _apply_gbp(conn, bid)
         per_query_new += int(created)
         # cap counts UNIQUE leads, not raw listings: cross-category duplicates (a garage that is
         # also an MOT centre) must not consume max_leads (found live: 1000-cap run stopped at 709)
@@ -225,6 +228,35 @@ def _apply_query_result(conn, cfg: Config, icp: ICP, run_id: str, q, pq, listing
                 ctx["queue"].append(nr)
 
     db.finish_query(conn, q["id"], status, len(listings), new_count=per_query_new)
+
+
+def _apply_gbp(conn: sqlite3.Connection, business_id: str) -> None:
+    """R6: Google Business Profile facts become people and the booking signal at discover, where they
+    are known — a booking link is a strong contactability signal, and an owner-reply signer or a
+    repeatedly-credited reviewer is a real decision-maker lead even with no website at all. Reads the
+    STORED gbp (after the merge) so a register row that merged first never decides it. Idempotent:
+    a name already stored as a gbp person is skipped."""
+    b = conn.execute("SELECT * FROM businesses WHERE id=?", (business_id,)).fetchone()
+    enrich = json.loads(b["enrich_json"] or "{}")
+    gbp = enrich.get("gbp") or {}
+    if gbp.get("booking_links"):
+        db.update_enrich(conn, business_id, {"signals": {**(enrich.get("signals") or {}),
+                                                         "booking_hint": True, "booking_source": "gbp"}})
+    existing = {p["name"].casefold() for p in db.people_for(conn, business_id) if p["origin"] == "gbp"}
+    review_counts: dict[str, int] = {}
+    for name in gbp.get("review_names") or []:
+        if name:
+            review_counts[name] = review_counts.get(name, 0) + 1
+    candidates = [(name, "signed an owner reply on Google") for name in gbp.get("reply_signatures") or [] if name]
+    candidates += [(name, f"credited by customers in {n} {'review' if n == 1 else 'reviews'}")
+                   for name, n in review_counts.items()]
+    for name, snippet in candidates:
+        if name.casefold() in existing:
+            continue
+        db.add_person(conn, Person(business_id=business_id, name=name, title="", origin="gbp", snippet=snippet,
+                                   source_url=b["maps_url"] or "", labeled_at=now_iso()))
+        existing.add(name.casefold())
+    conn.commit()
 
 
 def _run_discover_serial(conn, cfg: Config, icp: ICP, run_id: str, chain, ctx: dict, limit, warns) -> None:

@@ -4,7 +4,7 @@ No network: validate_email is monkeypatched where a test doesn't care about its 
 """
 import json
 
-from leadforge import db
+from leadforge import db, pipeline
 from leadforge.enrich import runner
 from leadforge.enrich.extract import PersonCandidate
 from leadforge.models import Business, Person
@@ -236,7 +236,7 @@ def test_heuristic_person_row_gets_origin_heuristic(cfg, conn, monkeypatch):
     assert pat["origin"] == "heuristic"
 
 
-# --- GBP facts (site-less path) -------------------------------------------------------------------
+# --- GBP facts (written at discover) -------------------------------------------------------------------
 def test_gbp_reply_signature_becomes_people_row_origin_gbp(cfg, conn):
     _biz_row(conn, "b1", "Tyler's Garage")
     conn.execute(
@@ -245,14 +245,12 @@ def test_gbp_reply_signature_becomes_people_row_origin_gbp(cfg, conn):
          "https://maps.google.com/?cid=1"),
     )
     conn.commit()
-    counts = _counts()
-    runner._gbp_stage(conn, cfg, counts)
+    pipeline._apply_gbp(conn, "b1")
     people = db.people_for(conn, "b1")
     tyler = next(p for p in people if p["name"] == "Tyler")
     assert tyler["origin"] == "gbp" and tyler["dm_decided_by"] == ""
     assert tyler["snippet"] == "signed an owner reply on Google"
     assert tyler["source_url"] == "https://maps.google.com/?cid=1"
-    assert counts["dm_candidates"] == 1
 
 
 def test_gbp_review_name_credited_people_row(cfg, conn):
@@ -263,13 +261,13 @@ def test_gbp_review_name_credited_people_row(cfg, conn):
                              "booking_links": []}}),),
     )
     conn.commit()
-    runner._gbp_stage(conn, cfg, _counts())
+    pipeline._apply_gbp(conn, "b1")
     priya = next(p for p in db.people_for(conn, "b1") if p["name"] == "Priya")
     assert priya["origin"] == "gbp"
     assert "3 reviews" in priya["snippet"]
 
 
-def test_gbp_booking_links_set_booking_hint_via_gbp_stage(cfg, conn):
+def test_gbp_booking_links_set_booking_hint_at_discover(cfg, conn):
     _biz_row(conn, "b1", "No Site Autos")
     conn.execute(
         "UPDATE businesses SET enrich_json=? WHERE id='b1'",
@@ -277,34 +275,27 @@ def test_gbp_booking_links_set_booking_hint_via_gbp_stage(cfg, conn):
                              "reply_signatures": [], "review_names": []}}),),
     )
     conn.commit()
-    runner._gbp_stage(conn, cfg, _counts())
+    pipeline._apply_gbp(conn, "b1")
     enrich = json.loads(conn.execute("SELECT enrich_json FROM businesses WHERE id='b1'").fetchone()["enrich_json"])
     assert enrich["signals"]["booking_hint"] is True
     assert enrich["signals"]["booking_source"] == "gbp"
 
 
-def test_gbp_stage_query_skips_businesses_already_processed(cfg, conn):
-    """The stage-level guard (WHERE ... NOT EXISTS origin='gbp') must stop re-processing a business on
-    the next pass — checked with a DIFFERENT name on the second pass so _apply_gbp's own per-name
-    de-dup (which would silently hide a broken stage-level guard) cannot be the thing saving this test."""
-    _biz_row(conn, "b1", "Tyler's Garage")
-    conn.execute(
-        "UPDATE businesses SET enrich_json=? WHERE id='b1'",
-        (json.dumps({"gbp": {"reply_signatures": ["Tyler"], "review_names": [], "booking_links": []}}),),
-    )
+def test_crawl_keeps_the_gbp_booking_signal_written_at_discover(cfg, conn):
+    """R6: the crawl writes its own signals; a GBP booking link found at discover must survive a site
+    that shows no booking widget (booking_hint False from the crawler)."""
+    _biz_row(conn, "b1", "Booked Garage", domain="booked.test", website="http://booked.test")
+    conn.execute("UPDATE businesses SET enrich_json=? WHERE id='b1'",
+                 (json.dumps({"gbp": {"booking_links": ["https://booking.example/x"]}}),))
     conn.commit()
-    runner._gbp_stage(conn, cfg, _counts())
-    assert len(db.people_for(conn, "b1")) == 1
-    # a later discover re-run could plausibly change the gbp payload; the stage must still skip
-    # this business on its next pass rather than adding "Bob" too
-    conn.execute(
-        "UPDATE businesses SET enrich_json=? WHERE id='b1'",
-        (json.dumps({"gbp": {"reply_signatures": ["Bob"], "review_names": [], "booking_links": []}}),),
-    )
-    conn.commit()
-    runner._gbp_stage(conn, cfg, _counts())
-    people = db.people_for(conn, "b1")
-    assert len(people) == 1 and people[0]["name"] == "Tyler"
+    pipeline._apply_gbp(conn, "b1")
+    b = conn.execute("SELECT * FROM businesses WHERE id='b1'").fetchone()
+    res = _res(True)
+    res["signals"] = {"booking_hint": False, "https": True}
+    runner._persist(conn, cfg, b, res, _counts())
+    enrich = json.loads(conn.execute("SELECT enrich_json FROM businesses WHERE id='b1'").fetchone()["enrich_json"])
+    assert enrich["signals"]["booking_hint"] is True and enrich["signals"]["booking_source"] == "gbp"
+    assert enrich["signals"]["https"] is True
 
 
 # --- phone_confirmed signal ------------------------------------------------------------------------

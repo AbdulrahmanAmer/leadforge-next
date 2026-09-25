@@ -166,8 +166,8 @@ def build_packet(
 
     # booking: a GBP order-online/booking link is evidence regardless of whether the site was
     # crawled; a site-derived hint (regex/known-platform match) counts only on a real, non-phantom
-    # crawl. runner.py's _apply_gbp already folds a GBP booking link into signals.booking_hint with
-    # booking_source="gbp" for site-less businesses too — check the GBP facts directly here so this
+    # crawl. Discover (pipeline._apply_gbp) already folds a GBP booking link into signals.booking_hint
+    # with booking_source="gbp" for site-less businesses too — check the GBP facts directly here so this
     # module never needs to special-case that merge.
     if gbp.get("booking_links"):
         add("booking", "has online booking (Google Business)", "gbp", seen_at)
