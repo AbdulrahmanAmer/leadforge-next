@@ -76,7 +76,7 @@ def test_next_action_is_phone_first(tmp_path, monkeypatch):
     db.upsert_business(conn, Business(id="named", name="Named Garage", source="gosom", dedupe_key="dk-named",
                                       phone_e164="+441483123456"))
     db.add_person(conn, Person(business_id="named", name="Jo Owner", title="Owner", is_dm=1,
-                               dm_confidence=0.9, labeled_by="agent"))
+                               dm_confidence=0.9, dm_decided_by="agent"))
     _score(conn, rid, "named")
 
     db.upsert_business(conn, Business(id="switch", name="Switch Garage", source="gosom",
@@ -105,7 +105,7 @@ def test_next_action_shows_outreach_state_when_an_outreach_targets_row_exists(tm
     db.upsert_business(conn, Business(id="enrolled", name="Enrolled Garage", source="gosom",
                                       dedupe_key="dk-enrolled", phone_e164="+441483123456"))
     db.add_person(conn, Person(business_id="enrolled", name="Jo Owner", title="Owner", is_dm=1,
-                               dm_confidence=0.9, labeled_by="agent"))
+                               dm_confidence=0.9, dm_decided_by="agent"))
     _score(conn, rid, "enrolled")
     conn.execute(
         "INSERT INTO outreach_targets(business_id,campaign,state,created_at,updated_at) "
@@ -218,7 +218,7 @@ def test_summary_sheet_funnel_and_next_action_breakdown(tmp_path, monkeypatch):
     db.upsert_business(conn, Business(id="named", name="Named Garage", source="gosom",
                                       dedupe_key="dk-named", phone_e164="+441483123456"))
     db.add_person(conn, Person(business_id="named", name="Jo Owner", title="Owner", is_dm=1,
-                               dm_confidence=0.9, labeled_by="agent"))
+                               dm_confidence=0.9, dm_decided_by="agent"))
     _score(conn, rid, "named")
     # 2) email-eligible, own-domain, no phone -> Next Action "EMAIL - eligible"
     db.upsert_business(conn, Business(id="mail", name="Mail Garage", source="gosom", dedupe_key="dk-mail",

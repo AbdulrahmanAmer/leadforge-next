@@ -4,13 +4,17 @@ Explicit SQL, no ORM (ADR-004). One connection per CLI invocation; WAL mode; FK 
 
 Schema v2 (v0.3): outreach lifecycle tables (sending_identities, mailboxes, outreach_targets, messages,
 events), an outcomes table for the phone/email feedback loop, `suppression.source/client_id/business_id`,
-`people.origin` (where a candidate came from, kept when the agent labels it) and `contacts.affinity`
+`people.origin` (where a candidate came from) and `contacts.affinity`
 (own_domain | freemail_linked | freemail_unlinked). Registry rows (DVSA, Companies House) merge into the
 Maps row that carries the same E.164 phone.
 
 Schema v3 (v0.4 "autopilot" unit B, ADR-015): `messages.author` — 'agent' (headless Claude Code
 runner or an interactive drafting session) vs 'template' (the deterministic fallback drafter),
 so an exported sheet can show provenance for a draft nobody reviewed with an LLM in the loop.
+
+Schema v6 (cleanup R3): `people.labeled_by` is gone. A person's SOURCE is `people.origin`
+(heuristic|registry|gbp, written once at insert) and who DECIDED the DM is `people.dm_decided_by`
+(agent|heuristic_auto|registry), written only by labeling — so a label never erases the source.
 """
 
 from __future__ import annotations
@@ -22,7 +26,7 @@ from pathlib import Path
 from leadforge.models import Business, Contact, Evidence, Person, Score
 from leadforge.util import InputError, now_iso, sha1_hex
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -60,8 +64,8 @@ CREATE TABLE IF NOT EXISTS contacts (
 CREATE TABLE IF NOT EXISTS people (
   id INTEGER PRIMARY KEY AUTOINCREMENT, business_id TEXT NOT NULL REFERENCES businesses(id),
   name TEXT NOT NULL, title TEXT DEFAULT '', source_url TEXT DEFAULT '', snippet TEXT DEFAULT '',
-  dm_confidence REAL DEFAULT 0, is_dm INTEGER DEFAULT 0, labeled_by TEXT DEFAULT 'heuristic',
-  labeled_at TEXT DEFAULT '', origin TEXT DEFAULT '',
+  dm_confidence REAL DEFAULT 0, is_dm INTEGER DEFAULT 0, labeled_at TEXT DEFAULT '',
+  origin TEXT NOT NULL DEFAULT 'heuristic', dm_decided_by TEXT DEFAULT '',
   UNIQUE(business_id, name, title)
 );
 
@@ -513,11 +517,12 @@ def contacts_for(conn: sqlite3.Connection, business_id: str) -> list[sqlite3.Row
 
 def add_person(conn: sqlite3.Connection, p: Person) -> None:
     conn.execute(
-        """INSERT INTO people(business_id,name,title,source_url,snippet,dm_confidence,is_dm,labeled_by,labeled_at,origin)
+        """INSERT INTO people(business_id,name,title,source_url,snippet,dm_confidence,is_dm,labeled_at,origin,
+                                dm_decided_by)
            VALUES(?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(business_id,name,title) DO NOTHING""",
-        (p.business_id, p.name, p.title, p.source_url, p.snippet, p.dm_confidence, p.is_dm, p.labeled_by, p.labeled_at,
-         p.origin or p.labeled_by),
+        (p.business_id, p.name, p.title, p.source_url, p.snippet, p.dm_confidence, p.is_dm, p.labeled_at, p.origin,
+         p.dm_decided_by),
     )
 
 

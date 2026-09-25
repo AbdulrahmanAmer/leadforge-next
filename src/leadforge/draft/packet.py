@@ -70,7 +70,7 @@ def _corroborations(dm: Any, people: list[Any], contact_row: Any, gbp: dict) -> 
         return 0
     n = 0
     if any(
-        (p["origin"] if "origin" in p.keys() else p["labeled_by"]) in ("heuristic", "gbp")
+        p["origin"] in ("heuristic", "gbp")
         and p["name"] != dm["name"]
         and (_tokens(p["name"]) & dm_tokens)
         for p in people
@@ -210,8 +210,7 @@ def build_packet(
         if allowed:
             first = dm["name"].split()[0] if dm["name"] else ""
             if first:
-                origin = (dm["origin"] if "origin" in dm.keys() else "") or dm["labeled_by"]
-                add("dm_name", dm["name"], origin, seen_at)
+                add("dm_name", dm["name"], dm["origin"], seen_at)
                 greeting = f"Hi {first},"
 
     packet = {

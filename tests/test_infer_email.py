@@ -136,7 +136,7 @@ def test_infer_stage_writes_affinity(cfg, conn, monkeypatch):
     db.add_contact(conn, Contact(business_id="b1", kind="email", value="bob.jones@acme.example",
                                  label="personal", tier="valid", affinity="own_domain"))
     db.add_person(conn, Person(business_id="b1", name="Jane Smith", is_dm=1, origin="heuristic",
-                               labeled_by="heuristic_auto"))
+                               dm_decided_by="heuristic_auto"))
     conn.commit()
 
     counts: dict = {}

@@ -86,8 +86,9 @@ erDiagram
         text snippet "<=300 chars"
         real dm_confidence "0..1, set by agent label"
         integer is_dm "0|1|-1(rejected)"
-        text labeled_by "agent|heuristic|registry"
         text labeled_at
+        text origin "heuristic|registry|gbp (source, never rewritten)"
+        text dm_decided_by "agent|heuristic_auto|registry ('' until decided)"
     }
     EVIDENCE {
         integer id PK
@@ -203,8 +204,8 @@ erDiagram
     BUSINESSES ||--o{ OUTCOMES : "records"
 ```
 
-v0.3 also adds `people.origin` (heuristic|registry|gbp — where a candidate came from; kept when the agent
-labels it) and `contacts.affinity` (own_domain | freemail_linked | freemail_unlinked — see
+v0.3 also adds `people.origin` (heuristic|registry|gbp — where a candidate came from; schema v6 keeps who
+decided the DM separately in `people.dm_decided_by`, so labeling never rewrites the source) and `contacts.affinity` (own_domain | freemail_linked | freemail_unlinked — see
 `extract.classify_email_affinity`). `businesses.enrich_json` gains `gbp` (Google Business Profile facts kept
 from the scraper: booking links, appointment attributes, owner reply signatures, review-credited first names),
 `attempted_at` (a crawl that did not succeed — `crawled_at` is only stamped on success) and

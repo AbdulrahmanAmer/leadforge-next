@@ -48,7 +48,7 @@ def test_contact_affinity_and_person_origin_roundtrip(conn):
     # re-adding without affinity keeps the stored value
     db.add_contact(conn, Contact(business_id="biz_1", kind="email", value="joe@gmail.com", tier="valid"))
     assert conn.execute("SELECT affinity FROM contacts WHERE id=?", (cid,)).fetchone()[0] == "freemail_linked"
-    db.add_person(conn, Person(business_id="biz_1", name="Jo Bloggs", labeled_by="gbp"))
+    db.add_person(conn, Person(business_id="biz_1", name="Jo Bloggs", origin="gbp"))
     assert conn.execute("SELECT origin FROM people WHERE name='Jo Bloggs'").fetchone()[0] == "gbp"
 
 

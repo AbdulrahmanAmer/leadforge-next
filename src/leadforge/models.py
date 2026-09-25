@@ -262,9 +262,9 @@ class Person(BaseModel):
     snippet: str = ""
     dm_confidence: float = 0.0
     is_dm: int = 0               # 1 accepted, 0 unlabeled, -1 rejected
-    labeled_by: str = "heuristic"  # heuristic|agent|registry|gbp
     labeled_at: str = ""
-    origin: str = ""               # v0.3: where the candidate came from (heuristic|registry|gbp); survives agent labeling
+    origin: str = "heuristic"    # where the candidate came from: heuristic|registry|gbp — never rewritten
+    dm_decided_by: str = ""      # who set is_dm: agent|heuristic_auto|registry; '' while undecided
 
     @field_validator("snippet")
     @classmethod

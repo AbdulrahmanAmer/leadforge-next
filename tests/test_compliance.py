@@ -35,8 +35,8 @@ def test_entity_type_ladder():
     assert c.entity_type(dissolved) == c.ENTITY_CORPORATE_INACTIVE
     assert c.entity_type(unmatched) == c.ENTITY_UNMATCHED
     assert c.entity_type(_row()) == c.ENTITY_UNCHECKED
-    # pre-v0.3 rows: officers stored but no profile -> corporate, status unknown
-    assert c.entity_type(_row(), people=[{"labeled_by": "registry"}]) == c.ENTITY_CORPORATE_UNKNOWN
+    # officers stored but no profile -> corporate, status unknown
+    assert c.entity_type(_row(), people=[{"origin": "registry"}]) == c.ENTITY_CORPORATE_UNKNOWN
 
 
 def test_lawful_basis_uk_rules():
@@ -84,8 +84,8 @@ def test_next_action_is_phone_first():
 def test_name_gate_requires_active_similar_and_corroborated():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    conn.execute("CREATE TABLE p(name, labeled_by, origin)")
-    conn.execute("INSERT INTO p VALUES('Smith, Jane', 'registry', 'registry')")
+    conn.execute("CREATE TABLE p(name, dm_decided_by, origin)")
+    conn.execute("INSERT INTO p VALUES('Smith, Jane', '', 'registry')")
     conn.execute("INSERT INTO p VALUES('Bob Lee', 'agent', 'heuristic')")
     reg, heur = conn.execute("SELECT * FROM p ORDER BY rowid").fetchall()
     good = {"registry_profile": {"company_status": "active", "match_similarity": 0.8}}

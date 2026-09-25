@@ -42,7 +42,7 @@ def make_scored_business(conn: sqlite3.Connection, run_id: str, *, id_: str, nam
     if email:
         db.add_contact(conn, Contact(business_id=bid, kind="email", value=email, tier=email_tier, affinity=affinity))
     if dm:
-        db.add_person(conn, Person(business_id=bid, name="Jane Doe", title="Owner", is_dm=1, labeled_by="agent",
+        db.add_person(conn, Person(business_id=bid, name="Jane Doe", title="Owner", is_dm=1, dm_decided_by="agent",
                                    origin="heuristic"))
     db.save_score(conn, Score(
         business_id=bid, run_id=run_id, total=90.0 if tier == "A" else 65.0 if tier == "B" else 40.0, tier=tier,

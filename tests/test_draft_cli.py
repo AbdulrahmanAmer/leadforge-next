@@ -326,7 +326,7 @@ def test_worked_example_registry_matched_ltd_with_own_domain_email(tmp_path):
         tmp_path, "registry_ltd",
         business={"domain": "acmegarage.co.uk", "website": "https://acmegarage.co.uk", "enrich": enrich},
         person={"business_id": "b1", "name": "Sarah Smith", "title": "Director", "is_dm": 1,
-               "dm_confidence": 0.9, "labeled_by": "registry", "origin": "registry"},
+               "dm_confidence": 0.9, "dm_decided_by": "registry", "origin": "registry"},
         contact={"business_id": "b1", "kind": "email", "value": "sarah@acmegarage.co.uk",
                 "tier": "valid", "affinity": "own_domain"},
         draft_subject="Quick note about Acme Garage Ltd",

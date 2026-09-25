@@ -29,7 +29,7 @@ def _seeded_run(tmp_path, monkeypatch):
     db.upsert_business(conn, Business(id="bare", run_id=rid, name="Bare Garage", source="gosom",
                                       dedupe_key="dk-bare"))
     db.add_person(conn, Person(business_id="real", name="Sean Vincent Murphy", title="Director",  # as the registry provider stores it
-                               labeled_by="registry", is_dm=1, dm_confidence=0.9))
+                               origin="registry", is_dm=1, dm_confidence=0.9))
     db.add_contact(conn, Contact(business_id="real", kind="email", value="sean@real.example",
                                  label="direct", tier="valid"))
     for bid in ("real", "bare"):
@@ -181,7 +181,7 @@ def test_inferred_email_never_masquerades_as_a_found_one(tmp_path, monkeypatch):
     db.upsert_business(conn, Business(id="g", run_id=rid, name="Guessed Garage", source="gosom",
                                       dedupe_key="dk-g", website="https://g.example", domain="g.example"))
     db.add_person(conn, Person(business_id="g", name="Jane Smith", title="Director",
-                               labeled_by="registry", is_dm=1, dm_confidence=0.9))
+                               origin="registry", is_dm=1, dm_confidence=0.9))
     db.add_contact(conn, Contact(business_id="g", kind="email", value="jane.smith@g.example",
                                  label="inferred", tier="inferred",
                                  meta={"pattern": "first.last", "confidence": 0.45,

@@ -215,7 +215,7 @@ def _contactability(conn: sqlite3.Connection, b) -> tuple[int, str]:
     dm = any(p["is_dm"] == 1 for p in people)
     has_email = any(c["kind"] == "email" and c["tier"] != "invalid" for c in contacts)
     has_phone = bool(b["phone_e164"]) or any(c["kind"] == "phone" for c in contacts)
-    registry = any(p["labeled_by"] == "registry" for p in people)
+    registry = any(p["origin"] == "registry" for p in people)
     pts = (30 if dm else 0) + (30 if has_email else 0) + (25 if has_phone else 0) + (15 if registry else 0)
     parts = [label for hit, label in (
         (dm, "DM identified"), (has_email, "email on file"),

@@ -115,7 +115,7 @@ def test_registry_name_without_corroboration_stays_company_greeting(tmp_path, mo
                                           "company_status": "active", "match_similarity": 0.9}}
     b = _biz(conn, enrich=good_registry)
     db.add_person(conn, Person(business_id="b1", name="Zed Quibble", title="Director", is_dm=1,
-                               dm_confidence=0.9, labeled_by="registry", origin="registry"))
+                               dm_confidence=0.9, origin="registry"))
     packet = build_packet(conn, cfg, _icp(), b, None, "gainlev_leadgen", _IDENTITY)
     assert packet["greeting"] == "Hello,"
     assert not any(f["k"] == "dm_name" for f in packet["facts"])
@@ -127,7 +127,7 @@ def test_registry_name_corroborated_by_email_local_part_unlocks_greeting(tmp_pat
                                           "company_status": "active", "match_similarity": 0.9}}
     b = _biz(conn, enrich=good_registry, domain="acmegarage.co.uk")
     db.add_person(conn, Person(business_id="b1", name="Sarah Smith", title="Director", is_dm=1,
-                               dm_confidence=0.9, labeled_by="registry", origin="registry"))
+                               dm_confidence=0.9, origin="registry"))
     cid = db.add_contact(conn, Contact(business_id="b1", kind="email", value="sarah@acmegarage.co.uk",
                                        tier="valid", affinity="own_domain"))
     contact_row = conn.execute("SELECT * FROM contacts WHERE id=?", (cid,)).fetchone()
@@ -141,7 +141,7 @@ def test_heuristic_site_sourced_name_needs_no_registry_gate(tmp_path, monkeypatc
     cfg, conn = _bootstrap(tmp_path, monkeypatch)
     b = _biz(conn)
     db.add_person(conn, Person(business_id="b1", name="Jo Owner", title="Owner", is_dm=1,
-                               dm_confidence=0.9, labeled_by="agent", origin="heuristic"))
+                               dm_confidence=0.9, dm_decided_by="agent", origin="heuristic"))
     packet = build_packet(conn, cfg, _icp(), b, None, "gainlev_leadgen", _IDENTITY)
     assert packet["greeting"] == "Hi Jo,"
 
@@ -151,7 +151,7 @@ def test_name_policy_never_forces_company_greeting(tmp_path, monkeypatch):
     cfg.draft.name_policy = "never"
     b = _biz(conn)
     db.add_person(conn, Person(business_id="b1", name="Jo Owner", title="Owner", is_dm=1,
-                               dm_confidence=0.9, labeled_by="agent", origin="heuristic"))
+                               dm_confidence=0.9, dm_decided_by="agent", origin="heuristic"))
     packet = build_packet(conn, cfg, _icp(), b, None, "gainlev_leadgen", _IDENTITY)
     assert packet["greeting"] == "Hello,"
     assert not any(f["k"] == "dm_name" for f in packet["facts"])
@@ -164,7 +164,7 @@ def test_name_policy_always_bypasses_the_corroboration_gate(tmp_path, monkeypatc
                                           "company_status": "active", "match_similarity": 0.9}}
     b = _biz(conn, enrich=good_registry)
     db.add_person(conn, Person(business_id="b1", name="Zed Quibble", title="Director", is_dm=1,
-                               dm_confidence=0.9, labeled_by="registry", origin="registry"))
+                               dm_confidence=0.9, origin="registry"))
     packet = build_packet(conn, cfg, _icp(), b, None, "gainlev_leadgen", _IDENTITY)
     assert packet["greeting"] == "Hi Zed,"
 
@@ -176,7 +176,7 @@ def test_grade_a_requires_allowed_name_and_a_distinctive_fact(tmp_path, monkeypa
              "signals": {"stale_site": True, "copyright_year": 2018}}
     b = _biz(conn, enrich=enrich, domain="acmegarage.co.uk")
     db.add_person(conn, Person(business_id="b1", name="Jo Owner", title="Owner", is_dm=1,
-                               dm_confidence=0.9, labeled_by="agent", origin="heuristic"))
+                               dm_confidence=0.9, dm_decided_by="agent", origin="heuristic"))
     packet = build_packet(conn, cfg, _icp(), b, None, "gainlev_leadgen", _IDENTITY)
     assert packet["grade"] == "A"
 
@@ -216,7 +216,7 @@ def test_packet_stays_within_the_configured_token_budget(tmp_path, monkeypatch):
     }
     b = _biz(conn, enrich=enrich, rating=4.6, review_count=88, domain="acmegarage.co.uk")
     db.add_person(conn, Person(business_id="b1", name="Sarah Smith", title="Director", is_dm=1,
-                               dm_confidence=0.9, labeled_by="registry", origin="registry"))
+                               dm_confidence=0.9, origin="registry"))
     cid = db.add_contact(conn, Contact(business_id="b1", kind="email", value="sarah@acmegarage.co.uk",
                                        tier="valid", affinity="own_domain"))
     contact_row = conn.execute("SELECT * FROM contacts WHERE id=?", (cid,)).fetchone()

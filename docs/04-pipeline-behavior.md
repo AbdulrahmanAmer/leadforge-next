@@ -118,8 +118,8 @@ latest run for the same ICP hash; every stage is idempotent (upserts, per-tile /
   capped `--max` (default 60 businesses/batch).
 - Agent labels **from snippets only** (no browsing) → `dm_labels.ndjson`:
   `{"biz":"biz_ab12","pick":0,"confidence":0.9,"title_override":null}` or `{"biz":"…","pick":-1}` (none credible).
-- `dm apply`: sets `people.is_dm`, confidence, labeled_by=agent; unlabeled businesses simply export without DM (never blocks the run).
-- Registry cross-check: see §3.4b — adds `people` rows labeled_by=registry with evidence; boosts `data_confidence` factor.
+- `dm apply`: sets `people.is_dm`, confidence, dm_decided_by=agent (origin untouched); unlabeled businesses simply export without DM (never blocks the run).
+- Registry cross-check: see §3.4b — adds `people` rows origin=registry with evidence; boosts `data_confidence` factor.
 
 ### 3.4b registry stage (v0.1.2)
 - Runs for **every** business in a covered jurisdiction — including site-less ones, which never enter the crawl stage (where lookups
@@ -128,7 +128,7 @@ latest run for the same ICP hash; every stage is idempotent (upserts, per-tile /
 - Companies House (GB/UK; key via `leadforge config set registry.companies_house_key …`): company search by name, candidates filtered
   by locality match against the business address; stores the matched **company profile** (number, incorporation date, status, SIC
   codes) in `enrich_json.registry_profile` → the sheet's Company No / Incorporated / Company Status / SIC Codes columns; then
-  `/company/{n}/officers` → active (non-resigned) officers as `people` rows labeled_by=registry, each with evidence.
+  `/company/{n}/officers` → active (non-resigned) officers as `people` rows origin=registry, each with evidence.
 - Auto-DM (ADR-010): exactly ONE active individual director (corporate officers filtered out) and no DM already chosen → auto-marked DM
   at confidence 0.9 — official-registry evidence beats agent inference, so big runs don't queue the obvious cases. 0 or 2+ individuals
   stay with the agent.

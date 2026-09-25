@@ -37,8 +37,8 @@ def _enrich(row: Any) -> dict:
 def entity_type(row: Any, people: list[Any] | None = None) -> str:
     """Classify a business row by what the public registry says about it.
 
-    `people` (rows with `labeled_by`) lets pre-v0.3 databases — where the crawl path stored
-    officers but never the company profile — still count as corporate (status unknown)."""
+    `people` (rows with `origin`): registry officers on file with no stored profile still count as
+    corporate (status unknown), whoever later decided which of them is the DM."""
     enrich = _enrich(row)
     profile = enrich.get("registry_profile") or {}
     if profile.get("company_number"):
@@ -48,7 +48,7 @@ def entity_type(row: Any, people: list[Any] | None = None) -> str:
         if status:
             return ENTITY_CORPORATE_INACTIVE
         return ENTITY_CORPORATE_UNKNOWN
-    if people and any((p["labeled_by"] if not isinstance(p, dict) else p.get("labeled_by")) == "registry" for p in people):
+    if people and any(p["origin"] == "registry" for p in people):
         return ENTITY_CORPORATE_UNKNOWN
     if enrich.get("registry_checked"):
         return ENTITY_UNMATCHED
@@ -164,8 +164,7 @@ def next_action(*, phone_validated: bool, has_dm: bool, eligibility: dict, tier:
 def name_allowed(person: Any, enrich: dict, corroborations: int) -> bool:
     """Owner decision 6: a registry director's name may open a message only when the match passed the
     similarity gate, the company is active, and at least one other source corroborates the name."""
-    origin = (person["origin"] if "origin" in person.keys() else "") or person["labeled_by"]
-    if origin != "registry":
+    if person["origin"] != "registry":
         return True
     profile = enrich.get("registry_profile") or {}
     status = str(profile.get("company_status") or "").casefold()

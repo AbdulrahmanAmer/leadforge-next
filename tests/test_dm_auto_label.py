@@ -37,7 +37,7 @@ def test_batch_lines_matches_export_batch_ndjson_shape(cfg, sample_icp):
     assert rec["icp_titles"] == sample_icp.decision_maker.titles_priority
     assert rec["candidates"][0]["name"] == "Jane Smith"
     assert rec["candidates"][0]["title"] == "Owner"
-    assert rec["candidates"][0]["origin"] == "heuristic"  # Person.labeled_by default, per db.add_person
+    assert rec["candidates"][0]["origin"] == "heuristic"  # Person.origin default
 
 
 def test_export_batch_uses_batch_lines(cfg, sample_icp, tmp_path):
@@ -63,7 +63,7 @@ def test_apply_label_records_same_semantics_as_apply_labels(cfg):
     out = dm.apply_label_records(conn, [{"biz": "biz_a", "pick": jane_i, "confidence": 0.9}])
     assert out == {"applied": 1, "rejected": 0, "skipped": 0}
     dm_row = next(p for p in db.people_for(conn, "biz_a") if p["is_dm"] == 1)
-    assert dm_row["name"] == "Jane Smith" and dm_row["labeled_by"] == "agent"
+    assert dm_row["name"] == "Jane Smith" and dm_row["dm_decided_by"] == "agent"
     assert abs(dm_row["dm_confidence"] - 0.9) < 1e-9
 
 
@@ -94,7 +94,7 @@ def test_heuristic_labels_only_when_exactly_one_title_matches(cfg, sample_icp):
     out = dm.heuristic_labels(conn, sample_icp)
     assert out == {"labeled": 1}
     one = next(p for p in db.people_for(conn, "biz_one") if p["is_dm"] == 1)
-    assert one["name"] == "Jane Smith" and one["labeled_by"] == "heuristic_auto"
+    assert one["name"] == "Jane Smith" and one["dm_decided_by"] == "heuristic_auto"
     assert abs(one["dm_confidence"] - 0.55) < 1e-9
     assert all(p["is_dm"] == 0 for p in db.people_for(conn, "biz_two"))
     assert all(p["is_dm"] == 0 for p in db.people_for(conn, "biz_zero"))

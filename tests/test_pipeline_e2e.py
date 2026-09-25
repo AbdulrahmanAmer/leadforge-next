@@ -96,7 +96,7 @@ def test_full_pipeline_offline(cfg, sample_icp, patched, monkeypatch, tmp_path):
 
     # DM was recorded on Alpha
     people = db.people_for(conn, biz_id)
-    assert any(p["is_dm"] == 1 and p["labeled_by"] == "agent" for p in people)
+    assert any(p["is_dm"] == 1 and p["dm_decided_by"] == "agent" for p in people)
 
 
 def test_resume_recovers_from_killed_enrich(cfg, sample_icp, patched, tmp_path):

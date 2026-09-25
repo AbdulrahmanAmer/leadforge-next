@@ -51,7 +51,7 @@ def test_dm_and_contact_raise_contactability_not_fit(conn, sample_icp):
     before_contactability = next(f for f in before.factors if f.factor == "contactability").points
 
     db.add_person(conn, Person(business_id="biz_x", name="Joe A", title="Owner", is_dm=1, dm_confidence=0.9,
-                               labeled_by="agent"))
+                               dm_decided_by="agent"))
     db.add_contact(conn, Contact(business_id="biz_x", kind="email", value="joe@indie.com", label="personal",
                                  tier="valid", affinity="freemail_unlinked"))
     after = scorer.score_business(db.all_businesses(conn)[0])
@@ -181,7 +181,7 @@ def test_contactability_dm_only(conn, sample_icp):
     run_id = db.create_run(conn, "icp.yaml", sample_icp.icp_hash())
     _seed_business(conn, phone_e164=None)  # no phone -> isolate the DM bonus
     db.add_person(conn, Person(business_id="biz_x", name="Jo Owner", title="Owner", is_dm=1,
-                               dm_confidence=0.9, labeled_by="agent"))
+                               dm_confidence=0.9, dm_decided_by="agent"))
     s = Scorer(conn, sample_icp, run_id).score_business(_row(conn, "biz_x"))
     assert next(f for f in s.factors if f.factor == "contactability").points == 30
 
@@ -246,7 +246,7 @@ def test_contactability_combined_matches_the_arithmetic(conn, sample_icp):
     run_id = db.create_run(conn, "icp.yaml", sample_icp.icp_hash())
     _seed_business(conn, phone_e164="+17135550100")
     db.add_person(conn, Person(business_id="biz_x", name="Jo Owner", title="Owner", is_dm=1,
-                               dm_confidence=0.9, labeled_by="agent"))
+                               dm_confidence=0.9, dm_decided_by="agent"))
     db.add_contact(conn, Contact(business_id="biz_x", kind="email", value="info@indieauto.com",
                                  tier="valid", affinity="own_domain"))
     db.add_contact(conn, Contact(business_id="biz_x", kind="phone", value="+447890123456"))
@@ -400,7 +400,7 @@ def test_status_ready_is_still_reachable(conn, sample_icp):
     run_id = db.create_run(conn, "icp.yaml", sample_icp.icp_hash())
     _seed_business(conn, phone_e164="+17135550100")
     db.add_person(conn, Person(business_id="biz_x", name="Jo Owner", title="Owner", is_dm=1,
-                               dm_confidence=0.9, labeled_by="agent"))
+                               dm_confidence=0.9, dm_decided_by="agent"))
     db.add_contact(conn, Contact(business_id="biz_x", kind="email", value="info@indieauto.com",
                                  tier="valid", affinity="own_domain"))
     s = Scorer(conn, sample_icp, run_id).score_business(_row(conn, "biz_x"))
@@ -464,3 +464,21 @@ def test_score_two_e2e_fixtures_have_exact_deterministic_totals(conn, sample_icp
     sB = scorer.score_business(_row(conn, "det_b"))
     assert sA.total == 78.5 and sA.tier == "B"
     assert sB.total == 0.5 and sB.tier == "C"
+
+
+def test_agent_labeled_registry_officer_keeps_registry_corroboration_and_entity(conn, sample_icp):
+    """R3: labeling used to overwrite labeled_by='registry' with 'agent', so an officer the agent
+    picked as DM stopped counting as registry corroboration and the entity fell to 'unmatched'.
+    The source (origin) and the decider (dm_decided_by) are separate columns now."""
+    from leadforge import compliance
+    from leadforge.enrich.dm import apply_label_records
+    run_id = db.create_run(conn, "icp.yaml", sample_icp.icp_hash())
+    _seed_business(conn, enrich={"registry_checked": True})
+    db.add_person(conn, Person(business_id="biz_x", name="Jane Smith", title="Director", origin="registry"))
+    apply_label_records(conn, [{"biz": "biz_x", "pick": 0, "confidence": 0.9}])
+    person = db.people_for(conn, "biz_x")[0]
+    assert (person["is_dm"], person["dm_decided_by"], person["origin"]) == (1, "agent", "registry")
+    b = _row(conn, "biz_x")
+    s = Scorer(conn, sample_icp, run_id).score_business(b)
+    assert "registry-corroborated" in next(f for f in s.factors if f.factor == "data_confidence").why
+    assert compliance.entity_type(b, db.people_for(conn, "biz_x")) == compliance.ENTITY_CORPORATE_UNKNOWN

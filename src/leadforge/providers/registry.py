@@ -3,7 +3,7 @@
 === SPEC (implement exactly; acceptance criteria in docs/05 U4.6) ===
 
 class RegistryProvider(Protocol):
-    def lookup(self, business_row) -> list[Person]   # labeled_by="registry", dm_confidence=0.0, is_dm=0
+    def lookup(self, business_row) -> list[Person]   # origin="registry", dm_confidence=0.0, is_dm=0
 
 1. CompaniesHouseRegistry (UK; cfg.registry.companies_house_key non-empty enables):
    - base https://api.company-information.service.gov.uk, HTTP Basic auth (key as username, blank password)
@@ -20,7 +20,7 @@ class RegistryProvider(Protocol):
 4. Never blocks the run: any exception -> log + return [].
 5. tests/test_registry.py: canned JSON fixtures for both APIs, no network; assert Person mapping + evidence facts.
 
-Effect on scoring: presence of labeled_by="registry" person rows feeds the data_confidence factor
+Effect on scoring: presence of origin="registry" person rows feeds the data_confidence factor
 ("registry_corroborated") — see score.py _f_data_confidence.
 """
 
@@ -166,7 +166,7 @@ class CompaniesHouseRegistry:
                     role = _humanize(str(off.get("officer_role") or "officer"))
                     person = Person(business_id=business_row["id"],
                                     name=natural_name(str(off.get("name") or "")).title(),
-                                    title=role, labeled_by="registry", is_dm=0, source_url=profile_url,
+                                    title=role, is_dm=0, source_url=profile_url,
                                     origin="registry")
                     ev = Evidence(business_id=business_row["id"], ref_table="people", fact="registry_officer",
                                   url=profile_url, snippet=f"{role} — appointed {off.get('appointed_on', '?')}",
@@ -237,7 +237,7 @@ class OpenCorporatesRegistry:
                     role = _humanize(str(o.get("position") or "officer"))
                     person = Person(business_id=business_row["id"],
                                     name=natural_name(str(o.get("name") or "")).title(),
-                                    title=role, labeled_by="registry", is_dm=0, source_url=url,
+                                    title=role, is_dm=0, source_url=url,
                                     origin="registry")
                     ev = Evidence(business_id=business_row["id"], ref_table="people", fact="registry_officer",
                                   url=url, snippet=f"{role} — {o.get('start_date', '?')}", observed_at=now_iso())

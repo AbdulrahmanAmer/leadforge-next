@@ -51,7 +51,7 @@ def test_companies_house_maps_active_officers(tmp_path, monkeypatch):
     person, ev = out[0]
     assert person.name == "Jane Smith"  # 'SMITH, Jane' registry order flipped for the call sheet
     assert person.title == "Director"
-    assert person.labeled_by == "registry" and person.is_dm == 0
+    assert person.origin == "registry" and person.is_dm == 0
     assert person.origin == "registry"  # v0.3 polish: set explicitly, not left to db.add_person's fallback
     assert ev.fact == "registry_officer" and "01234567" in ev.url
 
@@ -155,7 +155,7 @@ def test_no_keys_is_silent_noop(tmp_path, monkeypatch):
 # --- v0.1.1: DM auto-pick from registry -------------------------------------------------------
 def _mk_person(name, biz="b1"):
     from leadforge.models import Person
-    return Person(business_id=biz, name=name, title="Director", labeled_by="registry")
+    return Person(business_id=biz, name=name, title="Director", origin="registry")
 
 
 def _seeded_conn(tmp_path, monkeypatch, names):
@@ -181,7 +181,7 @@ def test_auto_pick_single_individual_director(tmp_path, monkeypatch):
     counts = {}
     _auto_pick_registry_dm(conn, {"id": "b1"}, people, counts, _ACTIVE_PROFILE)
     rows = db.people_for(conn, "b1")
-    assert any(r["is_dm"] == 1 and r["labeled_by"] == "registry" for r in rows)
+    assert any(r["is_dm"] == 1 and r["dm_decided_by"] == "registry" for r in rows)
     assert counts["dm_auto_picked"] == 1
     assert db.dm_pending(conn, 10) == []  # no longer queued for the agent
 
@@ -239,7 +239,7 @@ def test_opencorporates_maps_officers(tmp_path, monkeypatch):
     out = reg.lookup(BIZ)
     assert len(out) == 1
     person, ev = out[0]
-    assert person.name == "Jane Smith" and person.labeled_by == "registry"
+    assert person.name == "Jane Smith" and person.origin == "registry"
     assert person.origin == "registry"  # v0.3 polish: set explicitly, not left to db.add_person's fallback
     assert ev.fact == "registry_officer"
 
@@ -354,7 +354,7 @@ def test_registry_stage_covers_siteless_businesses(tmp_path, monkeypatch):
     from leadforge.providers import registry as regmod
 
     def fake_lwp(self, b):
-        person = Person(business_id=b["id"], name="Jane Smith", title="Director", labeled_by="registry")
+        person = Person(business_id=b["id"], name="Jane Smith", title="Director", origin="registry")
         ev = Evidence(business_id=b["id"], ref_table="people", fact="registry_officer", url="u", snippet="s")
         return [(person, ev)], {"company_number": "999", "incorporated": "2010-01-01",
                                 "company_status": "active", "legal_name": "NO SITE GARAGE LTD",
@@ -364,7 +364,7 @@ def test_registry_stage_covers_siteless_businesses(tmp_path, monkeypatch):
     counts = {}
     _registry_stage(conn, cfg, counts)
     people = db.people_for(conn, "b1")
-    assert people and people[0]["labeled_by"] == "registry"
+    assert people and people[0]["origin"] == "registry"
     assert any(p["is_dm"] == 1 for p in people)  # single director auto-picked
     import json as _json
     enrich = _json.loads(conn.execute("SELECT enrich_json FROM businesses WHERE id='b1'").fetchone()[0])

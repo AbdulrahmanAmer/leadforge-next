@@ -51,8 +51,7 @@ def batch_lines(conn: sqlite3.Connection, icp: ICP, rows: Iterable[sqlite3.Row])
         if not people:
             continue
         cands = [{"i": i, "name": p["name"], "title": p["title"], "snippet": p["snippet"],
-                  # v0.3: where the candidate came from (heuristic|registry|gbp) — survives agent labeling
-                  "origin": p["origin"] or p["labeled_by"]}
+                  "origin": p["origin"]}
                  for i, p in enumerate(people)]
         lines.append(json.dumps({
             "biz": b["id"], "name": b["name"], "category": b["category"],
@@ -70,9 +69,8 @@ def export_batch(conn: sqlite3.Connection, icp: ICP, out_path: Path, max_biz: in
             people = [p for p in db.people_for(conn, b["id"]) if p["is_dm"] == 0]
             # one row per candidate for terse review; label file still keyed by biz
             for i, p in enumerate(people):
-                origin = p["origin"] or p["labeled_by"]
                 lines.append("\t".join([b["id"], b["name"], str(i), p["title"], p["name"],
-                                        p["snippet"][:160], origin]))
+                                        p["snippet"][:160], p["origin"]]))
     else:
         lines = batch_lines(conn, icp, rows)
     out_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
@@ -142,7 +140,7 @@ def heuristic_labels(conn: sqlite3.Connection, icp: ICP, limit: int = 10_000) ->
                              if p["title"] and any(t in p["title"].casefold() for t in titles_priority)]
             if len(title_matches) == 1:
                 _set_dm(conn, title_matches[0]["id"], is_dm=1, confidence=0.55, title=None,
-                       labeled_by="heuristic_auto")
+                        decided_by="heuristic_auto")
                 labeled += 1
     conn.commit()
     return {"labeled": labeled}
@@ -212,14 +210,15 @@ def _parse_tsv_label(raw: str) -> dict | None:
 
 
 def _set_dm(conn: sqlite3.Connection, person_id: int, is_dm: int, confidence: float, title: str | None,
-           labeled_by: str = "agent") -> None:
+            decided_by: str = "agent") -> None:
+    """Record a DM decision in `dm_decided_by`; `origin` (the candidate's source) is never touched."""
     if title:
         conn.execute(
-            "UPDATE people SET is_dm=?, dm_confidence=?, title=?, labeled_by=?, labeled_at=? WHERE id=?",
-            (is_dm, confidence, title, labeled_by, now_iso(), person_id),
+            "UPDATE people SET is_dm=?, dm_confidence=?, title=?, dm_decided_by=?, labeled_at=? WHERE id=?",
+            (is_dm, confidence, title, decided_by, now_iso(), person_id),
         )
     else:
         conn.execute(
-            "UPDATE people SET is_dm=?, dm_confidence=?, labeled_by=?, labeled_at=? WHERE id=?",
-            (is_dm, confidence, labeled_by, now_iso(), person_id),
+            "UPDATE people SET is_dm=?, dm_confidence=?, dm_decided_by=?, labeled_at=? WHERE id=?",
+            (is_dm, confidence, decided_by, now_iso(), person_id),
         )

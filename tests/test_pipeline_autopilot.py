@@ -135,7 +135,7 @@ def test_autopilot_reaches_exported_with_agent_labeling_and_drafting(cfg, sample
     # the DM candidate really was labeled by the (stubbed) agent, not left for a human
     biz_id = conn.execute("SELECT id FROM businesses LIMIT 1").fetchone()["id"]
     people = db.people_for(conn, biz_id)
-    assert any(p["is_dm"] == 1 and p["labeled_by"] == "agent" for p in people)
+    assert any(p["is_dm"] == 1 and p["dm_decided_by"] == "agent" for p in people)
 
 
 def test_autopilot_with_no_runner_still_reaches_exported_via_heuristics(cfg, sample_icp, patched, monkeypatch, tmp_path):

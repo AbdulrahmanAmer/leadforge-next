@@ -321,7 +321,7 @@ def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: d
         r for r in conn.execute(
             """SELECT * FROM businesses b
                WHERE json_extract(b.enrich_json,'$.registry_checked') IS NULL
-                 AND NOT EXISTS (SELECT 1 FROM people p WHERE p.business_id=b.id AND p.labeled_by='registry')"""
+                 AND NOT EXISTS (SELECT 1 FROM people p WHERE p.business_id=b.id AND p.origin='registry')"""
         ).fetchall()
         if r["id"] not in crawl_ids
     ]
@@ -457,7 +457,7 @@ def _registry_stage(conn: sqlite3.Connection, cfg: Config, counts: dict) -> None
     rows = conn.execute(
         """SELECT * FROM businesses b
            WHERE json_extract(b.enrich_json,'$.registry_checked') IS NULL
-             AND NOT EXISTS (SELECT 1 FROM people p WHERE p.business_id=b.id AND p.labeled_by='registry')"""
+             AND NOT EXISTS (SELECT 1 FROM people p WHERE p.business_id=b.id AND p.origin='registry')"""
     ).fetchall()
     emit_progress("registry", 0, len(rows), "starting")
     for bi, b in enumerate(rows):
@@ -597,8 +597,7 @@ def _persist(conn: sqlite3.Connection, cfg: Config, b, res: dict, counts: dict,
         db.add_contact(conn, Contact(business_id=bid, kind="social", value=url, label=net, tier="valid"))
     for cand in res["people"]:
         db.add_person(conn, Person(business_id=bid, name=cand.name, title=cand.title, source_url=cand.source_url,
-                                   snippet=cand.snippet, labeled_by="heuristic", labeled_at=now_iso(),
-                                   origin="heuristic"))
+                                   snippet=cand.snippet, labeled_at=now_iso(), origin="heuristic"))
         db.add_evidence(conn, Evidence(business_id=bid, ref_table="people", fact="dm_candidate",
                                        url=cand.source_url, snippet=f"{cand.name} — {cand.title}", observed_at=now_iso()))
         counts["dm_candidates"] += 1
@@ -725,7 +724,7 @@ def _apply_gbp(conn: sqlite3.Connection, b, signals: dict, counts: dict) -> dict
     for name in (gbp.get("reply_signatures") or []):
         if not name or name.casefold() in existing:
             continue
-        db.add_person(conn, Person(business_id=b["id"], name=name, title="", labeled_by="gbp", origin="gbp",
+        db.add_person(conn, Person(business_id=b["id"], name=name, title="", origin="gbp",
                                    snippet="signed an owner reply on Google", source_url=maps_url or "",
                                    labeled_at=now_iso()))
         existing.add(name.casefold())
@@ -738,7 +737,7 @@ def _apply_gbp(conn: sqlite3.Connection, b, signals: dict, counts: dict) -> dict
         if name.casefold() in existing:
             continue
         plural = "review" if n == 1 else "reviews"
-        db.add_person(conn, Person(business_id=b["id"], name=name, title="", labeled_by="gbp", origin="gbp",
+        db.add_person(conn, Person(business_id=b["id"], name=name, title="", origin="gbp",
                                    snippet=f"credited by customers in {n} {plural}", source_url=maps_url or "",
                                    labeled_at=now_iso()))
         existing.add(name.casefold())
@@ -795,8 +794,8 @@ def _auto_pick_registry_dm(conn: sqlite3.Connection, b, registry_people: list[Pe
         return  # a DM is already chosen (agent or earlier run) — never create a second one
     dm = individuals[0]
     conn.execute(
-        "UPDATE people SET is_dm=1, dm_confidence=0.9, labeled_at=? "
-        "WHERE business_id=? AND name=? AND labeled_by='registry'",
+        "UPDATE people SET is_dm=1, dm_confidence=0.9, dm_decided_by='registry', labeled_at=? "
+        "WHERE business_id=? AND name=? AND origin='registry'",
         (now_iso(), b["id"], dm.name))
     counts["dm_auto_picked"] = counts.get("dm_auto_picked", 0) + 1
 

@@ -81,7 +81,7 @@ def test_account_fit_strong_prospect(tmp_path, monkeypatch):
     }
     conn = _seed(tmp_path, monkeypatch, profile_json)
     db.add_person(conn, Person(business_id="b1", name="Op Manager", title="Operations Director",
-                               labeled_by="registry", is_dm=1, dm_confidence=0.9))
+                               origin="registry", is_dm=1, dm_confidence=0.9))
     db.add_contact(conn, Contact(business_id="b1", kind="email", value="ops@acme.ae",
                                  label="role", tier="valid"))
     b = db.all_businesses(conn)[0]
@@ -171,8 +171,8 @@ def test_auto_pick_never_adds_second_dm(tmp_path, monkeypatch):
     from leadforge.models import Person as P
     conn = _seed(tmp_path, monkeypatch, {})
     db.add_person(conn, P(business_id="b1", name="Agent Pick", title="Owner",
-                          labeled_by="agent", is_dm=1))
-    reg_person = P(business_id="b1", name="Jane Smith", title="Director", labeled_by="registry")
+                          dm_decided_by="agent", is_dm=1))
+    reg_person = P(business_id="b1", name="Jane Smith", title="Director", origin="registry")
     db.add_person(conn, reg_person)
     _auto_pick_registry_dm(conn, {"id": "b1"}, [reg_person], {})
     dms = [r for r in db.people_for(conn, "b1") if r["is_dm"] == 1]

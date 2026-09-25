@@ -165,7 +165,7 @@ def test_xlsx_has_drafts_sheet_with_one_row_and_wrapped_body(tmp_path, monkeypat
     db.upsert_business(conn, Business(id="b1", name="Sheet Garage", source="gosom", dedupe_key="dk-b1",
                                       domain="sheetgarage.example"))
     db.add_person(conn, Person(business_id="b1", name="Jo Owner", title="Owner", is_dm=1,
-                               dm_confidence=0.9, labeled_by="agent"))
+                               dm_confidence=0.9, dm_decided_by="agent"))
     contact_id = db.add_contact(conn, Contact(business_id="b1", kind="email",
                                               value="jo@sheetgarage.example", tier="valid",
                                               affinity="own_domain"))

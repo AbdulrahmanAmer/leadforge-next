@@ -163,7 +163,7 @@ def _fake_crawl(self, website, business_domain=None):
 def _fake_lookup_with_profile(self, biz):
     if biz["id"] == "b1":
         person = Person(business_id="b1", name="Alice Alpha", title="Director",
-                        labeled_by="registry", origin="registry")
+                        origin="registry")
         ev = Evidence(business_id="b1", ref_table="people", fact="registry_officer",
                      url="u1", snippet="Director — appointed 2020-01-01")
         profile = {"company_number": "1", "company_status": "active", "legal_name": "ALPHA LTD",
@@ -171,7 +171,7 @@ def _fake_lookup_with_profile(self, biz):
         return [(person, ev)], profile
     if biz["id"] == "b3":
         person = Person(business_id="b3", name="Sam Siteless", title="Director",
-                        labeled_by="registry", origin="registry")
+                        origin="registry")
         ev = Evidence(business_id="b3", ref_table="people", fact="registry_officer",
                      url="u3", snippet="Director — appointed 2019-01-01")
         profile = {"company_number": "3", "company_status": "active", "legal_name": "SITELESS LTD",

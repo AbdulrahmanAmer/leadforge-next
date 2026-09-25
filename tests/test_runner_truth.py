@@ -249,7 +249,7 @@ def test_gbp_reply_signature_becomes_people_row_origin_gbp(cfg, conn):
     runner._gbp_stage(conn, cfg, counts)
     people = db.people_for(conn, "b1")
     tyler = next(p for p in people if p["name"] == "Tyler")
-    assert tyler["origin"] == "gbp" and tyler["labeled_by"] == "gbp"
+    assert tyler["origin"] == "gbp" and tyler["dm_decided_by"] == ""
     assert tyler["snippet"] == "signed an owner reply on Google"
     assert tyler["source_url"] == "https://maps.google.com/?cid=1"
     assert counts["dm_candidates"] == 1
@@ -350,7 +350,7 @@ def test_auto_pick_from_cross_check_only_when_profile_active(cfg, conn, monkeypa
                 address_country="GB")
     cfg.registry.companies_house_key = "k"
     reg = CompaniesHouseRegistry(cfg)
-    person = Person(business_id="b1", name="Jane Smith", title="Director", labeled_by="registry")
+    person = Person(business_id="b1", name="Jane Smith", title="Director", origin="registry")
     from leadforge.models import Evidence
     ev = Evidence(business_id="b1", ref_table="people", fact="registry_officer", url="u", snippet="s")
     dissolved_profile = {"company_number": "1", "company_status": "dissolved"}
@@ -365,7 +365,7 @@ def test_dm_export_ndjson_includes_origin_and_apply_keeps_it(cfg, conn, sample_i
     from leadforge.enrich.dm import apply_labels, export_batch
     _biz_row(conn, "b1", "Acme Garage")
     db.add_person(conn, Person(business_id="b1", name="Jane Registry", title="Director",
-                               labeled_by="registry", origin="registry"))
+                               origin="registry"))
     out_path = tmp_path / "batch.ndjson"
     n, _remaining = export_batch(conn, sample_icp, out_path, max_biz=10, tsv=False)
     assert n == 1
@@ -377,7 +377,7 @@ def test_dm_export_ndjson_includes_origin_and_apply_keeps_it(cfg, conn, sample_i
     applied = apply_labels(conn, labels)
     assert applied["applied"] == 1
     row = db.people_for(conn, "b1")[0]
-    assert row["labeled_by"] == "agent"   # relabeled by the agent's decision...
+    assert row["dm_decided_by"] == "agent"   # decided by the agent...
     assert row["origin"] == "registry"    # ...but origin still shows where the candidate came from
 
 
@@ -385,20 +385,8 @@ def test_dm_export_tsv_includes_origin_column(cfg, conn, sample_icp, tmp_path):
     from leadforge.enrich.dm import export_batch
     _biz_row(conn, "b1", "Acme Garage")
     db.add_person(conn, Person(business_id="b1", name="Sam Heuristic", title="Owner",
-                               labeled_by="heuristic", origin="heuristic"))
+                               origin="heuristic"))
     out_path = tmp_path / "batch.tsv"
     export_batch(conn, sample_icp, out_path, max_biz=10, tsv=True)
     cols = out_path.read_text(encoding="utf-8").strip().split("\t")
     assert cols[-1] == "heuristic"
-
-
-def test_dm_export_origin_falls_back_to_labeled_by_when_blank(cfg, conn, sample_icp, tmp_path):
-    """A row inserted before v0.3 (or by db.add_person's own labeled_by fallback) has origin=''."""
-    from leadforge.enrich.dm import export_batch
-    _biz_row(conn, "b1", "Acme Garage")
-    # add_person defaults origin to labeled_by when none is given (see db.add_person)
-    db.add_person(conn, Person(business_id="b1", name="Old Row", title="Manager", labeled_by="heuristic"))
-    out_path = tmp_path / "batch.ndjson"
-    export_batch(conn, sample_icp, out_path, max_biz=10, tsv=False)
-    rec = json.loads(out_path.read_text(encoding="utf-8").strip())
-    assert rec["candidates"][0]["origin"] == "heuristic"

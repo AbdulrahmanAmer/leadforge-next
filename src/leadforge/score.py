@@ -213,7 +213,7 @@ class Scorer:
         from leadforge.enrich.validate import best_email_tier
         enrich = json.loads(b["enrich_json"]) if b["enrich_json"] else {}
         need_hits = self._need_hits(b, enrich)
-        registry = any(p["labeled_by"] == "registry" for p in people)
+        registry = any(p["origin"] == "registry" for p in people)
         return {
             "people": people, "dm": dm, "contacts": contacts, "best_email_tier": best_email_tier(email_tiers),
             "need_hits": need_hits, "enrich": enrich, "registry": registry,
