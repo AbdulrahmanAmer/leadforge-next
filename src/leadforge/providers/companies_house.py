@@ -156,7 +156,7 @@ def _to_raw_listing(provider_name: str, item: dict, item_sics: list[str]) -> Raw
 
 
 def enrich_for(raw_data: dict) -> dict:
-    """Pre-fills the registry stage's own output shape so enrich/runner.py's `_registry_stage` (which
+    """Pre-fills the registry stage's own output shape so enrich/runner.py's registry pass (`_registry_targets`, which
     filters on `registry_checked IS NULL`) skips a business we already have the profile for from
     discovery — one Companies House lookup per company, not two.
 

@@ -193,12 +193,33 @@ def _snapshot(conn) -> tuple:
     enrich_checked = conn.execute(
         "SELECT id, json_extract(enrich_json,'$.registry_checked') FROM businesses ORDER BY id"
     ).fetchall()
+    enrich_state = conn.execute(
+        """SELECT id, json_extract(enrich_json,'$.registry_profile.company_number'),
+                  json_extract(enrich_json,'$.crawled_at') IS NOT NULL, json_extract(enrich_json,'$.error')
+           FROM businesses ORDER BY id"""
+    ).fetchall()
     return (
         [tuple(r) for r in contacts],
         [tuple(r) for r in people],
         [tuple(r) for r in evidence_facts],
         [tuple(r) for r in enrich_checked],
+        [tuple(r) for r in enrich_state],
     )
+
+
+# The fixture DB state the enrich stage produced BEFORE the registry pass was made independent of the
+# crawl (captured at commit b3fcb44, serial and overlapped runs agreed). Cleanup step 10 (R8) must not
+# change it: b1 crawled + registry match + auto-picked director, b2 crawl failed + looked up (no match),
+# b3 site-less + registry match, b4 US (no covering registry) never written.
+GOLDEN_ENRICH_STATE = (
+    [("b1", "email", "info@alpha.test", "valid", "own_domain")],
+    [("b1", "Alice Alpha", "Director", "registry", 1), ("b1", "Alice Alpha", "Owner", "heuristic", 0),
+     ("b3", "Sam Siteless", "Director", "registry", 1)],
+    [("b1", "dm_candidate", 1), ("b1", "email_found", 1), ("b1", "registry_officer", 1),
+     ("b3", "registry_officer", 1)],
+    [("b1", 1), ("b2", 1), ("b3", 1), ("b4", None)],
+    [("b1", "1", 1, None), ("b2", None, 0, "unreachable"), ("b3", "3", 0, None), ("b4", None, 0, None)],
+)
 
 
 def _run_once(tmp_path, subdir: str, overlap: bool, monkeypatch) -> tuple:
@@ -217,28 +238,17 @@ def _run_once(tmp_path, subdir: str, overlap: bool, monkeypatch) -> tuple:
     return snap
 
 
-def test_overlapped_stages_match_serial_db_state(tmp_path, monkeypatch):
-    """The overlapped 'all' stage must persist EXACTLY the same rows as the serial 'all' stage on an
-    identical starting fixture — contacts, people, evidence-fact counts, and the registry_checked flag
-    per business (including b4, which is in NO covered jurisdiction and must get no registry write in
-    either path — see _lookup_registry_for's any_covered)."""
+def test_enrich_db_state_matches_the_golden_fixture_state(tmp_path, monkeypatch):
+    """Golden DB-state test (cleanup step 10, R8/D2): the same fixture DB must end in exactly the
+    state captured before the registry pass was separated from the crawl — contacts, people (incl. the
+    auto-picked director), evidence-fact counts, registry_checked (b4, in no covered jurisdiction, is
+    never written) and the persisted profile / crawl outcome per business."""
     monkeypatch.setattr(SiteCrawler, "crawl", _fake_crawl)
     monkeypatch.setattr(runner, "validate_email", lambda email, label, c: ("valid", {}))
     monkeypatch.setattr(CompaniesHouseRegistry, "lookup_with_profile", _fake_lookup_with_profile)
 
-    snap_serial = _run_once(tmp_path, "serial", overlap=False, monkeypatch=monkeypatch)
-    snap_overlap = _run_once(tmp_path, "overlap", overlap=True, monkeypatch=monkeypatch)
-
-    assert snap_overlap == snap_serial
-    contacts, people, evidence, checked = snap_serial
-    # sanity: this actually exercised something real, not two empty runs trivially agreeing
-    assert any(c[1] == "email" and c[2] == "info@alpha.test" for c in contacts)
-    assert any(p[1] == "Alice Alpha" for p in people)
-    assert any(p[1] == "Sam Siteless" for p in people)
-    checked_map = dict(checked)
-    assert checked_map["b1"] == 1  # crawled, covered jurisdiction -> checked
-    assert checked_map["b3"] == 1  # site-less, covered jurisdiction -> checked
-    assert checked_map["b4"] is None  # site-less, NO covering registry -> never written, either path
+    assert _run_once(tmp_path, "serial", overlap=False, monkeypatch=monkeypatch) == GOLDEN_ENRICH_STATE
+    assert _run_once(tmp_path, "overlap", overlap=True, monkeypatch=monkeypatch) == GOLDEN_ENRICH_STATE
 
 
 def test_overlap_single_writer_no_database_locked(tmp_path, monkeypatch):

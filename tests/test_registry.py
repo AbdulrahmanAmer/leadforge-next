@@ -343,7 +343,7 @@ def test_opencorporates_jurisdiction_code(tmp_path, monkeypatch):
 def test_registry_stage_covers_siteless_businesses(tmp_path, monkeypatch):
     """v0.1.2: businesses with no website must still get registry officers + profile."""
     from leadforge import db
-    from leadforge.enrich.runner import _registry_stage
+    from leadforge.enrich.runner import run_enrich
     from leadforge.models import Business, Evidence, Person
     monkeypatch.chdir(tmp_path)
     cfg = load_config(tmp_path)
@@ -361,8 +361,7 @@ def test_registry_stage_covers_siteless_businesses(tmp_path, monkeypatch):
                                 "sic_codes": ["45200"]}
 
     monkeypatch.setattr(regmod.CompaniesHouseRegistry, "lookup_with_profile", fake_lwp)
-    counts = {}
-    _registry_stage(conn, cfg, counts)
+    run_enrich(conn, cfg, 10, stage="registry")
     people = db.people_for(conn, "b1")
     assert people and people[0]["origin"] == "registry"
     assert any(p["is_dm"] == 1 for p in people)  # single director auto-picked
@@ -373,7 +372,7 @@ def test_registry_stage_covers_siteless_businesses(tmp_path, monkeypatch):
     # second pass is a no-op (registry_checked)
     monkeypatch.setattr(regmod.CompaniesHouseRegistry, "lookup_with_profile",
                         lambda self, b: pytest.fail("re-looked-up a checked business"))
-    _registry_stage(conn, cfg, {})
+    run_enrich(conn, cfg, 10, stage="registry")
 
 
 # --- v0.3 polish (finding 5): name_similarity at the 0.45 threshold, real-shaped pairs -----------

@@ -319,34 +319,39 @@ def test_phone_not_confirmed_when_site_phone_differs(cfg, conn, monkeypatch):
     assert enrich["signals"]["phone_confirmed"] is False
 
 
-# --- registry profile persisted on the crawled path too (not just site-less) ---------------------
-def test_registry_cross_check_persists_profile_on_crawled_path(cfg, conn, monkeypatch):
+# --- registry pass: independent of the crawl (R8) ------------------------------------------------
+def test_registry_pass_persists_profile_for_a_sited_business(cfg, conn, monkeypatch):
     from leadforge.providers.registry import CompaniesHouseRegistry
-    b = _biz_row(conn, "b1", "Acme Widgets Ltd", domain="acmewidgets.test", website="http://acmewidgets.test",
-                address_country="GB")
+    _biz_row(conn, "b1", "Acme Widgets Ltd", domain="acmewidgets.test", website="http://acmewidgets.test",
+             address_country="GB")
     cfg.registry.companies_house_key = "k"
-    reg = CompaniesHouseRegistry(cfg)
     profile = {"company_number": "1", "company_status": "active", "legal_name": "ACME WIDGETS LTD",
                "match_similarity": 0.9, "incorporated": "2001-01-01", "sic_codes": ["45200"]}
-    monkeypatch.setattr(reg, "lookup_with_profile", lambda biz: ([], profile))
-    runner._registry_cross_check(conn, b, _counts(), [reg])
+    monkeypatch.setattr(CompaniesHouseRegistry, "lookup_with_profile", lambda self, biz: ([], profile))
+    runner.run_enrich(conn, cfg, 10, stage="registry")
     enrich = json.loads(conn.execute("SELECT enrich_json FROM businesses WHERE id='b1'").fetchone()["enrich_json"])
     assert enrich["registry_checked"] is True
     assert enrich["registry_profile"]["company_number"] == "1"
 
 
-def test_auto_pick_from_cross_check_only_when_profile_active(cfg, conn, monkeypatch):
-    from leadforge.providers.registry import CompaniesHouseRegistry
+def test_crawl_never_decides_registry_checked(cfg, conn):
+    """R8: only the registry pass writes registry_checked. The crawl used to stamp
+    registry_checked=bool(registries), so a business in an uncovered jurisdiction read as 'checked'
+    (entity 'unmatched') although no registry was ever consulted for it."""
+    b = _biz_row(conn, "b1", "Alpha", domain="alpha.test", website="http://alpha.test", address_country="US")
+    runner._persist(conn, cfg, b, _res(True), _counts())
+    enrich = json.loads(conn.execute("SELECT enrich_json FROM businesses WHERE id='b1'").fetchone()["enrich_json"])
+    assert enrich["crawled_at"] and "registry_checked" not in enrich
+
+
+def test_auto_pick_from_registry_result_only_when_profile_active(cfg, conn):
     b = _biz_row(conn, "b1", "Acme Widgets Ltd", domain="acmewidgets.test", website="http://acmewidgets.test",
                 address_country="GB")
-    cfg.registry.companies_house_key = "k"
-    reg = CompaniesHouseRegistry(cfg)
     person = Person(business_id="b1", name="Jane Smith", title="Director", origin="registry")
     from leadforge.models import Evidence
     ev = Evidence(business_id="b1", ref_table="people", fact="registry_officer", url="u", snippet="s")
     dissolved_profile = {"company_number": "1", "company_status": "dissolved"}
-    monkeypatch.setattr(reg, "lookup_with_profile", lambda biz: ([(person, ev)], dissolved_profile))
-    runner._registry_cross_check(conn, b, _counts(), [reg])
+    runner._persist_registry_result(conn, b, _counts(), [(person, ev)], dissolved_profile)
     people = db.people_for(conn, "b1")
     assert all(p["is_dm"] == 0 for p in people)  # dissolved profile -> never auto-picked
 

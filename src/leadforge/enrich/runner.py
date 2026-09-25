@@ -240,7 +240,10 @@ def run_enrich(conn: sqlite3.Connection, cfg: Config, limit: int, stage: str = "
         if stage in ("all", "site"):
             _crawl_stage(conn, cfg, limit, counts)
         if stage in ("all", "registry"):
-            _registry_stage(conn, cfg, counts)
+            from leadforge.providers.registry import get_registries
+            for b, people, profile in _registry_lookups(_registry_targets(conn), get_registries(cfg)):
+                _persist_registry_result(conn, b, counts, people, profile)
+            conn.commit()
         if stage in ("all", "infer"):
             _infer_stage(conn, cfg, counts)
         if stage in ("all", "validate"):
@@ -279,30 +282,15 @@ def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: d
     does an incremental validate sweep itself (also DNS-pooled internally — see validate.py) instead
     of idling, so DNS resolution for already-persisted contacts overlaps the crawl/registry I/O too.
 
-    Scope note (say so plainly, not overclaimed): registry lookups for businesses CRAWLED in this run
-    happen in the crawl driver thread right after each one finishes (genuinely concurrent, off the
-    connection's thread) via _lookup_registry_for; the matching DB write
-    (_persist_registry_result, inside the deferred _persist call) still happens on this thread when its
-    closure is drained, same as the serial path — that part was never the bottleneck (it's a few
-    dict/list writes, not I/O)."""
+    R8: the registry pass is independent of the crawl — it needs only name/postcode/country, known at
+    discover — so its driver walks every business still to be looked up (_registry_targets), crawled or
+    not, and the crawl driver never touches a registry."""
     from leadforge.providers import social
     from leadforge.providers.registry import get_registries
 
     browser_ok = browser.is_available()
     crawl_queue = _interleave_by_domain(db.businesses_for_enrich(conn, limit, retry_needs_browser=browser_ok))
-    crawl_ids = {b["id"] for b in crawl_queue}
-    # registry backlog = everyone _registry_stage would normally cover, MINUS businesses in today's
-    # crawl queue (those get their registry lookup via the crawl driver, "as they finish" — see above).
-    # Site-less (domain IS NULL) rows sort first, per the build note ("no-crawl-needed ones first").
-    registry_backlog = [
-        r for r in conn.execute(
-            """SELECT * FROM businesses b
-               WHERE json_extract(b.enrich_json,'$.registry_checked') IS NULL
-                 AND NOT EXISTS (SELECT 1 FROM people p WHERE p.business_id=b.id AND p.origin='registry')"""
-        ).fetchall()
-        if r["id"] not in crawl_ids
-    ]
-    registry_backlog.sort(key=lambda r: 0 if not r["domain"] else 1)
+    registry_backlog = _registry_targets(conn)
 
     registries = get_registries(cfg)  # once per run, shared — a 429 disable (reg.disabled) sticks
     social_ok, social_msg = social.is_available(cfg)
@@ -315,18 +303,9 @@ def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: d
 
     def _registry_driver() -> None:
         try:
-            if not registries or not registry_backlog:
-                return
-            total = len(registry_backlog)
-            for i, b in enumerate(registry_backlog):
-                emit_progress("registry", i + 1, total, b["name"] or "")
-                people, profile, any_covered = _lookup_registry_for(b, registries)
-                if any_covered:  # matches _registry_stage: no covering jurisdiction -> no write at all
-                    wq.put(lambda b=b, people=people, profile=profile:
-                           _persist_registry_result(conn, b, counts, people, profile))
-                if any(getattr(reg, "disabled", False) for reg in registries):
-                    LOG.warning("registry disabled mid-stage (rate limit); stopping registry backlog")
-                    return
+            for b, people, profile in _registry_lookups(registry_backlog, registries):
+                wq.put(lambda b=b, people=people, profile=profile:
+                       _persist_registry_result(conn, b, counts, people, profile))
         except Exception as e:  # noqa: BLE001 — a driver thread must never hang the run silently
             LOG.exception("registry driver failed")
             errors.append(e)
@@ -350,12 +329,8 @@ def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: d
                         wq.put(lambda b=b, msg=msg: db.update_enrich(
                             conn, b["id"], {"attempted_at": now_iso(), "error": msg}))
                         continue
-                    # registry lookup for a business crawled THIS run happens right here — off the
-                    # connection's thread, concurrently with the pool's other in-flight crawls.
-                    registry_result = _lookup_registry_for(b, registries) if registries else None
-
-                    def _do_persist(b=b, res=res, registry_result=registry_result) -> None:
-                        _persist(conn, cfg, b, res, counts, registries, social_ok, registry_result=registry_result)
+                    def _do_persist(b=b, res=res) -> None:
+                        _persist(conn, cfg, b, res, counts, social_ok)
                         if res["needs_browser"] and not browser_ok:
                             counts["needs_browser"] += 1
                     wq.put(_do_persist)
@@ -423,50 +398,6 @@ def _infer_stage(conn: sqlite3.Connection, cfg: Config, counts: dict) -> None:
     conn.commit()
 
 
-def _registry_stage(conn: sqlite3.Connection, cfg: Config, counts: dict) -> None:
-    """v0.1.2: registry lookup for EVERY business in a covered jurisdiction — including the ones
-    with no website (they never enter the crawl stage, which is where lookups used to happen).
-    Also stores the matched company profile (number, incorporation, status, SIC) for the sheet."""
-    from leadforge.providers.registry import CompaniesHouseRegistry, get_registries
-    registries = get_registries(cfg)
-    if not registries:
-        return
-    rows = conn.execute(
-        """SELECT * FROM businesses b
-           WHERE json_extract(b.enrich_json,'$.registry_checked') IS NULL
-             AND NOT EXISTS (SELECT 1 FROM people p WHERE p.business_id=b.id AND p.origin='registry')"""
-    ).fetchall()
-    emit_progress("registry", 0, len(rows), "starting")
-    for bi, b in enumerate(rows):
-        country = b["address_country"] or ""
-        for reg in registries:
-            if country not in reg.jurisdictions():
-                continue
-            profile = None
-            if isinstance(reg, CompaniesHouseRegistry):
-                people, profile = reg.lookup_with_profile(b)
-            else:
-                people = reg.lookup(b)
-            found = []
-            for person, ev in people:
-                found.append(person)
-                db.add_person(conn, person)
-                db.add_evidence(conn, ev)
-                counts["dm_candidates"] = counts.get("dm_candidates", 0) + 1
-            _auto_pick_registry_dm(conn, b, found, counts, profile)
-            enrich_update: dict = {"registry_checked": True}
-            if profile:
-                enrich_update["registry_profile"] = profile
-            db.update_enrich(conn, b["id"], enrich_update)
-            counts["registry_looked_up"] = counts.get("registry_looked_up", 0) + 1
-            if getattr(reg, "disabled", False):
-                LOG.warning("registry %s disabled mid-stage (rate limit); stopping stage", reg.name)
-                conn.commit()
-                return
-        emit_progress("registry", bi + 1, len(rows), b["name"] or "")  # after the lookup, not before
-    conn.commit()
-
-
 def _interleave_by_domain(biz_queue: list) -> list:
     """v0.3 speed unit (2026-09-02, build item 3): reorder the (already category/review_count
     prioritized) queue so ThreadPoolExecutor submission order maximizes DISTINCT hosts among the
@@ -506,8 +437,6 @@ def _crawl_stage(conn: sqlite3.Connection, cfg: Config, limit: int, counts: dict
     if not biz_queue:
         return
     throttle = HostThrottle(cfg.politeness.delay_s)
-    from leadforge.providers.registry import get_registries
-    registries = get_registries(cfg)  # once per run so a 429 disable sticks for the whole batch
     from leadforge.providers import social
     social_ok, social_msg = social.is_available(cfg)
     if cfg.social.enabled and not social_ok:
@@ -525,19 +454,14 @@ def _crawl_stage(conn: sqlite3.Connection, cfg: Config, limit: int, counts: dict
                 LOG.warning("enrich failed for %s: %s", b["id"], e)
                 db.update_enrich(conn, b["id"], {"attempted_at": now_iso(), "error": str(e)[:200]})
                 continue
-            _persist(conn, cfg, b, res, counts, registries, social_ok)
+            _persist(conn, cfg, b, res, counts, social_ok)
             if res["needs_browser"] and not browser_ok:
                 counts["needs_browser"] += 1
     conn.commit()
 
 
-def _persist(conn: sqlite3.Connection, cfg: Config, b, res: dict, counts: dict,
-             registries: list | None = None, social_ok: bool = False, registry_result=None) -> None:
-    """registry_result (v0.3 speed unit, optional): a (people_with_evidence, profile, any_covered) tuple already
-    looked up off-thread by the overlapped 'all' stage (_run_overlapped) — when given, _persist writes
-    it via _persist_registry_result instead of doing the registry NETWORK call itself (which
-    _registry_cross_check would otherwise do inline, right here, on whichever thread calls _persist).
-    `registries` is still passed through either way — it only gates the registry_checked flag below."""
+def _persist(conn: sqlite3.Connection, cfg: Config, b, res: dict, counts: dict, social_ok: bool = False) -> None:
+    """Write one business's crawl result. Registry facts are the registry pass's alone (R8)."""
     if res["ok"]:  # a 0-page failure is not a crawled site — the digest count stays honest
         counts["sites_crawled"] += 1
     bid = b["id"]
@@ -578,11 +502,6 @@ def _persist(conn: sqlite3.Connection, cfg: Config, b, res: dict, counts: dict,
         db.add_evidence(conn, Evidence(business_id=bid, ref_table="people", fact="dm_candidate",
                                        url=cand.source_url, snippet=f"{cand.name} — {cand.title}", observed_at=now_iso()))
         counts["dm_candidates"] += 1
-    if registry_result is not None:
-        registry_people, profile, _any_covered = registry_result
-        _persist_registry_result(conn, b, counts, registry_people, profile)
-    else:
-        _registry_cross_check(conn, b, counts, registries or [])
     prior_signals = json.loads(b["enrich_json"] or "{}").get("signals") or {}
     if prior_signals.get("booking_source") == "gbp":  # discover's GBP booking link outranks the site's
         res["signals"].update(booking_hint=True, booking_source="gbp")
@@ -611,7 +530,7 @@ def _persist(conn: sqlite3.Connection, cfg: Config, b, res: dict, counts: dict,
         enrich["attempted_at"] = now_iso()
         enrich["error"] = res.get("error") or "crawl_failed"
     enrich.update({"signals": res["signals"], "socials": res["socials"], "pages": res["pages"],
-                   "needs_browser": res["needs_browser"], "registry_checked": bool(registries)})
+                   "needs_browser": res["needs_browser"]})
     if res.get("profile"):
         enrich["profile"] = res["profile"]
     if social_presence:
@@ -619,19 +538,39 @@ def _persist(conn: sqlite3.Connection, cfg: Config, b, res: dict, counts: dict,
     db.update_enrich(conn, bid, enrich)
 
 
-def _lookup_registry_for(b, registries: list) -> tuple[list[tuple[Person, Evidence]], dict | None, bool]:
-    """v0.3 speed unit (2026-09-02, build item 4): the NETWORK-only half of U4.6's officer lookup for
-    ONE business — no `conn` access, so it is safe to call from any thread. Split out of
-    _registry_cross_check so the overlapped 'all' stage (_run_overlapped) can run this in its crawl
-    driver thread (right after a business finishes crawling, concurrently with everything else) and
-    hand the RESULT to _persist_registry_result, which does the actual DB write on the connection's
-    owning thread. -> (people_with_evidence, profile, any_jurisdiction_covered).
+def _registry_targets(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Every business the registry pass still has to look up — crawled or not, with or without a
+    site (R8). Site-less rows first: nothing else in enrich produces anything for them."""
+    rows = conn.execute(
+        """SELECT * FROM businesses b
+           WHERE json_extract(b.enrich_json,'$.registry_checked') IS NULL
+             AND NOT EXISTS (SELECT 1 FROM people p WHERE p.business_id=b.id AND p.origin='registry')"""
+    ).fetchall()
+    return sorted(rows, key=lambda r: 0 if not r["domain"] else 1)
 
-    any_jurisdiction_covered: True iff at least one registry's jurisdictions() contained this
-    business's country — independent of whether a company was actually matched. The overlapped stage's
-    registry-backlog driver needs this to replicate _registry_stage's own behavior exactly: a business
-    in no covered jurisdiction gets NO write at all (stays eligible for a future run once a covering
-    registry exists), not a registry_checked=True that would silently hide it forever."""
+
+def _registry_lookups(rows: list, registries: list):
+    """U4.6 officer lookup, NETWORK only (no `conn`, safe on any thread): yields
+    (business, people_with_evidence, profile) for each row in a covered jurisdiction; the caller
+    persists each with _persist_registry_result on the connection's thread. A row no registry covers
+    yields nothing, so it stays unchecked (eligible once a covering registry exists). Stops when a
+    registry disables itself on a rate limit. No configured registry (no key) -> nothing at all."""
+    if not registries:
+        return
+    for i, b in enumerate(rows):
+        emit_progress("registry", i + 1, len(rows), b["name"] or "")
+        people, profile, any_covered = _lookup_registry_for(b, registries)
+        if any_covered:
+            yield b, people, profile
+        if any(getattr(reg, "disabled", False) for reg in registries):
+            LOG.warning("registry disabled mid-stage (rate limit); stopping the registry pass")
+            return
+
+
+def _lookup_registry_for(b, registries: list) -> tuple[list[tuple[Person, Evidence]], dict | None, bool]:
+    """-> (people_with_evidence, profile, any_jurisdiction_covered) for ONE business. any_covered is
+    True iff at least one registry's jurisdictions() contains the business's country, whether or not
+    a company was matched."""
     from leadforge.providers.registry import CompaniesHouseRegistry
     country = b["address_country"] or ""
     registry_people: list[tuple[Person, Evidence]] = []
@@ -653,34 +592,18 @@ def _lookup_registry_for(b, registries: list) -> tuple[list[tuple[Person, Eviden
 
 def _persist_registry_result(conn: sqlite3.Connection, b, counts: dict,
                              registry_people: list[tuple[Person, Evidence]], profile: dict | None) -> None:
-    """DB-write-only half of U4.6 — MUST run on conn's owning thread. Shared by the inline crawl path
-    (_registry_cross_check, below) and the overlapped 'all' stage's registry driver (_run_overlapped),
-    so both produce byte-identical DB state for the same lookup result (proved by
-    test_overlapped_stages_match_serial_db_state)."""
+    """DB-write half of the registry pass — MUST run on conn's owning thread. The one place that
+    decides a business is registry_checked (R8)."""
     for person, ev in registry_people:
         db.add_person(conn, person)
         db.add_evidence(conn, ev)
         counts["dm_candidates"] += 1
-    # persist the profile on the crawled path too — it used to be written only on the site-less
-    # path (_registry_stage), so a crawled business's Registry Name/Match columns came out blank.
+    counts["registry_looked_up"] = counts.get("registry_looked_up", 0) + 1
     enrich_update: dict = {"registry_checked": True}
     if profile:
         enrich_update["registry_profile"] = profile
     db.update_enrich(conn, b["id"], enrich_update)
     _auto_pick_registry_dm(conn, b, [p for p, _ in registry_people], counts, profile)
-
-
-def _registry_cross_check(conn: sqlite3.Connection, b, counts: dict, registries: list) -> None:
-    """U4.6: officer lookup from public registries — key-gated (empty list when no keys), country-gated.
-    Serial/inline path: look up then persist, both on the calling thread. See _lookup_registry_for /
-    _persist_registry_result for the split used by the overlapped 'all' stage."""
-    if not registries:
-        return
-    # NOTE: the crawl-inline path has always unconditionally written registry_checked here even when
-    # no jurisdiction covered the business (pre-existing behavior, kept byte-for-byte on purpose — see
-    # _run_overlapped's registry-backlog driver for where the distinction DOES matter).
-    registry_people, profile, _any_covered = _lookup_registry_for(b, registries)
-    _persist_registry_result(conn, b, counts, registry_people, profile)
 
 
 _CORPORATE_OFFICER_RE = None
