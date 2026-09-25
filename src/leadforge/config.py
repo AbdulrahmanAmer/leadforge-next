@@ -126,16 +126,12 @@ class ValidationCfg(BaseModel):
 class EnrichCfg(BaseModel):
     """v0.3 speed unit (2026-09-02): browser-escalation throughput, overlapped stages, DNS pooling.
     None of this touches politeness — HostThrottle's per-host delay/single-flight is unaffected; these
-    knobs only change how many DIFFERENT hosts/domains/lookups run at once and how the 'all' stage
-    sequence is scheduled."""
+    knobs only change how many DIFFERENT hosts/domains/lookups run at once."""
 
     browser_concurrency: int = 4     # was a hardcoded threading.Semaphore(2) in browser.py
     rendered_pages_per_site: int = 2  # was the hardcoded MAX_RENDERED_PAGES_PER_SITE = 3
     render_timeout_s: float = 20.0    # the rendered fetch's own timeout (was borrowing crawl.timeout_s,
                                        # which just dropped to 10s — nowhere near enough for a real render)
-    overlap_stages: bool = True       # stage='all' interleaves registry(backlog)+validate with the crawl;
-                                       # `enrich --stage <one>` is never affected by this (single-stage
-                                       # runs always use the original serial per-stage functions)
     dns_workers: int = 8              # MX-lookup thread pool size for validate_emails_parallel
     # v0.4.1: GLiNER people extraction runs on the CPU inside every crawl worker; unbounded, 12 workers x
     # torch's default 8 intra-op threads oversubscribed an 8-core box (live 2026-09-03: 2.7 cores of NER,

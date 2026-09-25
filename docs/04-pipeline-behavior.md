@@ -123,8 +123,9 @@ latest run for the same ICP hash; every stage is idempotent (upserts, per-tile /
 
 ### 3.4b registry stage (v0.1.2)
 - Runs for **every** business in a covered jurisdiction — including site-less ones, which never enter the crawl stage (where lookups
-  used to happen). Silent no-op without a configured key. Run alone via `leadforge enrich --stage registry`
-  (`--stage` accepts all|site|registry|validate).
+  used to happen). Silent no-op without a configured key. It runs concurrently with the crawl and never
+  depends on it; `enrich --stage site|registry|validate` filters steps of that one path (`all` = crawl +
+  registry, overlapped). Only the registry pass writes `registry_checked`.
 - Companies House (GB/UK; key via `leadforge config set registry.companies_house_key …`): company search by name, candidates filtered
   by locality match against the business address; stores the matched **company profile** (number, incorporation date, status, SIC
   codes) in `enrich_json.registry_profile` → the sheet's Company No / Incorporated / Company Status / SIC Codes columns; then

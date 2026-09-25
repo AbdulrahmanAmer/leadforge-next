@@ -3,8 +3,8 @@
 Item 1 (fail-fast tail) and item 3's per-host-pacing proof live in tests/test_crawler_politeness.py
 (extended, not this new file — they're crawler.py-level politeness proofs against a real local
 server). This file covers: queue interleaving (item 3), the browser-render concurrency gate (item 2),
-DNS-pooled email validation (item 5), and the overlapped 'all' stage (item 4) — including the
-single-writer discipline and DB-state parity with the serial path.
+DNS-pooled email validation (item 5), and the one overlapped enrich path (item 4) — including the
+single-writer discipline, the golden fixture DB state and the --stage step filter.
 
 No network: SiteCrawler.crawl, registry lookups and validate_email are all monkeypatched.
 """
@@ -222,14 +222,11 @@ GOLDEN_ENRICH_STATE = (
 )
 
 
-def _run_once(tmp_path, subdir: str, overlap: bool, monkeypatch) -> tuple:
-    d = tmp_path / subdir
-    d.mkdir()
-    monkeypatch.chdir(d)
-    cfg = load_config(d)
+def _run_once(tmp_path, monkeypatch) -> tuple:
+    monkeypatch.chdir(tmp_path)
+    cfg = load_config(tmp_path)
     cfg.registry.companies_house_key = "k"
     cfg.enrich.ner = False  # these tests cover overlap/DB-state plumbing, not NER — offline (no gliner/torch)
-    cfg.enrich.overlap_stages = overlap
     conn = db.connect(cfg.db_path)
     _seed_fixture(conn)
     runner.run_enrich(conn, cfg, 10, stage="all")
@@ -247,8 +244,7 @@ def test_enrich_db_state_matches_the_golden_fixture_state(tmp_path, monkeypatch)
     monkeypatch.setattr(runner, "validate_email", lambda email, label, c: ("valid", {}))
     monkeypatch.setattr(CompaniesHouseRegistry, "lookup_with_profile", _fake_lookup_with_profile)
 
-    assert _run_once(tmp_path, "serial", overlap=False, monkeypatch=monkeypatch) == GOLDEN_ENRICH_STATE
-    assert _run_once(tmp_path, "overlap", overlap=True, monkeypatch=monkeypatch) == GOLDEN_ENRICH_STATE
+    assert _run_once(tmp_path, monkeypatch) == GOLDEN_ENRICH_STATE
 
 
 def test_overlap_single_writer_no_database_locked(tmp_path, monkeypatch):
@@ -260,7 +256,6 @@ def test_overlap_single_writer_no_database_locked(tmp_path, monkeypatch):
     cfg = load_config(tmp_path)
     cfg.registry.companies_house_key = "k"
     cfg.enrich.ner = False  # these tests cover overlap/DB-state plumbing, not NER — offline (no gliner/torch)
-    cfg.enrich.overlap_stages = True
     cfg.politeness.workers = 8
     conn = db.connect(cfg.db_path)
 
@@ -301,48 +296,29 @@ def test_overlap_single_writer_no_database_locked(tmp_path, monkeypatch):
     conn.close()
 
 
-def test_single_stage_runs_unaffected_by_overlap_flag(tmp_path, monkeypatch):
-    """`enrich --stage site` must behave identically regardless of cfg.enrich.overlap_stages — the
-    overlap path only ever engages for stage='all'. A site-less business is the sharpest probe: only
-    _registry_stage (stage='registry' or 'all') ever touches it — if the overlap flag leaked into a
-    'site'-only run, its registry-backlog driver would process this business's registry_checked flag
-    even though nothing asked for a registry stage at all."""
+def test_stage_is_a_step_filter_on_the_one_enrich_path(tmp_path, monkeypatch):
+    """D2: `enrich --stage site|registry` is a filter on the same path stage='all' uses, not a second
+    serial implementation. 'site' crawls and never touches the registry; 'registry' looks up every
+    business (site-less included) and never crawls; together they reach the golden 'all' state."""
     monkeypatch.setattr(SiteCrawler, "crawl", _fake_crawl)
     monkeypatch.setattr(runner, "validate_email", lambda email, label, c: ("valid", {}))
-    monkeypatch.setattr(CompaniesHouseRegistry, "lookup_with_profile", lambda self, biz: ([], None))
+    monkeypatch.setattr(CompaniesHouseRegistry, "lookup_with_profile", _fake_lookup_with_profile)
+    monkeypatch.chdir(tmp_path)
+    cfg = load_config(tmp_path)
+    cfg.registry.companies_house_key = "k"
+    cfg.enrich.ner = False
+    conn = db.connect(cfg.db_path)
+    _seed_fixture(conn)
 
-    def _seed_and_run(subdir: str, overlap: bool) -> tuple:
-        d = tmp_path / subdir
-        d.mkdir()
-        monkeypatch.chdir(d)
-        cfg = load_config(d)
-        cfg.registry.companies_house_key = "k"
-        cfg.enrich.ner = False  # these tests cover overlap/DB-state plumbing, not NER — offline (no gliner/torch)
-        cfg.enrich.overlap_stages = overlap
-        conn = db.connect(cfg.db_path)
-        db.upsert_business(conn, Business(id="b1", name="Alpha Auto", name_norm="alpha auto",
-                                          domain="alpha.test", website="http://alpha.test",
-                                          address_country="GB", source="gosom", dedupe_key="dk:b1"))
-        db.upsert_business(conn, Business(id="b2", name="Siteless Co", name_norm="siteless co",
-                                          address_country="GB", source="gosom", dedupe_key="dk:b2"))
-        conn.commit()
-        runner.run_enrich(conn, cfg, 10, stage="site")
-        contacts = conn.execute("SELECT business_id, kind, value FROM contacts ORDER BY value").fetchall()
-        siteless_checked = conn.execute(
-            "SELECT json_extract(enrich_json,'$.registry_checked') FROM businesses WHERE id='b2'"
-        ).fetchone()[0]
-        conn.close()
-        return tuple(tuple(r) for r in contacts), siteless_checked
+    runner.run_enrich(conn, cfg, 10, stage="site")
+    contacts, people, _evidence, checked, _state = _snapshot(conn)
+    assert contacts == GOLDEN_ENRICH_STATE[0]
+    assert all(p[3] == "heuristic" for p in people)
+    assert all(c is None for _id, c in checked)            # the crawl decided nothing about the registry
 
-    off_contacts, off_checked = _seed_and_run("off", overlap=False)
-    on_contacts, on_checked = _seed_and_run("on", overlap=True)
-    assert off_contacts == on_contacts
-    assert any(c[1] == "email" for c in off_contacts)
-    assert off_checked is None, "stage='site' must never touch a site-less business's registry_checked"
-    assert on_checked == off_checked, (
-        f"overlap_stages must not change stage='site' behavior: off={off_checked!r} on={on_checked!r}"
-    )
-
+    runner.run_enrich(conn, cfg, 10, stage="registry")
+    assert _snapshot(conn) == GOLDEN_ENRICH_STATE
+    conn.close()
 
 
 def test_ner_is_bounded_and_switchable(cfg, monkeypatch):
@@ -396,6 +372,6 @@ def test_no_idle_loop_revalidation_sweep_remains():
     )
 
     run_enrich_src = inspect.getsource(runner.run_enrich)
-    overlapped_branch = run_enrich_src.split('if stage == "all" and cfg.enrich.overlap_stages:')[1]
-    overlapped_branch = overlapped_branch.split('if stage in ("all", "site"):')[0]
-    assert "_validate_stage" not in overlapped_branch, "the final validate sweep must be deleted"
+    assert 'if stage == "validate":\n            _validate_stage' in run_enrich_src, (
+        "the sweep runs only for `enrich --stage validate`, never as a final step of 'all'"
+    )

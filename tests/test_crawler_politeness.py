@@ -354,7 +354,7 @@ def test_read_timeout_does_not_mark_host_dead(monkeypatch):
 def test_workers_12_still_serializes_per_host_but_overlaps_across_hosts(tmp_path, monkeypatch):
     """Two real local servers stand in for two different hosts. A 'chain' of 3 businesses shares
     host A's domain; one business is on host B. Run all 4 through the SAME concurrency shape
-    _crawl_stage uses (ThreadPoolExecutor(workers) + a shared HostThrottle) with workers=12:
+    the enrich crawl driver uses (ThreadPoolExecutor(workers) + a shared HostThrottle) with workers=12:
     consecutive host-A request start times must stay >= delay_s apart (jitter is -30%, so 65% of
     delay_s is a safe floor); a host-B request must land inside host A's own span, proving the two
     hosts actually ran concurrently rather than one waiting for the other to finish entirely."""

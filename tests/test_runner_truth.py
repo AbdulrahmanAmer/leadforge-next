@@ -61,15 +61,15 @@ def test_zero_page_ok_result_never_silently_marks_crawled(cfg, conn, monkeypatch
     assert enrich["error"] == "empty_crawl"
 
 
-def test_crawl_stage_exception_sets_attempted_at_not_crawled_at(cfg, conn, monkeypatch):
-    """The except-branch in _crawl_stage (a future that raised) must be as honest as _persist."""
+def test_crawl_exception_sets_attempted_at_not_crawled_at(cfg, conn, monkeypatch):
+    """The crawl driver's except-branch (a future that raised) must be as honest as _persist."""
     _biz_row(conn, "b1", "Boom Site", domain="boom.test", website="http://boom.test")
 
     def boom(*a, **k):
         raise RuntimeError("kaboom")
 
     monkeypatch.setattr(runner, "_process_one", boom)
-    runner._crawl_stage(conn, cfg, 10, _counts())
+    runner.run_enrich(conn, cfg, 10, stage="site")
     enrich = json.loads(conn.execute("SELECT enrich_json FROM businesses WHERE id='b1'").fetchone()["enrich_json"])
     assert "crawled_at" not in enrich
     assert enrich["attempted_at"]

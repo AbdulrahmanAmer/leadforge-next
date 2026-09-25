@@ -222,31 +222,19 @@ def _people_fn(cfg: Config):
 def run_enrich(conn: sqlite3.Connection, cfg: Config, limit: int, stage: str = "all") -> dict:
     from leadforge.enrich.extract import configure_ner
     configure_ner(cfg.enrich.ner_parallel, cfg.enrich.ner_threads)
-    """stage: 'site' (crawl+extract), 'registry' (officer lookup incl. site-less), 'infer', 'validate',
-    'all'. Google Business Profile people and the booking signal are written at discover (R6).
-
-    v0.3 speed unit (2026-09-02, build item 4): when stage='all' AND cfg.enrich.overlap_stages (default
-    True), registry lookups (for businesses that don't need a crawl, then crawled ones as they finish)
-    and email validation run CONCURRENTLY with the crawl instead of strictly after it — see
-    _run_overlapped. A SINGLE named stage (`enrich --stage site|registry|infer|validate`) ALWAYS
-    uses the original serial per-stage function below, unaffected by this flag."""
+    """One enrichment path (D2). stage='all' runs the crawl (with inline email validation) and the
+    registry pass concurrently (_run_overlapped), then infer. A named stage is a step filter on that
+    same path: 'site' = the crawl only, 'registry' = the registry pass only (site-less businesses
+    included), 'validate' = a re-validation sweep of 'unknown' email tiers only. Google Business
+    Profile people and the booking signal are written at discover (R6)."""
     counts = {"sites_crawled": 0, "contacts": 0, "dm_candidates": 0, "needs_browser": 0, "emails_valid": 0}
     _start_ner_worker(cfg)
     try:
-        if stage == "all" and cfg.enrich.overlap_stages:
-            _run_overlapped(conn, cfg, limit, counts)
+        if stage in ("all", "site", "registry"):
+            _run_overlapped(conn, cfg, limit, counts, crawl=stage != "registry", registry=stage != "site")
+        if stage == "all":
             _infer_stage(conn, cfg, counts)
-            return counts
-        if stage in ("all", "site"):
-            _crawl_stage(conn, cfg, limit, counts)
-        if stage in ("all", "registry"):
-            from leadforge.providers.registry import get_registries
-            for b, people, profile in _registry_lookups(_registry_targets(conn), get_registries(cfg)):
-                _persist_registry_result(conn, b, counts, people, profile)
-            conn.commit()
-        if stage in ("all", "infer"):
-            _infer_stage(conn, cfg, counts)
-        if stage in ("all", "validate"):
+        if stage == "validate":
             _validate_stage(conn, cfg, counts)
         return counts
     finally:
@@ -254,7 +242,7 @@ def run_enrich(conn: sqlite3.Connection, cfg: Config, limit: int, stage: str = "
         _stop_ner_worker()
 
 
-# ======================================================================== overlapped 'all' (build item 4)
+# ======================================================================== the enrich pass (build item 4)
 def _drain_queue(wq: queue.Queue) -> int:
     """Run every write-closure currently queued, in order. Each closure captures `conn` by reference
     but is only ever INVOKED here — on whichever thread calls _drain_queue, which _run_overlapped
@@ -272,25 +260,25 @@ def _drain_queue(wq: queue.Queue) -> int:
         n += 1
 
 
-def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: dict) -> None:
-    """v0.3 speed unit (2026-09-02, build item 4): registry lookups (for businesses that don't need a
-    crawl first, then crawled ones as they finish) and email validation run CONCURRENTLY with the
-    crawl, each in its own thread — while every actual `conn` read/write still happens on THIS
-    function's own thread (the single writer). No other thread ever touches `conn`: driver threads do
-    network I/O only and hand results back as zero-arg closures on a queue.Queue, which this thread
-    drains in a loop; when the queue is momentarily empty but a driver is still working, this thread
-    does an incremental validate sweep itself (also DNS-pooled internally — see validate.py) instead
-    of idling, so DNS resolution for already-persisted contacts overlaps the crawl/registry I/O too.
+def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: dict, *,
+                    crawl: bool = True, registry: bool = True) -> None:
+    """v0.3 speed unit (2026-09-02, build item 4): the crawl (with inline email validation) and the
+    registry pass run CONCURRENTLY, each in its own driver thread — while every actual `conn`
+    read/write still happens on THIS function's own thread (the single writer). No other thread ever
+    touches `conn`: driver threads do network I/O only and hand results back as zero-arg closures on a
+    queue.Queue, which this thread drains until both drivers finish.
 
     R8: the registry pass is independent of the crawl — it needs only name/postcode/country, known at
     discover — so its driver walks every business still to be looked up (_registry_targets), crawled or
-    not, and the crawl driver never touches a registry."""
+    not, and the crawl driver never touches a registry. `crawl` / `registry` switch either driver off
+    (`enrich --stage registry|site`)."""
     from leadforge.providers import social
     from leadforge.providers.registry import get_registries
 
     browser_ok = browser.is_available()
-    crawl_queue = _interleave_by_domain(db.businesses_for_enrich(conn, limit, retry_needs_browser=browser_ok))
-    registry_backlog = _registry_targets(conn)
+    crawl_queue = (_interleave_by_domain(db.businesses_for_enrich(conn, limit, retry_needs_browser=browser_ok))
+                   if crawl else [])
+    registry_backlog = _registry_targets(conn) if registry else []
 
     registries = get_registries(cfg)  # once per run, shared — a 429 disable (reg.disabled) sticks
     social_ok, social_msg = social.is_available(cfg)
@@ -427,37 +415,6 @@ def _interleave_by_domain(biz_queue: list) -> list:
                 out.append(g[i])
         i += 1
     return out
-
-
-def _crawl_stage(conn: sqlite3.Connection, cfg: Config, limit: int, counts: dict) -> None:
-    browser_ok = browser.is_available()
-    # with the browser extra present, sites an earlier pass flagged needs_browser get their retry —
-    # otherwise the digest's 'pip install .[browser]' advice was a silent no-op on re-run
-    biz_queue = _interleave_by_domain(db.businesses_for_enrich(conn, limit, retry_needs_browser=browser_ok))
-    if not biz_queue:
-        return
-    throttle = HostThrottle(cfg.politeness.delay_s)
-    from leadforge.providers import social
-    social_ok, social_msg = social.is_available(cfg)
-    if cfg.social.enabled and not social_ok:
-        LOG.info("social presence skipped: %s", social_msg)
-    with ThreadPoolExecutor(max_workers=cfg.politeness.workers) as pool:
-        futures = {pool.submit(_process_one, cfg, throttle, b): b for b in biz_queue}
-        done_n = 0
-        for fut in as_completed(futures):
-            done_n += 1
-            emit_progress("enrich", done_n, len(futures), futures[fut]["name"] or "")
-            b = futures[fut]
-            try:
-                res = fut.result()
-            except Exception as e:  # noqa: BLE001 — one bad site never kills the batch
-                LOG.warning("enrich failed for %s: %s", b["id"], e)
-                db.update_enrich(conn, b["id"], {"attempted_at": now_iso(), "error": str(e)[:200]})
-                continue
-            _persist(conn, cfg, b, res, counts, social_ok)
-            if res["needs_browser"] and not browser_ok:
-                counts["needs_browser"] += 1
-    conn.commit()
 
 
 def _persist(conn: sqlite3.Connection, cfg: Config, b, res: dict, counts: dict, social_ok: bool = False) -> None:
@@ -649,8 +606,7 @@ def _validate_stage(conn: sqlite3.Connection, cfg: Config, counts: dict) -> None
     per-domain cache is unaffected (still one lookup per distinct domain, just concurrent ones now).
     Only THIS thread ever touches `conn` (the pool workers do network I/O only). Used only for the
     standalone `enrich --stage validate` path: inline validation in `_persist` (with its own timeout
-    retry, R7) already resolves every row as it is written, so the overlapped 'all' stage no longer
-    needs a sweep here."""
+    retry, R7) already resolves every row as it is written, so stage 'all' needs no sweep."""
     rows = conn.execute("SELECT * FROM contacts WHERE kind='email' AND tier IN ('unknown','')").fetchall()
     if not rows:
         return

@@ -110,7 +110,3 @@ def test_walk_away_time_is_discover_plus_the_longest_overlapped_stage(cfg):
     expected = stages[0]["eta_s"] + max(m["eta_s"] for m in stages[1:])
     assert abs(st["machine"]["eta_s"] - expected) < 1e-6
     assert st["machine"]["eta_s"] < sum(m["eta_s"] for m in stages)  # the sum would overstate it
-    (cfg.workspace / "leadforge.yaml").write_text("enrich:" + chr(10) + "  overlap_stages: false" + chr(10), encoding="utf-8")
-    st2 = build_status(cfg.data_path, now=started + 480.0)
-    assert st2["machine"]["overlapped"] is False
-    assert abs(st2["machine"]["eta_s"] - sum(m["eta_s"] for m in st2["machine"]["stages"])) < 1e-6

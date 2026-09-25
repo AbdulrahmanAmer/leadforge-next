@@ -140,15 +140,6 @@ def _pick_pace(data_dir: Path, store: dict, stage: str, est: dict, default_label
     return DEFAULT_PACE_S[stage], default_label
 
 
-def _overlap_enabled(data_dir: Path) -> bool:
-    """Whether this workspace runs enrich/registry/validate overlapped (`enrich.overlap_stages`); defaults on."""
-    try:
-        from leadforge.config import load_config
-        return bool(load_config(data_dir.parent).enrich.overlap_stages)
-    except Exception:  # noqa: BLE001
-        return True
-
-
 def build_status(data_dir: Path, now: float | None = None) -> dict:
     """The whole picture as JSON: run, stage, machine timeline (measured or estimated per stage), human
     stages with their item counts, and the counts behind every number."""
@@ -207,16 +198,15 @@ def build_status(data_dir: Path, now: float | None = None) -> dict:
                     "done": counts["emails"] - counts["emails_unvalidated"], "total": counts["emails"], "growth": 0,
                     "pace_s": pace, "pace_source": src, "eta_s": counts["emails_unvalidated"] * pace,
                     "note": "DNS MX per domain, never SMTP probing"})
-    # v0.3 runs enrich, registry and validate OVERLAPPED after discovery (enrich.overlap_stages, default on): the
-    # walk-away time is discover + the longest of the three, not their sum (the sum overstated it by ~2.5 h live).
-    overlapped = _overlap_enabled(data_dir)
+    # enrich, registry and validate run OVERLAPPED after discovery (one enrich path, D2): the walk-away
+    # time is discover + the longest of the three, not their sum (the sum overstated it by ~2.5 h live).
     after = [m["eta_s"] for m in machine if m["stage"] != "discover"]
-    machine_eta = machine[0]["eta_s"] + (max(after) if overlapped else sum(after))
+    machine_eta = machine[0]["eta_s"] + max(after)
     out["machine"] = {"stages": machine, "eta_s": machine_eta, "eta_human": _fmt_secs(machine_eta),
-                      "overlapped": overlapped,
+                      "overlapped": True,
                       "caveat": ("the enrich/registry totals grow as discovery finds businesses; the walk-away time is "
-                                 + ("discover + the longest of enrich/registry/validate (they run overlapped)"
-                                    if overlapped else "the sum of the stages (overlap is off)") + ", if pace holds")}
+                                 "discover + the longest of enrich/registry/validate (they run overlapped), "
+                                 "if pace holds")}
 
     # ---- human / agent stages ---------------------------------------------------------------
     # v0.4 (ADR-015): autopilot runs labeling and drafting unattended by default (the operator's own
