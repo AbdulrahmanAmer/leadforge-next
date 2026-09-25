@@ -1,6 +1,7 @@
 from leadforge.models import RawListing
 from leadforge.normalize import (
     canonical_website,
+    iso_country,
     map_category,
     norm_name,
     to_business,
@@ -71,3 +72,24 @@ def test_to_business_dedupe_without_place_id(sample_icp):
     })
     b = to_business(raw, "r", sample_icp, "US")
     assert b.dedupe_key.startswith("na:")
+
+
+def test_iso_country_maps_provider_spellings_once():
+    """R5: the country is normalized to ISO-2 in to_business; no later stage re-maps it (the registry
+    gate, phone region and out_of_area read the column as-is). 2026-09-03 bug: DVSA/maps_list rows
+    carried 'United Kingdom' and silently skipped the registry."""
+    assert iso_country("United Kingdom") == "GB"
+    assert iso_country("England") == "GB"
+    assert iso_country("gb") == "GB"
+    assert iso_country("UK") == "GB"
+    assert iso_country("USA") == "US"
+    assert iso_country("Norway") == "NO"
+    assert iso_country("Atlantis") is None
+    assert iso_country(None) is None and iso_country("  ") is None
+
+
+def test_to_business_stores_iso2_country(sample_icp):
+    raw = RawListing(provider="gosom", fetched_at=now_iso(), data={
+        "title": "Joe's", "complete_address": {"street": "1 Main St", "city": "Houston",
+                                               "country": "United States"}})
+    assert to_business(raw, "run_1", sample_icp, "GB").address_country == "US"

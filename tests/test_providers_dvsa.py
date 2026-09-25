@@ -199,6 +199,15 @@ def test_dvsa_row_normalizes_to_e164_phone(tmp_path, monkeypatch):
     assert biz.address_city == "Leeds"
 
 
+def test_dvsa_row_stores_iso2_country(tmp_path, monkeypatch):
+    """R5: the register says 'United Kingdom'; the stored column is ISO-2 even when the campaign
+    default region is elsewhere, so the registry gate and out_of_area never re-map it."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(dvsa, "_download_csv", _counting_downloader([0]))
+    out = DvsaProvider(load_config(tmp_path)).fetch(PlannedQuery(text="x in Leeds", category="", area="Leeds"))
+    assert to_business(out[0], "run_x", None, "US").address_country == "GB"
+
+
 # --- caching: no network on a warm cache; a stale cache re-downloads exactly once -----------------
 
 def test_dvsa_second_fetch_uses_cache_no_network(tmp_path, monkeypatch):

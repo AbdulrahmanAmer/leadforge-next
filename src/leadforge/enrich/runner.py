@@ -33,7 +33,6 @@ from leadforge.enrich.extract import (
 )
 from leadforge.enrich.validate import validate_email, validate_emails_parallel
 from leadforge.models import Contact, Evidence, Person
-from leadforge.normalize import COUNTRY_TO_REGION
 from leadforge.util import LOG, HostThrottle, emit_progress, now_iso
 
 
@@ -74,20 +73,6 @@ def _email_evidence(html: str, text: str, email: str) -> str:
     return _mailto_anchor_context(html, email) or ctx
 
 
-def _region_for_business(b, default_region: str) -> str:
-    """Phone region: the listing's own country wins; otherwise the campaign country passed in."""
-    if b["address_country"]:
-        return COUNTRY_TO_REGION.get(str(b["address_country"]).strip().casefold(), default_region)
-    return default_region
-
-
-def _jurisdiction(address_country) -> str:
-    """ISO-2 for the registry gate. Maps rows say 'GB'; register and list rows say 'United Kingdom' —
-    found 2026-09-03: the raw upper-cased string skipped every DVSA/maps_list business silently."""
-    raw = (address_country or "").strip()
-    return COUNTRY_TO_REGION.get(raw.casefold(), raw.upper())
-
-
 def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
     """Crawl + extract for a single business. Returns a plain dict (thread-safe; DB writes happen on main thread)."""
     crawler = SiteCrawler(cfg, throttle)
@@ -108,7 +93,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
                     rendered = rendered[: cfg.crawl.max_text_bytes]  # same bound as the static path
                     text = SiteCrawler.extract_text(rendered)
                     page = Page(b["website"], rendered, text)
-                    region = _region_for_business(b, cfg.default_region)
+                    region = b["address_country"] or cfg.default_region  # ISO-2 since to_business
                     people_fn = _people_fn(cfg)
                     for email, label in extract_emails(rendered, text).items():
                         out["emails"].setdefault(email, {"label": label, "url": b["website"],
@@ -135,7 +120,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
                     out["signals"]["http_blocked"] = True
                     out["pages"] = 1
             return out
-        region = _region_for_business(b, cfg.default_region)
+        region = b["address_country"] or cfg.default_region  # ISO-2 since to_business
         # U4.7: GLiNER zero-shot people extraction when the [ner] extra is installed, else heuristic.
         people_fn = _people_fn(cfg)
         for page in res.pages:
@@ -476,7 +461,7 @@ def _registry_stage(conn: sqlite3.Connection, cfg: Config, counts: dict) -> None
     ).fetchall()
     emit_progress("registry", 0, len(rows), "starting")
     for bi, b in enumerate(rows):
-        country = _jurisdiction(b["address_country"])
+        country = b["address_country"] or ""
         for reg in registries:
             if country not in reg.jurisdictions():
                 continue
@@ -670,7 +655,7 @@ def _lookup_registry_for(b, registries: list) -> tuple[list[tuple[Person, Eviden
     in no covered jurisdiction gets NO write at all (stays eligible for a future run once a covering
     registry exists), not a registry_checked=True that would silently hide it forever."""
     from leadforge.providers.registry import CompaniesHouseRegistry
-    country = _jurisdiction(b["address_country"])
+    country = b["address_country"] or ""
     registry_people: list[tuple[Person, Evidence]] = []
     profile: dict | None = None
     any_covered = False

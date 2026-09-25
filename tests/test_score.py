@@ -103,13 +103,6 @@ def test_wrong_country_gets_out_of_area_penalty(conn, sample_icp):
     assert any(f.factor == "negative:out_of_area" for f in s.factors)
 
 
-def test_same_country_alias_never_penalized(conn, sample_icp):
-    run_id = db.create_run(conn, "icp.yaml", sample_icp.icp_hash())
-    _seed_business(conn, address_country="USA")  # campaign says "US" — same place, different spelling
-    s = Scorer(conn, sample_icp, run_id).score_business(db.all_businesses(conn)[0])
-    assert not any(f.factor == "negative:out_of_area" for f in s.factors)
-
-
 def test_chain_and_competitor_matching_is_word_bounded(conn, sample_icp):
     """v0.1.4: substring matching DQ'd innocents — 'group' in 'Grouper', 'inc' in 'Vincent',
     competitor 'ace' in 'Palace'."""

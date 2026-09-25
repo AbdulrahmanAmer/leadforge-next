@@ -11,6 +11,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import phonenumbers
 
+from leadforge.grid import COUNTRY_NAMES
 from leadforge.models import ICP, Business, RawListing
 from leadforge.providers.gosom import GOSOM_FIELD_MAP
 from leadforge.util import apex_domain, now_iso, sha1_hex, social_network
@@ -48,6 +49,7 @@ COUNTRY_TO_REGION = {
     "australia": "AU", "germany": "DE", "france": "FR", "spain": "ES", "italy": "IT",
     "netherlands": "NL", "egypt": "EG", "united arab emirates": "AE", "saudi arabia": "SA",
     "mexico": "MX", "brazil": "BR", "india": "IN", "new zealand": "NZ", "ireland": "IE",
+    **{name.casefold(): code for code, name in COUNTRY_NAMES.items()},
 }
 
 
@@ -308,10 +310,19 @@ def gbp_facts(d: dict, g: dict, business_name: str = "") -> dict:
     }
 
 
-def region_for(data_country: str | None, default_region: str) -> str:
-    if data_country:
-        return COUNTRY_TO_REGION.get(str(data_country).strip().casefold(), default_region)
-    return default_region
+def iso_country(raw: str | None) -> str | None:
+    """Provider country ("United Kingdom", "England", "USA", "gb") -> ISO 3166-1 alpha-2, or None
+    when it is missing or unrecognised. Called once, in to_business: every later stage (phone region,
+    registry jurisdiction, out_of_area) reads businesses.address_country as ISO-2 without re-mapping."""
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    key = text.casefold()
+    if key in COUNTRY_TO_REGION:
+        return COUNTRY_TO_REGION[key]
+    if len(text) == 2 and text.isalpha() and text.upper() in phonenumbers.SUPPORTED_REGIONS:
+        return text.upper()
+    return None
 
 
 def to_business(raw: RawListing, run_id: str, icp: ICP | None, default_region: str = "US") -> Business | None:
@@ -323,8 +334,8 @@ def to_business(raw: RawListing, run_id: str, icp: ICP | None, default_region: s
         return None
     name = clean_name(name)
     addr_split_pre = split_address(d, None, default_region)
-    country = addr_split_pre["address_country"] or _pick(d, ["country"])
-    region = region_for(country, default_region)
+    country = iso_country(addr_split_pre["address_country"] or _pick(d, ["country"]))
+    region = country or default_region
 
     address_full = _pick(d, g["address"]) or None
     addr = split_address(d, address_full, region)
@@ -371,7 +382,7 @@ def to_business(raw: RawListing, run_id: str, icp: ICP | None, default_region: s
         address_city=addr["address_city"],
         address_region=addr["address_region"],
         address_postal=addr["address_postal"],
-        address_country=addr["address_country"] or country,
+        address_country=country,
         lat=_as_float(_pick(d, g["lat"])),
         lng=_as_float(_pick(d, g["lng"])),
         rating=_as_float(rating),

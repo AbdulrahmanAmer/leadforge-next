@@ -192,8 +192,8 @@ class OpenCorporatesRegistry:
         return {"GB", "UK", "US"}
 
     def _jurisdiction_code(self, biz) -> str:
-        country = (biz["address_country"] or "").strip().upper()
-        if country in ("GB", "UK"):
+        country = biz["address_country"]  # ISO-2 since to_business
+        if country == "GB":
             return "gb"
         region = (biz["address_region"] or "").strip().lower()
         return f"us_{region}" if country == "US" and len(region) == 2 else ""

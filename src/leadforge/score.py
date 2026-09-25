@@ -270,8 +270,6 @@ class Scorer:
                 return q
         return None
 
-    _COUNTRY_ALIASES = {"uk": "gb", "united kingdom": "gb", "united states": "us", "usa": "us"}
-
     def _negatives(self, b, ctx) -> list[tuple[str, float, str]]:
         neg = self.rubric.get("negatives", {})
         out: list[tuple[str, float, str]] = []
@@ -284,9 +282,8 @@ class Scorer:
                        "name suggests a franchise/chain"))
         # out_of_area only on unambiguous evidence: the listing's own country differs from the
         # campaign's. Same-country suburb spillover is graded softly by geography_match instead.
-        want = (self.icp.target.geography.country or "").strip().casefold()
-        got = (b["address_country"] or "").strip().casefold()
-        want, got = self._COUNTRY_ALIASES.get(want, want), self._COUNTRY_ALIASES.get(got, got)
+        # both sides are ISO-2: the ICP validates it, to_business normalizes the listing's country.
+        want, got = self.icp.target.geography.country, b["address_country"]
         if want and got and want != got:
             out.append(("out_of_area", neg.get("out_of_area", -20),
                        f"listing country '{b['address_country']}' differs from the campaign's"))
