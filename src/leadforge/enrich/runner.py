@@ -74,6 +74,41 @@ def _email_evidence(html: str, text: str, email: str) -> str:
     return _mailto_anchor_context(html, email) or ctx
 
 
+def _render(url: str, cfg: Config, throttle: HostThrottle) -> Page | None:
+    """One browser-rendered page, bounded like the static path; None when the render came back empty."""
+    rendered = browser.fetch_rendered(url, cfg, throttle)
+    if not rendered:
+        return None
+    rendered = rendered[: cfg.crawl.max_text_bytes]
+    return Page(url, rendered, SiteCrawler.extract_text(rendered))
+
+
+def _extract_pages(cfg: Config, b, pages: list[Page], out: dict) -> None:
+    """D3: the one extraction pass over fetched pages — static crawl, browser rescue and browser
+    escalation all use it, so a rendered page yields the same fields a static one does. Emails,
+    phones, socials and people go into `out` (first sighting wins, so a later rendered pass only adds
+    what an earlier one missed), and the account-intel profile is rebuilt over `pages`."""
+    region = b["address_country"] or cfg.default_region  # ISO-2 since to_business
+    # U4.7: GLiNER zero-shot people extraction when the [ner] extra is installed, else heuristic.
+    people_fn = _people_fn(cfg)
+    for page in pages:
+        for email, label in extract_emails(page.html, page.text).items():
+            out["emails"].setdefault(email, {"label": label, "url": page.url,
+                                              "context": _email_evidence(page.html, page.text, email)})
+        for phone in extract_phones(page.html, page.text, region):
+            if phone not in out["phones"]:
+                out["phones"].append(phone)
+        for net, url in extract_socials(page.html).items():
+            out["socials"].setdefault(net, url)
+        out["people"].extend(people_fn(page.text, page.url))
+    # WE SCORE account-intel profile (v0.1.1): tech stack, departments, headcount, triggers.
+    from leadforge.enrich.profile import build_profile
+    try:
+        out["profile"] = build_profile(pages, b["domain"], b["category"])
+    except Exception as e:  # noqa: BLE001 — profiling is additive, never blocks enrichment
+        LOG.warning("profile build failed for %s: %s", b["id"], type(e).__name__)
+
+
 def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
     """Crawl + extract for a single business. Returns a plain dict (thread-safe; DB writes happen on main thread)."""
     crawler = SiteCrawler(cfg, throttle)
@@ -88,78 +123,23 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
         if not res.ok:
             # site refused the plain HTTP client: try a real browser (same as a person opening it);
             # robots-disallowed sites never reach here (needs_browser stays False for those)
-            if res.needs_browser and browser.is_available():
-                rendered = browser.fetch_rendered(b["website"], cfg, throttle)
-                if rendered:
-                    rendered = rendered[: cfg.crawl.max_text_bytes]  # same bound as the static path
-                    text = SiteCrawler.extract_text(rendered)
-                    page = Page(b["website"], rendered, text)
-                    region = b["address_country"] or cfg.default_region  # ISO-2 since to_business
-                    people_fn = _people_fn(cfg)
-                    for email, label in extract_emails(rendered, text).items():
-                        out["emails"].setdefault(email, {"label": label, "url": b["website"],
-                                                          "context": _email_evidence(rendered, text, email)})
-                    for phone in extract_phones(rendered, text, region):
-                        if phone not in out["phones"]:
-                            out["phones"].append(phone)
-                    for net, url in extract_socials(rendered).items():
-                        out["socials"].setdefault(net, url)
-                    for cand in people_fn(text, b["website"]):
-                        out["people"].append(cand)
-                    # a rescued site scores on the same evidence as a crawled one: signals + profile
-                    # (without these, phone_only_booking mis-fired and WE SCORE columns came out empty)
-                    out["signals"].update(SiteCrawler.compute_signals([page], cfg.crawl.stale_after_years))
-                    from leadforge.enrich.profile import build_profile
-                    try:
-                        out["profile"] = build_profile([page], b["domain"], b["category"])
-                    except Exception as e:  # noqa: BLE001 — profiling is additive, never blocks
-                        LOG.warning("profile build failed for %s: %s", b["id"], type(e).__name__)
-                    out["ok"] = True
-                    out["needs_browser"] = False
-                    out["error"] = ""
-                    out["signals"]["rendered"] = True
-                    out["signals"]["http_blocked"] = True
-                    out["pages"] = 1
+            page = _render(b["website"], cfg, throttle) if res.needs_browser and browser.is_available() else None
+            if page:
+                _extract_pages(cfg, b, [page], out)
+                # a rescued site scores on the same evidence as a crawled one: signals + profile
+                # (without these, phone_only_booking mis-fired and WE SCORE columns came out empty)
+                out["signals"].update(SiteCrawler.compute_signals([page], cfg.crawl.stale_after_years))
+                out.update(ok=True, needs_browser=False, error="", pages=1)
+                out["signals"]["rendered"] = True
+                out["signals"]["http_blocked"] = True
             return out
-        region = b["address_country"] or cfg.default_region  # ISO-2 since to_business
-        # U4.7: GLiNER zero-shot people extraction when the [ner] extra is installed, else heuristic.
-        people_fn = _people_fn(cfg)
-        for page in res.pages:
-            for email, label in extract_emails(page.html, page.text).items():
-                out["emails"].setdefault(email, {"label": label, "url": page.url,
-                                                  "context": _email_evidence(page.html, page.text, email)})
-            for phone in extract_phones(page.html, page.text, region):
-                if phone not in out["phones"]:
-                    out["phones"].append(phone)
-            for net, url in extract_socials(page.html).items():
-                out["socials"].setdefault(net, url)
-            for cand in people_fn(page.text, page.url):
-                out["people"].append(cand)
-        # WE SCORE account-intel profile (v0.1.1): tech stack, departments, headcount, triggers.
-        from leadforge.enrich.profile import build_profile
-        try:
-            out["profile"] = build_profile(res.pages, b["domain"], b["category"])
-        except Exception as e:  # noqa: BLE001 — profiling is additive, never blocks enrichment
-            LOG.warning("profile build failed for %s: %s", b["id"], type(e).__name__)
+        _extract_pages(cfg, b, res.pages, out)
         # U4.5: browser escalation — only when static found nothing and the extra is installed.
         if res.needs_browser and browser.is_available() and not out["emails"] and not out["people"]:
-            rendered_cap = cfg.enrich.rendered_pages_per_site
-            urls = [p.url for p in res.pages[:rendered_cap]] or [b["website"]]
-            rendered_any = False
-            for url in urls:
-                if not crawler._allowed(url):
-                    continue
-                rendered = browser.fetch_rendered(url, cfg, throttle)
-                if not rendered:
-                    continue
-                rendered_any = True
-                text = SiteCrawler.extract_text(rendered)
-                for email, label in extract_emails(rendered, text).items():
-                    out["emails"].setdefault(email, {"label": label, "url": url,
-                                                      "context": _email_evidence(rendered, text, email)})
-                for cand in people_fn(text, url):
-                    out["people"].append(cand)
-            if rendered_any:
+            urls = [p.url for p in res.pages[:cfg.enrich.rendered_pages_per_site]] or [b["website"]]
+            rendered = [p for p in (_render(u, cfg, throttle) for u in urls if crawler._allowed(u)) if p]
+            if rendered:
+                _extract_pages(cfg, b, rendered, out)
                 out["needs_browser"] = False
                 out["signals"]["rendered"] = True
         return out

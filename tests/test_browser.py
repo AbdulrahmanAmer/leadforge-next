@@ -45,6 +45,33 @@ def test_escalation_wiring_merges_rendered_contacts(monkeypatch, tmp_path):
     assert out["signals"].get("rendered") is True
 
 
+def test_escalation_extracts_phones_socials_and_profile_like_the_static_path(monkeypatch, tmp_path):
+    """D3: the escalation loop used to read only emails and people from a rendered page; it now goes
+    through the same _extract_pages as the static crawl and the rescue path."""
+    from leadforge.config import load_config
+    from leadforge.enrich import runner
+    from leadforge.enrich.crawler import CrawlResult, Page
+
+    monkeypatch.chdir(tmp_path)
+    cfg = load_config(tmp_path)
+    shell = CrawlResult(ok=True, needs_browser=True,
+                        pages=[Page("http://spa.example", "<div id='root'></div>", "")])
+    monkeypatch.setattr(runner.SiteCrawler, "crawl", lambda self, url, business_domain=None: shell)
+    monkeypatch.setattr(runner.SiteCrawler, "_allowed", lambda self, url: True)
+    monkeypatch.setattr(runner.browser, "is_available", lambda: True)
+    monkeypatch.setattr(runner.browser, "fetch_rendered",
+                        lambda url, cfg, throttle: "<html><body>Call 020 7946 0958 or "
+                                                   "<a href='mailto:hi@spa.example'>hi@spa.example</a> "
+                                                   "<a href='https://www.facebook.com/spagarage'>fb</a></body></html>")
+    b = {"id": 1, "website": "http://spa.example", "address_country": "GB", "domain": "spa.example",
+         "category": "car garage"}
+    out = runner._process_one(cfg, HostThrottle(0), b)
+    assert "hi@spa.example" in out["emails"]
+    assert out["phones"] == ["+442079460958"]
+    assert "facebook" in out["socials"]
+    assert "profile" in out
+
+
 def test_escalation_respects_robots(monkeypatch, tmp_path):
     from leadforge.config import load_config
     from leadforge.enrich import runner
