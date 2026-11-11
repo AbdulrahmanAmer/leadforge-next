@@ -1,6 +1,6 @@
 """LeadForge — internal B2B lead-generation engine.
 
-Architecture: docs/02-architecture.md · Build plan: docs/05-icm-build-plan.md
+Architecture: docs/02-architecture.md
 Agent interface (token contract): docs/06-token-contract.md
 """
 

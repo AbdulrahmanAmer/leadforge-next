@@ -28,7 +28,7 @@ JSON, exactly like the gosom provider — so nothing heavy enters the agent's co
    URL. Do not archive posts, comments, images, or transcripts into the database.
 5. NEVER BLOCKS THE RUN. Missing binary, timeout, rate limit, or any exception -> log and return {} .
 
-=== SPEC (implement exactly; acceptance criteria in icm/stages/stage-4-enrichment.md) ===
+=== SPEC (as built) ===
 
 def is_available(cfg) -> tuple[bool, str]:
     '''Enabled only when cfg.social.enabled is true AND the CLI answers.

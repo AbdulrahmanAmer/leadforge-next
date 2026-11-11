@@ -12,4 +12,3 @@ Check everything with one command: `node check.mjs` (last line `CHECK PASS|FAIL 
   so every version copy (pyproject, `__init__`, both plugin manifests, both skills) moves together; `check.mjs` fails otherwise.
 - Rollback: before merge delete the slice branch; after merge `git revert -m 1 <merge>` plus a new patch version.
 - Work is planned in slices: `docs/slices/`. Where the work stands: `.claude/POSITION.md`.
-- `icm/`, `/finalize` and `docs/05-icm-build-plan.md` are the old, finished build plan. Do not follow them.

@@ -1,6 +1,6 @@
 """Public-registry cross-check providers — ICM unit U4.6 (implemented; Companies House live-proven v0.1.1). Opt-in, free keys (ADR-007).
 
-=== SPEC (implement exactly; acceptance criteria in docs/05 U4.6) ===
+=== SPEC (as built) ===
 
 class RegistryProvider(Protocol):
     def lookup(self, business_row) -> list[Person]   # labeled_by="registry", dm_confidence=0.0, is_dm=0

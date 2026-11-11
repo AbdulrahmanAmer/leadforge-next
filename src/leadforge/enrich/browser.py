@@ -1,6 +1,6 @@
 """Browser escalation for JS-rendered sites — ICM unit U4.5 (implemented). Optional [browser] extra.
 
-=== SPEC (implement exactly; acceptance criteria docs/05 U4.5) ===
+=== SPEC (as built) ===
 1. is_available() -> bool: True iff `import crawl4ai` succeeds.
 2. fetch_rendered(url, cfg) -> str (raw HTML) | "":
    - lazy `from crawl4ai import AsyncWebCrawler` (or the current sync API for the pinned version);

@@ -2,7 +2,7 @@
 
 Auto-injected at session start / compact / resume. The hook injects the **LAST `## ` block** (max 1400 chars),
 so the newest block stays at the BOTTOM and stays short. Older blocks: `.claude/POSITION-HISTORY.md`.
-Canonical detail: `icm/STATE.md` (unit status), `CHANGELOG.md` (what shipped).
+Canonical detail: `CHANGELOG.md` (what shipped).
 
 ---
 

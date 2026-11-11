@@ -168,7 +168,7 @@ All diagrams as images: [`docs/diagrams/`](docs/diagrams/).
 Architecture, data model, pipeline behavior and every decision are documented in [`docs/`](docs/):
 [vision](docs/00-vision.md) · [research](docs/01-research.md) · [architecture](docs/02-architecture.md) ·
 [data model](docs/03-data-model.md) · [pipeline](docs/04-pipeline-behavior.md) ·
-[build plan](docs/05-icm-build-plan.md) · [token contract](docs/06-token-contract.md) ·
+[token contract](docs/06-token-contract.md) ·
 [compliance](docs/07-compliance.md) · [decisions](docs/08-decisions.md) ·
 [customized-workspace upgrade prompt](docs/UPGRADE-MERGE-PROMPT.md).
 
@@ -249,7 +249,7 @@ Companies House profile (company number, incorporation, status, SIC codes); a **
 that bot-wall the plain HTTP client (robots.txt is always honored — disallowed sites never escalate).
 Deferred to v0.2: a grid-tiling live run and real Facebook/Instagram presence probes. gosom serve mode is
 closed by design (resume + a stall watchdog cover it). Previously deferred, shipped in 0.1.4:
-`claude plugin validate` in CI, TSV dm reconciliation, grid bbox flag-format verification (see `icm/STATE.md`).
+`claude plugin validate` in CI, TSV dm reconciliation, grid bbox flag-format verification.
 
 ```bash
 pip install -e .[dev] && pytest -q && ruff check src tests   # suite must be fully green (no xfails)
