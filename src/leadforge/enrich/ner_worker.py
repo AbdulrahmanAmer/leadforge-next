@@ -37,6 +37,17 @@ from leadforge.util import LOG, pid_alive
 PARENT_WATCHDOG_POLL_S = 3.0  # how often the child checks its parent is still alive
 
 MODEL_NAME = "urchade/gliner_small-v2.1"
+# The model files are pinned by Hub revision (C3): a changed upload under the same name is never
+# loaded. Read from the Hub's model record 2026-11-11 (last modified 2024-04-10). Bump deliberately.
+MODEL_REVISIONS = {MODEL_NAME: "4e091416cf7c3481db542c2a3d26156916f3a47f"}
+
+
+def pinned_revision(model_name: str) -> str:
+    """The pinned revision of `model_name`; a model without a pin is refused."""
+    try:
+        return MODEL_REVISIONS[model_name]
+    except KeyError:
+        raise ValueError(f"model {model_name!r} has no pinned revision; refusing to load it") from None
 
 
 def resolve_device(requested: str) -> str:
@@ -93,7 +104,7 @@ def _worker_main(req_q, resp_q, ready_q, device: str, model_name: str,
     batch_predict = None
     try:
         from gliner import GLiNER
-        model = GLiNER.from_pretrained(model_name)
+        model = GLiNER.from_pretrained(model_name, revision=pinned_revision(model_name))
         try:
             model = model.to(device)
         except Exception:  # noqa: BLE001 — device move failed; keep going on whatever .to() left it on
