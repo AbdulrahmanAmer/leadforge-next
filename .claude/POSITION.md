@@ -31,3 +31,10 @@ with bounded NER, then re-labels/scores/drafts/exports); restore draft.auto_max 
   ~1.7k CPU-s each) were left running — the owner declined the kill; ask before touching them.
 - Owner decisions still binding: old data = statistics only (no compat); fix at source, no repair layers.
 - 60+ commits unpushed to GitHub (owner decides).
+
+## POSITION — 2026-11-11, slice L1 (0.6.15) in the private copy leadforge-next
+
+- Work happens in the PRIVATE repo AbdulrahmanAmer/leadforge-next; `public-original` cannot be pushed to.
+- L1 "installs again": selectolax<1.0, uv.lock, every version copy 0.6.15, check.mjs, pinned CI. Proof: docs/slices/L1-installs-again.md.
+- Check: `node check.mjs` (782 passed, 6 skipped). Plan: claude-migration/design/blueprint/LEADFORGE-ADOPTION.md section 9.
+- Next: L2 (fixtures made up first, then goldens, then the autopilot/keys/downloads floor).
