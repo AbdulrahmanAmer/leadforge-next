@@ -130,3 +130,9 @@ Written BEFORE the changes and before any run. Nothing under `src/` changes exce
 | New `docs/slices/L5-install-proven-and-the-fake-campaign.md` | Starting list only. | None. |
 
 Order of proof: one run to make the new saved result next to the old one (`--update-golden` into the file, old copy kept for the side-by-side), only the predicted cells (none) may differ; then one run: PASS.
+
+### Merge outcome
+- Predicted cells moved: none, as predicted. The new run's result equals the saved `expected.json` (checked leaf by leaf: identical; `01225`, `01632` and `0.7.1` appear nowhere in it).
+- First CI run of the new job: red on both systems. Windows: the temp dir came back as the 8.3 short name (`RUNNER~1`) while the child prints the long one, so `<WS>` was not substituted in `steps[0]`. Ubuntu: artifact paths use `/` where the saved result has `\\`, and `refused` held 0 entries against 21. The script's FAIL line now prints the leaf differences (it printed only key names).
+- One normaliser fix: the workspace path is replaced in its as-given, resolved and `/` forms; both sides of the compare use one separator. The saved result is untouched. Windows then passed.
+- Ubuntu still red, only in `refused`: the runner's resolver is the loopback stub `127.0.0.53`, which the guard allows (so no refused packet). Not something the normaliser may absorb. The job is limited to `windows-latest`; the cause is the first entry of the L5 starting list.
