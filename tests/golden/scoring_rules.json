@@ -1,0 +1,20 @@
+{
+  "factors": [
+    "industry_match",
+    "need_signals",
+    "size_match",
+    "geography_match",
+    "business_model",
+    "data_confidence"
+  ],
+  "sha256": "57ca6009501c66c5cc3df98c62ef936661a17995d605d2b375fc06ce2ff0e8f2",
+  "top_keys": [
+    "version",
+    "tiers",
+    "negatives_cap",
+    "factors",
+    "contactability_weights",
+    "negatives",
+    "hooks"
+  ]
+}

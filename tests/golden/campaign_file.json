@@ -1,0 +1,101 @@
+{
+  "sample_hash": "2da5791d8a0d",
+  "shape": {
+    "Caps": {
+      "fields": [
+        "max_leads",
+        "max_sites",
+        "max_tiles"
+      ],
+      "required": []
+    },
+    "Compliance": {
+      "fields": [
+        "region_profile"
+      ],
+      "required": []
+    },
+    "DecisionMaker": {
+      "fields": [
+        "titles_priority"
+      ],
+      "required": []
+    },
+    "Geography": {
+      "fields": [
+        "areas",
+        "bbox",
+        "country",
+        "grid"
+      ],
+      "required": [
+        "country"
+      ]
+    },
+    "ICP": {
+      "fields": [
+        "campaign",
+        "caps",
+        "compliance",
+        "decision_maker",
+        "notes",
+        "offer",
+        "qualify",
+        "scoring",
+        "target",
+        "version"
+      ],
+      "required": [
+        "campaign",
+        "offer",
+        "target"
+      ]
+    },
+    "Offer": {
+      "fields": [
+        "sender",
+        "value_prop",
+        "what"
+      ],
+      "required": [
+        "what"
+      ]
+    },
+    "Qualify": {
+      "fields": [
+        "hard",
+        "soft"
+      ],
+      "required": []
+    },
+    "Scoring": {
+      "fields": [
+        "profile",
+        "weights_override"
+      ],
+      "required": []
+    },
+    "SizeBand": {
+      "fields": [
+        "max_reviews",
+        "min_reviews"
+      ],
+      "required": []
+    },
+    "Target": {
+      "fields": [
+        "categories",
+        "geography",
+        "incorporated_from",
+        "incorporated_to",
+        "mode",
+        "sic_codes",
+        "size"
+      ],
+      "required": [
+        "categories",
+        "geography"
+      ]
+    }
+  }
+}

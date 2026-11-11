@@ -1,0 +1,127 @@
+{
+  "apply_counts": {
+    "applied": 1,
+    "insufficient_evidence": 0,
+    "rejected": 1,
+    "skipped": 0
+  },
+  "build_counts": {
+    "grade_a": 0,
+    "grade_b": 1,
+    "grade_c": 0,
+    "insufficient_evidence": 0,
+    "targets": 1
+  },
+  "gate": {
+    "invented_fact": {
+      "ok": false,
+      "reasons": [
+        "USED_FACT: 'booking' is not a packet fact"
+      ]
+    },
+    "invented_number": {
+      "ok": false,
+      "reasons": [
+        "NUMBER: '5.0' is not in the packet or template_numbers",
+        "NUMBER: '300' is not in the packet or template_numbers",
+        "USED_FACT: neither the key 'rating' nor its value is referenced"
+      ]
+    },
+    "template": {
+      "ok": true,
+      "reasons": []
+    }
+  },
+  "header": {
+    "constraints": {
+      "max_observation_words": 45,
+      "max_subject_chars": 60
+    },
+    "instructions": "Write ONLY 'subject' and 'observation'. Cite exactly one packet fact by its 'k' as 'used_fact'. Never invent a number, name, email, URL or claim that is not in this packet. If grade is 'C' and the purpose needs personalisation, set 'abstain': true instead of padding with a generic line.",
+    "offer": {
+      "value_prop": "more bookings",
+      "what": "website refresh"
+    },
+    "purpose": "gainlev_leadgen",
+    "sender": {
+      "from_name": "Example Sender",
+      "label": "default"
+    }
+  },
+  "line": {
+    "grade": "B",
+    "packet": {
+      "city": "Nottingham",
+      "co": "Example Plumbing Co",
+      "constraints": {
+        "literals": [],
+        "max_observation_words": 45,
+        "max_subject_chars": 60,
+        "template_numbers": []
+      },
+      "facts": [
+        {
+          "at": "<at>",
+          "k": "category",
+          "src": "maps",
+          "v": "Plumber"
+        },
+        {
+          "at": "<at>",
+          "k": "city",
+          "src": "maps",
+          "v": "Nottingham"
+        },
+        {
+          "at": "<at>",
+          "k": "rating",
+          "src": "maps",
+          "v": "4.6 stars (120 reviews)"
+        },
+        {
+          "at": "<at>",
+          "k": "hiring",
+          "src": "site",
+          "v": "has a live careers/jobs page"
+        }
+      ],
+      "grade": "B",
+      "greeting": "Hello,",
+      "offer": {
+        "value_prop": "more bookings",
+        "what": "website refresh"
+      },
+      "purpose": "gainlev_leadgen",
+      "sender": {
+        "from_name": "Example Sender",
+        "label": "default"
+      }
+    },
+    "tokens_est": 181
+  },
+  "line_keys": [
+    "grade",
+    "packet",
+    "target",
+    "tokens_est"
+  ],
+  "stored_messages": [
+    {
+      "author": "agent",
+      "state": "drafted",
+      "step": 1,
+      "used_fact": "hiring"
+    },
+    {
+      "author": "agent",
+      "state": "rejected",
+      "step": 2,
+      "used_fact": "booking"
+    }
+  ],
+  "template_draft": {
+    "observation": "Noticed Example Plumbing Co has a live careers/jobs page.",
+    "subject": "Quick note for Example Plumbing Co",
+    "used_fact": "hiring"
+  }
+}

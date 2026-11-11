@@ -1,0 +1,21 @@
+{
+  "agents_marketplace_plugins": [
+    "leadforge"
+  ],
+  "claude_marketplace": {
+    "name": "leadforge",
+    "plugins": [
+      [
+        "leadforge",
+        "./"
+      ]
+    ]
+  },
+  "claude_plugin_name": "leadforge",
+  "codex_plugin_name": "leadforge",
+  "launcher": "bin/leadforge",
+  "skills": {
+    "generate-leads": "generate-leads",
+    "send-outreach": "send-outreach"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "commands": [
+    "benchmark",
+    "byol",
+    "config",
+    "dashboard",
+    "dedupe",
+    "discover",
+    "dm",
+    "doctor",
+    "draft",
+    "enrich",
+    "export",
+    "intake",
+    "outreach",
+    "plan",
+    "prune-tiles",
+    "render-check",
+    "run",
+    "score",
+    "status",
+    "suppress",
+    "version",
+    "watch"
+  ],
+  "digest_prefix": "LF_DIGEST ",
+  "exit_codes": {
+    "AgentFailed": 4,
+    "AgentUnavailable": 4,
+    "EnvError": 3,
+    "InputError": 4,
+    "LeadForgeError": 1,
+    "ProviderFailed": 5
+  }
+}

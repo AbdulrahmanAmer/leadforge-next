@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.7.0] — 2026-11-11
+
+Pins and a safety floor. What LeadForge downloads is checked, the model call it makes has no tools, and keys
+stay off the screen. A workspace made by 0.6.15 opens unchanged.
+
+### Changed
+- The autopilot's own `claude -p` call runs with no tools (`--tools "" --disallowedTools "mcp__*"
+  --permission-mode default --restricted`). If it fails, the built-in rules label and draft. An `agent.command` you
+  set yourself is used exactly as written.
+- `run` no longer downloads the scraper binary or installs packages. If the binary is missing it stops and says
+  `leadforge doctor --fix`. With the optional `[ner]` extra it loads the NER model and its tokenizer from the local
+  cache only; if they are missing, NER is off for that run with one warning, and `leadforge doctor --fix --full`
+  fetches both at pinned commits.
+- The scraper binary is pinned by version and SHA-256; a file with another hash is deleted, never run. The
+  optional NER model is loaded at a pinned revision.
+- The plugin launcher and `python install.py` install from `requirements.lock` with hashes; the launcher no longer
+  upgrades pip.
+
+### Fixed
+- `config set` and `config get` never print a key, token or password, also when the command names the section
+  that holds it, or a proxy address with a password.
+- The per-site pause holds: it reads a fine clock on Windows, every redirect hop waits its turn, and the browser
+  pass shares the pause with the plain fetch however the site's name is written.
+- robots.txt is asked about every redirect hop, on the new site's robots.txt when the hop changes site; a hop it
+  disallows (or whose robots.txt cannot be reached) is not followed, and such a home page reads as
+  "robots-disallowed", not as a dead site.
+
+### Added
+- Golden tests for the contracts users and agents rely on; the saved test pages are made up.
+
 ## [0.6.15] — 2026-11-11
 
 Installs again. This is the first update plugin users receive since 0.5.0: every 0.6 change reaches them now.

@@ -86,9 +86,12 @@ class HostThrottle:
         self._lock = threading.Lock()
 
     def wait(self, host: str) -> None:
+        host = host.lower()  # one site, however its name is written (the HTTP client lower-cases it)
         while True:
             with self._lock:
-                now = time.monotonic()
+                # perf_counter, not monotonic: on Windows with Python <= 3.12 monotonic moves in 15.625 ms
+                # ticks, and a stale reading lets a waiting request go up to one tick before its delay.
+                now = time.perf_counter()
                 ready = self._next.get(host, 0.0)
                 if now >= ready:
                     delay = self.delay_s * (1 + random.uniform(-self.jitter, self.jitter))
@@ -96,6 +99,19 @@ class HostThrottle:
                     return
                 sleep_for = ready - now
             time.sleep(min(sleep_for, 1.0))
+
+
+def site_key(url: str) -> str:
+    """The one name of a site for its pause and its robots.txt answer, as the HTTP client sends it (lower
+    case, IDNA, no default port), so the plain fetch, its redirect hops and the browser pass agree."""
+    import httpx
+
+    try:
+        return httpx.URL(url).netloc.decode("ascii").lower()
+    except Exception:  # noqa: BLE001 — httpx cannot send such an address; any stable name will do
+        from urllib.parse import urlsplit
+
+        return urlsplit(url).netloc.lower()
 
 
 # --- small utilities ------------------------------------------------------------------------

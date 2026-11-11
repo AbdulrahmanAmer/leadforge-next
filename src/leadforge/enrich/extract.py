@@ -16,6 +16,7 @@ import html as html_mod
 import json
 import os
 import re
+import sys
 import threading
 from dataclasses import dataclass
 
@@ -630,8 +631,17 @@ def _gliner_model():
     if _GLINER_MODEL is None:
         with _NER_LOCK:
             if _GLINER_MODEL is None:
-                from gliner import GLiNER
-                _GLINER_MODEL = GLiNER.from_pretrained("urchade/gliner_small-v2.1")
+                from leadforge.enrich.ner_worker import MODEL_NAME, offline_env, pinned_revision
+                # the Hub client reads the offline switches once, at import: imported online in this
+                # process, the tokenizer's by-name lookup could still go to the network (C3)
+                if os.environ.get("HF_HUB_OFFLINE") != "1" and any(
+                        m in sys.modules for m in ("huggingface_hub", "transformers")):
+                    raise RuntimeError("in-thread NER refused: the Hub client was imported before the "
+                                       "offline switches were set")
+                with offline_env():  # local cache only (C3); doctor --fix --full fetches it
+                    from gliner import GLiNER
+                    _GLINER_MODEL = GLiNER.from_pretrained(MODEL_NAME, revision=pinned_revision(MODEL_NAME),
+                                                           local_files_only=True)
                 _apply_torch_threads()
     return _GLINER_MODEL
 

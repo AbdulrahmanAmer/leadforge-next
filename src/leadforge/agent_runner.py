@@ -63,6 +63,12 @@ class AgentFailed(LeadForgeError):
     exit_code = 4
 
 
+# Probed 2026-11-11 with Claude Code 2.1.312 on a subscription login: without these the call was offered
+# 50 tools (Bash, Write, WebFetch, browser tools) in the operator's own permission mode; with them, none.
+# `--restricted` also works with a subscription login (unlike `--bare`). "" is one argv element.
+NO_TOOLS_ARGS = ["--tools", "", "--disallowedTools", "mcp__*", "--permission-mode", "default", "--restricted"]
+
+
 def resolve_command(cfg: Config) -> list[str] | None:
     """The argv to run, or None when no agent is available.
 
@@ -87,6 +93,10 @@ def resolve_command(cfg: Config) -> list[str] | None:
         # processes and 5.4-6.1s with the same answer. `--bare` is NOT usable: it refuses OAuth/
         # subscription auth. The settings JSON is one argv element (list-form subprocess, no shell).
         cmd += ["--strict-mcp-config", "--settings", json.dumps({"disableAllHooks": True})]
+    # C1: the prompt carries text taken from websites, so this call gets no tools at all, whatever the
+    # operator's own settings allow. Not under `isolate`: switching isolation off must not switch tools on.
+    # A failed call falls back to the built-in rules in the caller; there is no second call with tools.
+    cmd += NO_TOOLS_ARGS
     return cmd
 
 

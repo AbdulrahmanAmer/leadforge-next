@@ -1,6 +1,7 @@
 * text=auto eol=lf
 *.png binary
 *.xlsx binary
+*.sqlite3 binary
 
 # blueprint v1.1.0: launchers stay LF, Windows scripts CRLF
 bin/* text eol=lf

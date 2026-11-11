@@ -7,6 +7,7 @@ Every command ends with exactly one LF_DIGEST line (docs/06). Human output stays
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -621,6 +622,35 @@ def suppress(ctx: typer.Context, action: str = typer.Argument(..., help="add|lis
         emit_digest(True, "suppress", counts={"suppressed": len(rows)})
 
 
+_SECRET_KEY_RE = re.compile(r"(key|token|secret|password|passwd|pass)s?$", re.IGNORECASE)
+_SECRET_WORD_RE = re.compile(r"key|token|secret|pass|://", re.IGNORECASE)
+# user:password@ before a host, with or without a scheme; the password may hold '@' or '/' (greedy to the last '@')
+_URL_USERINFO_RE = re.compile(r"^((?:[a-z][a-z0-9+.-]*://)?)[^\s/@:]*:\S*@", re.IGNORECASE)
+
+
+def _redacted(name: str, value):
+    """`value` with every secret inside it hidden: a section is walked key by key, and the user:password
+    part of an address (a proxy) is cut."""
+    if isinstance(value, dict):
+        return {k: _redacted(str(k), v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redacted(name, v) for v in value]
+    if _SECRET_KEY_RE.search(name) and value not in (None, "", {}):
+        return f"<hidden, {len(str(value))} chars>"
+    if isinstance(value, str):
+        return _URL_USERINFO_RE.sub(lambda m: m.group(1) + "<hidden>@", value)
+    return value
+
+
+def _shown(key: str, value) -> str:
+    """C2 (slice L2): a key, token or password is never printed; the operator sees only that it is set.
+    Also when the command names the section that holds it (`config get registry`)."""
+    name = key.split(".")[-1]
+    if _SECRET_KEY_RE.search(name) and value not in (None, "", {}):
+        return f"<hidden, {len(str(value))} chars>"
+    return repr(_redacted(name, value))
+
+
 @app.command("config")
 def config_cmd(ctx: typer.Context,
                action: str = typer.Argument(..., help="set|get"),
@@ -637,7 +667,9 @@ def config_cmd(ctx: typer.Context,
         try:
             parsed = yaml.safe_load(value) if value else value
         except yaml.YAMLError as e:
-            emit_digest(False, "config", warnings=[f"value is not parseable YAML: {value[:60]}"], next_=None)
+            # the raw text may hold a key under a name this command cannot see yet: echo it only when plain
+            shown = f"<hidden, {len(value)} chars>" if _SECRET_WORD_RE.search(value) else _shown(key, value[:60])
+            emit_digest(False, "config", warnings=[f"value is not parseable YAML: {shown}"], next_=None)
             raise typer.Exit(2) from e
         node = data
         for p in parts[:-1]:
@@ -658,13 +690,13 @@ def config_cmd(ctx: typer.Context,
                 emit_digest(False, "config", warnings=[f"invalid value for {key}: {type(e).__name__}"], next_=None)
                 raise typer.Exit(2) from e
         path.write_text(merged, encoding="utf-8")
-        _say(ctx, f"{key} = {value!r} written to {path}")
+        _say(ctx, f"{key} = {_shown(key, parsed if isinstance(parsed, (dict, list)) else value)} written to {path}")
         emit_digest(True, "config", counts={"set": 1}, next_=None)
     elif action == "get":
         node = data
         for p in parts:
             node = node.get(p, {}) if isinstance(node, dict) else {}
-        _say(ctx, f"{key} = {node!r}")
+        _say(ctx, f"{key} = {_shown(key, node)}")
         emit_digest(True, "config", counts={}, warnings=[], next_=None)
     else:
         emit_digest(False, "config", warnings=[f"unknown action '{action}' (set|get)"], next_=None)

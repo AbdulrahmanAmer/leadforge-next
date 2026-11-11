@@ -2,15 +2,17 @@
 
 Checks the machine BEFORE any pipeline work and (with --fix) installs what is missing:
 - Python >= 3.11, core imports, writable data dirs, disk space
-- pinned gosom google-maps-scraper binary (auto-download per-OS release asset -> leadforge_data/bin/)
+- pinned gosom google-maps-scraper binary (--fix downloads the per-OS release asset -> leadforge_data/bin/
+  and keeps it only if its SHA-256 matches GOSOM_SHA256; a mismatching file is deleted, never run)
 - network + DNS reachability
 - optional extras present (reported, never required)
 
-A 24h ok-stamp keeps repeat checks cheap; pipeline commands call ensure_ready().
+A 24h ok-stamp keeps repeat checks cheap; pipeline commands call ensure_ready(), which never downloads (C3).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import platform
 import shutil
@@ -79,66 +81,86 @@ class DoctorReport:
 
 
 # ------------------------------------------------------------------ gosom binary management
+# SHA-256 of every release asset of the pinned version (C3). A file whose hash differs is refused and
+# deleted, never run. Source: GitHub's asset digests for v1.17.4 (published 2026-08-22); the Windows
+# asset was also downloaded once and hashed by hand (slice L2b). Bump with GOSOM_VERSION, never alone.
+GOSOM_SHA256 = {
+    f"google_maps_scraper-{GOSOM_VERSION}-darwin-amd64":
+        "d6de77ef36e2a6ad2ee54294df9c2b235429f7c523c70f13649f35eaac6f1f25",
+    f"google_maps_scraper-{GOSOM_VERSION}-linux-amd64":
+        "afff7a583a669def1453c461f0fedd078a25732c536b034426d8b7b617d00ac0",
+    f"google_maps_scraper-{GOSOM_VERSION}-windows-amd64.exe":
+        "a1538350bd91a8150776b344b801de24e192fdf6b4ebb1254963d069117ffb48",
+}
+
+
 def gosom_asset_name() -> str:
     osname = {"Windows": "windows", "Darwin": "darwin", "Linux": "linux"}.get(platform.system(), "linux")
-    arch = platform.machine().lower()
-    arch = {"amd64": "amd64", "x86_64": "amd64", "arm64": "arm64", "aarch64": "arm64"}.get(arch, "amd64")
+    # the pinned release ships amd64 assets only; arm64 machines run them under emulation/rosetta
     ext = ".exe" if osname == "windows" else ""
-    return f"google_maps_scraper-{GOSOM_VERSION}-{osname}-{arch}{ext}"
+    return f"google_maps_scraper-{GOSOM_VERSION}-{osname}-amd64{ext}"
 
 
 def gosom_path(cfg: Config) -> Path:
     return cfg.bin_dir / gosom_asset_name()
 
 
-def _release_assets(client: httpx.Client) -> list[dict]:
-    r = client.get(
-        f"https://api.github.com/repos/{GOSOM_REPO}/releases/tags/v{GOSOM_VERSION}",
-        headers={"Accept": "application/vnd.github+json"},
-        timeout=20,
-    )
-    r.raise_for_status()
-    return r.json().get("assets", [])
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def gosom_verified(path: Path) -> bool:
+    """True when `path` holds the pinned asset byte for byte. A present file with any other hash is
+    deleted here, so it can never be run."""
+    if not path.is_file():
+        return False
+    want = GOSOM_SHA256.get(path.name)
+    if want is not None and _sha256(path) == want:
+        return True
+    LOG.warning("gosom binary %s does not match its pinned SHA-256; refused and deleted", path.name)
+    path.unlink(missing_ok=True)
+    return False
 
 
 def download_gosom(cfg: Config) -> Path:
-    """Download the pinned release asset. Direct URL first; GitHub API fuzzy-match as fallback
-    (covers arm64 machines where only amd64 assets exist -> emulation/rosetta)."""
+    """Download the pinned release asset from its release URL and keep it only if its SHA-256 matches."""
     dest = gosom_path(cfg)
-    if dest.exists():
+    if gosom_verified(dest):
         return dest
     asset = gosom_asset_name()
-    urls = [f"https://github.com/{GOSOM_REPO}/releases/download/v{GOSOM_VERSION}/{asset}"]
-    with httpx.Client(follow_redirects=True, timeout=60) as client:
-        try:
-            names = {a["name"]: a["browser_download_url"] for a in _release_assets(client)}
-            if asset not in names:  # fuzzy: same OS, prefer amd64
-                osname = asset.split("-")[-2].split(".")[0] if "windows" not in asset else "windows"
-                cand = [u for n, u in names.items() if osname in n]
-                urls = cand[:1] + urls
-        except httpx.HTTPError as e:
-            LOG.warning("GitHub API asset listing failed (%s); trying direct URL", e)
-        last_err: Exception | None = None
-        for url in urls:
-            try:
-                LOG.info("downloading gosom binary: %s", url)
-                with client.stream("GET", url) as resp:
-                    resp.raise_for_status()
-                    tmp = dest.with_suffix(dest.suffix + ".part")
-                    with open(tmp, "wb") as fh:
-                        for chunk in resp.iter_bytes(1 << 16):
-                            fh.write(chunk)
-                tmp.rename(dest)
-                if platform.system() != "Windows":
-                    dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP)
-                return dest
-            except httpx.HTTPError as e:
-                last_err = e
-    raise EnvError(f"binary download failed: {asset} ({last_err}). Manually place it at {dest} from "
-                   f"https://github.com/{GOSOM_REPO}/releases/tag/v{GOSOM_VERSION}")
+    want = GOSOM_SHA256.get(asset)
+    if want is None:
+        raise EnvError(f"no pinned SHA-256 for {asset}; this platform has no checked gosom binary")
+    url = f"https://github.com/{GOSOM_REPO}/releases/download/v{GOSOM_VERSION}/{asset}"
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    try:
+        LOG.info("downloading gosom binary: %s", url)
+        with httpx.Client(follow_redirects=True, timeout=60) as client, client.stream("GET", url) as resp:
+            resp.raise_for_status()
+            with open(tmp, "wb") as fh:
+                for chunk in resp.iter_bytes(1 << 16):
+                    fh.write(chunk)
+    except httpx.HTTPError as e:
+        tmp.unlink(missing_ok=True)
+        raise EnvError(f"binary download failed: {asset} ({e}). Manually place it at {dest} from "
+                       f"https://github.com/{GOSOM_REPO}/releases/tag/v{GOSOM_VERSION}") from e
+    got = _sha256(tmp)
+    if got != want:
+        tmp.unlink(missing_ok=True)
+        raise EnvError(f"downloaded {asset} has SHA-256 {got}, pinned {want}: refused and deleted")
+    tmp.replace(dest)
+    if platform.system() != "Windows":
+        dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP)
+    return dest
 
 
 def gosom_runs(path: Path) -> bool:
+    if not gosom_verified(path):
+        return False
     try:
         proc = subprocess.run([str(path), "-h"], capture_output=True, timeout=20, encoding="utf-8", errors="replace")
         return proc.returncode in (0, 2)  # go flag package exits 2 on -h
@@ -184,9 +206,39 @@ def install_quality_extras(rep_add) -> None:
         rep_add(CheckResult(f"extra-{extra}", ok, fixed=ok and not already,
                             msg="installed" if ok else "install failed",
                             hint="" if ok else fix_hint))
+        if ok and extra == "ner":
+            try:
+                fetch_ner_model()
+                rep_add(CheckResult("ner-model", True, msg="pinned model and tokenizer in the local cache"))
+            except Exception as e:  # noqa: BLE001 — reported; run keeps NER off until it is fetched
+                rep_add(CheckResult("ner-model", False, msg=f"fetch failed: {type(e).__name__}",
+                                    hint="re-run leadforge doctor --fix --full"))
 
 
-def run_doctor(cfg: Config, fix: bool = False, strict: bool = False, full: bool = False) -> DoctorReport:
+def fetch_ner_model() -> None:
+    """The ONLY place the NER model and its tokenizer are downloaded (C3), each at its pinned commit.
+    The tokenizer repo's refs/main is pointed at its pin: GLiNER asks for it by name, and offline that
+    name resolves through refs/main to the pinned snapshot."""
+    import importlib
+
+    from leadforge.enrich.ner_worker import BACKBONE_NAME, MODEL_FILES, pinned_revision
+    importlib.invalidate_caches()  # huggingface_hub may have been installed seconds ago
+    from huggingface_hub import snapshot_download
+
+    for name, files in MODEL_FILES.items():
+        rev = pinned_revision(name)
+        snap = Path(snapshot_download(name, revision=rev, allow_patterns=list(files)))
+        if name == BACKBONE_NAME:
+            ref = snap.parent.parent / "refs" / "main"
+            ref.parent.mkdir(parents=True, exist_ok=True)
+            ref.write_text(rev, encoding="utf-8")
+
+
+def run_doctor(cfg: Config, fix: bool = False, strict: bool = False, full: bool = False,
+               network: bool = True) -> DoctorReport:
+    """network=False is the local-only check `run` uses: nothing is downloaded or installed and no
+    socket is opened (C3); fixing is left to an explicit `leadforge doctor --fix`."""
+    fix = fix and network
     rep = DoctorReport()
     add = rep.results.append
     if fix and full:
@@ -220,7 +272,9 @@ def run_doctor(cfg: Config, fix: bool = False, strict: bool = False, full: bool 
 
     bin_path = gosom_path(cfg)
     fixed = False
-    if not (bin_path.exists() and gosom_runs(bin_path)):
+    present = bin_path.exists()
+    if not gosom_runs(bin_path):
+        refused = present and not bin_path.exists()
         if fix:
             try:
                 download_gosom(cfg)
@@ -232,10 +286,29 @@ def run_doctor(cfg: Config, fix: bool = False, strict: bool = False, full: bool 
                 add(CheckResult("gosom-binary", fixed, fixed=fixed, msg=f"v{GOSOM_VERSION} -> {bin_path.name}",
                                 hint="manual download; see message"))
         else:
-            add(CheckResult("gosom-binary", False, msg=f"missing: {bin_path.name}", hint="leadforge doctor --fix"))
+            msg = (f"{bin_path.name} did not match its pinned SHA-256: refused and deleted" if refused
+                   else f"missing: {bin_path.name}")
+            add(CheckResult("gosom-binary", False, msg=msg, hint="leadforge doctor --fix"))
     else:
         add(CheckResult("gosom-binary", True, msg=f"v{GOSOM_VERSION} present"))
 
+    if network:
+        _network_checks(cfg, add)
+
+    extras = [f"{tag}({mod})" for mod, tag in OPTIONAL_EXTRAS.items() if _importable(mod)]
+    add(CheckResult("optional-extras", True, msg=", ".join(extras) if extras else
+                    "none installed (fine) — [browser]/[ner]/[social]/[addressing] available"))
+
+    add(CheckResult("ner-device", True, msg=_ner_device_report(cfg)))
+
+    if rep.ok:
+        _write_stamp(cfg)
+    if strict and not rep.ok:
+        raise EnvError("; ".join(r.name for r in rep.results if not r.ok))
+    return rep
+
+
+def _network_checks(cfg: Config, add) -> None:
     try:
         with httpx.Client(timeout=8) as client:
             client.head("https://github.com")
@@ -251,18 +324,6 @@ def run_doctor(cfg: Config, fix: bool = False, strict: bool = False, full: bool 
     except Exception as e:  # noqa: BLE001 — any resolver failure is the same answer
         add(CheckResult("dns-mx", False, msg=type(e).__name__,
                         hint="email tiers will be 'unknown' until DNS works"))
-
-    extras = [f"{tag}({mod})" for mod, tag in OPTIONAL_EXTRAS.items() if _importable(mod)]
-    add(CheckResult("optional-extras", True, msg=", ".join(extras) if extras else
-                    "none installed (fine) — [browser]/[ner]/[social]/[addressing] available"))
-
-    add(CheckResult("ner-device", True, msg=_ner_device_report(cfg)))
-
-    if rep.ok:
-        _write_stamp(cfg)
-    if strict and not rep.ok:
-        raise EnvError("; ".join(r.name for r in rep.results if not r.ok))
-    return rep
 
 
 def _ner_device_report(cfg: Config) -> str:
@@ -301,7 +362,8 @@ def _write_stamp(cfg: Config) -> None:
 
 
 def ensure_ready(cfg: Config, max_age_h: float = 24.0) -> None:
-    """Cheap gate for pipeline commands: trust a recent ok-stamp, else run a fixing doctor."""
+    """Cheap gate for pipeline commands: trust a recent ok-stamp, else run the local-only doctor.
+    It never downloads, installs or opens a socket (C3): a missing piece is reported with its fix."""
     stamp = cfg.data_path / STAMP_NAME
     try:
         data = json.loads(stamp.read_text(encoding="utf-8"))
@@ -309,7 +371,7 @@ def ensure_ready(cfg: Config, max_age_h: float = 24.0) -> None:
             return
     except (OSError, ValueError, KeyError):
         pass
-    rep = run_doctor(cfg, fix=True)
+    rep = run_doctor(cfg, network=False)
     if not rep.ok:
         failed = "; ".join(f"{r.name} ({r.hint})" for r in rep.results if not r.ok)
         raise EnvError(f"environment not ready: {failed}")

@@ -1,0 +1,21 @@
+{
+  "caps": {
+    "max_leads": 200,
+    "max_sites": 300,
+    "max_tiles": 60
+  },
+  "outreach": {
+    "armed": false,
+    "bounce_rate_pause": 0.03,
+    "complaint_rate_pause": 0.001,
+    "require_email_confirmation": false,
+    "transport": "file"
+  },
+  "politeness": {
+    "delay_s": 2.0,
+    "user_agent": "LeadForgeBot/0.1 (internal lead research)"
+  },
+  "throttle": {
+    "jitter": 0.3
+  }
+}

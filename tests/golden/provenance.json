@@ -1,0 +1,62 @@
+{
+  "EnrichmentObservation": [
+    "business_id",
+    "confidence",
+    "cost",
+    "evidence",
+    "field",
+    "fresh_until",
+    "jurisdiction",
+    "observed_at",
+    "person_id",
+    "person_name",
+    "provider",
+    "recheck_at",
+    "source",
+    "source_url",
+    "value",
+    "verification_state",
+    "verified_at"
+  ],
+  "Evidence": [
+    "business_id",
+    "fact",
+    "observed_at",
+    "ref_id",
+    "ref_table",
+    "snippet",
+    "url"
+  ],
+  "tables": {
+    "enrichment_observations": [
+      "id",
+      "business_id",
+      "field",
+      "value_json",
+      "source",
+      "source_url",
+      "evidence",
+      "confidence",
+      "observed_at",
+      "verified_at",
+      "verification_state",
+      "provider",
+      "cost",
+      "jurisdiction",
+      "person_id",
+      "person_name",
+      "fresh_until",
+      "recheck_at"
+    ],
+    "evidence": [
+      "id",
+      "business_id",
+      "ref_table",
+      "ref_id",
+      "fact",
+      "url",
+      "snippet",
+      "observed_at"
+    ]
+  }
+}

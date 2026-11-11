@@ -110,10 +110,16 @@ def main() -> int:
 
     if not args.skill_only and not args.check:
         print("\ninstalling the leadforge CLI (editable)...")
-        r = subprocess.run([sys.executable, "-m", "pip", "install", "-e", str(REPO)],
+        # C3: dependencies come from the hashed lock, as in the plugin launcher; the package adds nothing
+        pip = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check"]
+        r = subprocess.run([*pip, "--require-hashes", "-r", str(REPO / "requirements.lock")],
                            encoding="utf-8", errors="replace")
+        if r.returncode == 0:
+            r = subprocess.run([*pip, "--no-deps", "--no-build-isolation", "-e", str(REPO)],
+                               encoding="utf-8", errors="replace")
         if r.returncode != 0:
-            print("! pip install failed — install manually: pip install -e .")
+            print("! pip install failed — install manually: pip install --require-hashes -r requirements.lock"
+                  " && pip install --no-deps --no-build-isolation -e .")
         else:
             print("ok. next: leadforge doctor --fix --full")
 
