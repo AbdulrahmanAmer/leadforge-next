@@ -623,13 +623,31 @@ def suppress(ctx: typer.Context, action: str = typer.Argument(..., help="add|lis
 
 
 _SECRET_KEY_RE = re.compile(r"(key|token|secret|password|passwd|pass)$", re.IGNORECASE)
+_SECRET_WORD_RE = re.compile(r"key|token|secret|pass|://", re.IGNORECASE)
+_URL_USERINFO_RE = re.compile(r"(?<=://)[^/@\s]+@")
+
+
+def _redacted(name: str, value):
+    """`value` with every secret inside it hidden: a section is walked key by key, and the user:password
+    part of an address (a proxy) is cut."""
+    if isinstance(value, dict):
+        return {k: _redacted(str(k), v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redacted(name, v) for v in value]
+    if _SECRET_KEY_RE.search(name) and value not in (None, "", {}):
+        return f"<hidden, {len(str(value))} chars>"
+    if isinstance(value, str):
+        return _URL_USERINFO_RE.sub("<hidden>@", value)
+    return value
 
 
 def _shown(key: str, value) -> str:
-    """C2 (slice L2): a key, token or password is never printed; the operator sees only that it is set."""
-    if _SECRET_KEY_RE.search(key.split(".")[-1]) and value not in (None, "", {}):
+    """C2 (slice L2): a key, token or password is never printed; the operator sees only that it is set.
+    Also when the command names the section that holds it (`config get registry`)."""
+    name = key.split(".")[-1]
+    if _SECRET_KEY_RE.search(name) and value not in (None, "", {}):
         return f"<hidden, {len(str(value))} chars>"
-    return repr(value)
+    return repr(_redacted(name, value))
 
 
 @app.command("config")
@@ -648,7 +666,9 @@ def config_cmd(ctx: typer.Context,
         try:
             parsed = yaml.safe_load(value) if value else value
         except yaml.YAMLError as e:
-            emit_digest(False, "config", warnings=[f"value is not parseable YAML: {_shown(key, value[:60])}"], next_=None)
+            # the raw text may hold a key under a name this command cannot see yet: echo it only when plain
+            shown = f"<hidden, {len(value)} chars>" if _SECRET_WORD_RE.search(value) else _shown(key, value[:60])
+            emit_digest(False, "config", warnings=[f"value is not parseable YAML: {shown}"], next_=None)
             raise typer.Exit(2) from e
         node = data
         for p in parts[:-1]:
@@ -669,7 +689,7 @@ def config_cmd(ctx: typer.Context,
                 emit_digest(False, "config", warnings=[f"invalid value for {key}: {type(e).__name__}"], next_=None)
                 raise typer.Exit(2) from e
         path.write_text(merged, encoding="utf-8")
-        _say(ctx, f"{key} = {_shown(key, value)} written to {path}")
+        _say(ctx, f"{key} = {_shown(key, parsed if isinstance(parsed, (dict, list)) else value)} written to {path}")
         emit_digest(True, "config", counts={"set": 1}, next_=None)
     elif action == "get":
         node = data

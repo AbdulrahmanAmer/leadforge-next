@@ -33,3 +33,27 @@ def test_config_still_prints_ordinary_values(tmp_path, monkeypatch):
     res = CliRunner().invoke(app, ["config", "get", "agent.model"])
     assert res.exit_code == 0
     assert "hidden" not in _out(res)
+
+
+def test_config_never_prints_a_key_through_its_parent_or_a_proxy_address(tmp_path, monkeypatch):
+    """A key is also hidden when the command names the section that holds it, when a whole section is
+    set at once (also as unparseable YAML), and when it sits in a proxy address as user:password."""
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    proxy = f"http://user:{FAKE}@proxy.example:8080"
+    calls = [
+        ["config", "set", "registry.companies_house_key", FAKE],
+        ["config", "get", "registry"],
+        ["config", "set", "registry", "{opencorporates_token: " + FAKE + "}"],
+        ["config", "get", "registry"],
+        ["config", "set", "registry", "{opencorporates_token: " + FAKE],
+        ["config", "set", "discovery.proxies", f"['{proxy}']"],
+        ["config", "get", "discovery.proxies"],
+        ["config", "get", "discovery"],
+    ]
+    for args in calls:
+        res = runner.invoke(app, args)
+        assert FAKE not in _out(res), f"{' '.join(args[:3])} printed the key: {_out(res)}"
+    res = runner.invoke(app, ["config", "get", "registry"])
+    assert "opencorporates_token" in _out(res) and "hidden" in _out(res)
+    assert "proxy.example:8080" in _out(runner.invoke(app, ["config", "get", "discovery.proxies"]))
