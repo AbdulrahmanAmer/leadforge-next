@@ -2,11 +2,12 @@
 
 Checks the machine BEFORE any pipeline work and (with --fix) installs what is missing:
 - Python >= 3.11, core imports, writable data dirs, disk space
-- pinned gosom google-maps-scraper binary (auto-download per-OS release asset -> leadforge_data/bin/)
+- pinned gosom google-maps-scraper binary (--fix downloads the per-OS release asset -> leadforge_data/bin/
+  and keeps it only if its SHA-256 matches GOSOM_SHA256; a mismatching file is deleted, never run)
 - network + DNS reachability
 - optional extras present (reported, never required)
 
-A 24h ok-stamp keeps repeat checks cheap; pipeline commands call ensure_ready().
+A 24h ok-stamp keeps repeat checks cheap; pipeline commands call ensure_ready(), which never downloads (C3).
 """
 
 from __future__ import annotations

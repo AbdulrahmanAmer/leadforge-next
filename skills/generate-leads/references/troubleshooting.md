@@ -5,6 +5,8 @@ Match the digest warning/error → do the fix → retry ONCE → else report to 
 | Symptom | Fix |
 |---|---|
 | `leadforge: command not found` | `pip install -e <repo-root>`; if pip missing → `python -m pip install -e <repo-root>`; then retry. Windows PowerShell may need a new shell for PATH refresh — use `python -m leadforge ...` as the no-PATH fallback. |
+| run: `environment not ready: gosom-binary (leadforge doctor --fix)` | `run` never downloads anything itself. Run `leadforge doctor --fix --json` once, then retry the run. |
+| doctor: `did not match its pinned SHA-256: refused and deleted` | The scraper file was not the pinned release, so it was deleted unrun. Run `leadforge doctor --fix` once; if the fresh download is refused too, stop and report it: never place or run an unpinned binary. |
 | doctor: `binary download failed` | Network/proxy issue or GitHub rate limit. Retry once. Still failing → ask user to download the release asset named in the message into `leadforge_data/bin/` manually (URL is in the digest), then `leadforge doctor`. |
 | doctor: `python < 3.11` | Tell the user; do not attempt OS-level python installs without their say-so. |
 | discover: `tiles_degraded` high / captcha cooldown warnings | Normal under load. Re-run `leadforge run --resume` later; suggest lowering scope (fewer categories/areas) or adding proxies in `leadforge.yaml` (`discovery.proxies`) if the user has them. Never hammer retries. |
