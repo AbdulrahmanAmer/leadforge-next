@@ -630,10 +630,11 @@ def _gliner_model():
     if _GLINER_MODEL is None:
         with _NER_LOCK:
             if _GLINER_MODEL is None:
-                from gliner import GLiNER
-
-                from leadforge.enrich.ner_worker import MODEL_NAME, pinned_revision
-                _GLINER_MODEL = GLiNER.from_pretrained(MODEL_NAME, revision=pinned_revision(MODEL_NAME))
+                from leadforge.enrich.ner_worker import MODEL_NAME, offline_env, pinned_revision
+                with offline_env():  # local cache only (C3); doctor --fix --full fetches it
+                    from gliner import GLiNER
+                    _GLINER_MODEL = GLiNER.from_pretrained(MODEL_NAME, revision=pinned_revision(MODEL_NAME),
+                                                           local_files_only=True)
                 _apply_torch_threads()
     return _GLINER_MODEL
 

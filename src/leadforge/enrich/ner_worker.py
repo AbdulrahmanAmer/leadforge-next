@@ -24,6 +24,7 @@ Design
 
 from __future__ import annotations
 
+import contextlib
 import multiprocessing as mp
 import os
 import queue
@@ -31,15 +32,27 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from leadforge.util import LOG, pid_alive
 
 PARENT_WATCHDOG_POLL_S = 3.0  # how often the child checks its parent is still alive
 
 MODEL_NAME = "urchade/gliner_small-v2.1"
+# The model repo carries no tokenizer: its gliner_config.json names this backbone, which GLiNER loads
+# by name (no revision). `doctor --fix --full` fetches it at the pin below and points the cache's
+# refs/main at that commit, so the by-name lookup resolves offline to exactly the pinned files.
+BACKBONE_NAME = "microsoft/deberta-v3-small"
 # The model files are pinned by Hub revision (C3): a changed upload under the same name is never
-# loaded. Read from the Hub's model record 2026-11-11 (last modified 2024-04-10). Bump deliberately.
-MODEL_REVISIONS = {MODEL_NAME: "4e091416cf7c3481db542c2a3d26156916f3a47f"}
+# loaded. Read from the Hub's model records 2026-11-11 (model last modified 2024-04-10; tokenizer
+# repo last modified 2022-09-26). Bump deliberately.
+MODEL_REVISIONS = {MODEL_NAME: "4e091416cf7c3481db542c2a3d26156916f3a47f",
+                   BACKBONE_NAME: "a36c739020e01763fe789b4b85e2df55d6180012"}
+# the files a run needs from each repo; the tokenizer repo's own weights are not among them
+MODEL_FILES = {MODEL_NAME: ("gliner_config.json", "pytorch_model.bin"),
+               BACKBONE_NAME: ("config.json", "spm.model", "tokenizer_config.json")}
+OFFLINE_ENV = {"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}
+NER_FETCH_HINT = "leadforge doctor --fix --full"
 
 
 def pinned_revision(model_name: str) -> str:
@@ -48,6 +61,47 @@ def pinned_revision(model_name: str) -> str:
         return MODEL_REVISIONS[model_name]
     except KeyError:
         raise ValueError(f"model {model_name!r} has no pinned revision; refusing to load it") from None
+
+
+@contextlib.contextmanager
+def offline_env():
+    """The Hub's offline switches for the duration of a load (and for a child process started inside
+    it, which inherits them). Set before gliner/transformers/huggingface_hub are imported: they read
+    them once, at import."""
+    saved = {k: os.environ.get(k) for k in OFFLINE_ENV}
+    os.environ.update(OFFLINE_ENV)
+    try:
+        yield
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+def hub_cache_dir() -> Path:
+    """Where huggingface_hub keeps its cache, by its own precedence (read without importing it)."""
+    if os.environ.get("HF_HUB_CACHE") or os.environ.get("HUGGINGFACE_HUB_CACHE"):
+        return Path(os.environ.get("HF_HUB_CACHE") or os.environ["HUGGINGFACE_HUB_CACHE"]).expanduser()
+    home = os.environ.get("HF_HOME") or os.path.join(os.environ.get("XDG_CACHE_HOME", "~/.cache"), "huggingface")
+    return Path(home).expanduser() / "hub"
+
+
+def ner_cache_ready() -> bool:
+    """True when the pinned model and tokenizer files are in the local cache and the tokenizer's
+    by-name lookup (refs/main) points at its pin; `run` never fetches either (C3)."""
+    root = hub_cache_dir()
+    for name, files in MODEL_FILES.items():
+        repo = root / ("models--" + name.replace("/", "--"))
+        snap = repo / "snapshots" / pinned_revision(name)
+        if not all((snap / f).is_file() for f in files):
+            return False
+    ref = root / ("models--" + BACKBONE_NAME.replace("/", "--")) / "refs" / "main"
+    try:
+        return ref.read_text(encoding="utf-8").strip() == pinned_revision(BACKBONE_NAME)
+    except OSError:
+        return False
 
 
 def resolve_device(requested: str) -> str:
@@ -90,7 +144,11 @@ def _process_entry(target, req_q, resp_q, ready_q, device: str, model_name: str,
     GC'd): a daemon thread polls the parent pid every few seconds via leadforge.util.pid_alive and
     calls os._exit() the moment the parent is gone, so a dead owner can never leave this process
     (holding up to ~0.7 GB of GPU memory) running unbounded. daemon=True on the Process object is the
-    other half — belt and suspenders, since a hard kill of the parent bypasses both."""
+    other half — belt and suspenders, since a hard kill of the parent bypasses both.
+
+    The Hub's offline switches are set first, before the target imports any model library (C3); the
+    parent also starts this process inside offline_env(), so they are in force from its first line."""
+    os.environ.update(OFFLINE_ENV)
     _start_parent_watchdog(os.getppid())
     target(req_q, resp_q, ready_q, device, model_name, batch_size, batch_wait_ms)
 
@@ -104,7 +162,7 @@ def _worker_main(req_q, resp_q, ready_q, device: str, model_name: str,
     batch_predict = None
     try:
         from gliner import GLiNER
-        model = GLiNER.from_pretrained(model_name, revision=pinned_revision(model_name))
+        model = GLiNER.from_pretrained(model_name, revision=pinned_revision(model_name), local_files_only=True)
         try:
             model = model.to(device)
         except Exception:  # noqa: BLE001 — device move failed; keep going on whatever .to() left it on
@@ -213,7 +271,8 @@ class NerWorker:
             args=(self._target, self._req_q, self._resp_q, self._ready_q, self.device, self.model_name,
                   self.batch_size, self.batch_wait_ms),
             daemon=True, name="leadforge-ner-worker")
-        self._proc.start()
+        with offline_env():
+            self._proc.start()
         try:
             status, info = self._ready_q.get(timeout=timeout_s)
         except queue.Empty:

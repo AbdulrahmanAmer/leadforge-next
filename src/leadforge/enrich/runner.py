@@ -225,7 +225,11 @@ def _start_ner_worker(cfg: Config) -> None:
     _ner_worker_state["fallback_count"] = 0
     if not cfg.enrich.ner or not ner_available():
         return
-    from leadforge.enrich.ner_worker import NerWorker
+    from leadforge.enrich.ner_worker import NER_FETCH_HINT, NerWorker, ner_cache_ready
+    if not ner_cache_ready():  # C3: run never downloads the model or its tokenizer
+        LOG.warning("ner off for this run: the pinned NER model or its tokenizer is not in the local "
+                    "cache; fetch them with `%s`", NER_FETCH_HINT)
+        return
     try:
         worker = NerWorker(device=cfg.enrich.ner_device,
                            batch_size=cfg.enrich.ner_batch,

@@ -206,6 +206,32 @@ def install_quality_extras(rep_add) -> None:
         rep_add(CheckResult(f"extra-{extra}", ok, fixed=ok and not already,
                             msg="installed" if ok else "install failed",
                             hint="" if ok else fix_hint))
+        if ok and extra == "ner":
+            try:
+                fetch_ner_model()
+                rep_add(CheckResult("ner-model", True, msg="pinned model and tokenizer in the local cache"))
+            except Exception as e:  # noqa: BLE001 — reported; run keeps NER off until it is fetched
+                rep_add(CheckResult("ner-model", False, msg=f"fetch failed: {type(e).__name__}",
+                                    hint="re-run leadforge doctor --fix --full"))
+
+
+def fetch_ner_model() -> None:
+    """The ONLY place the NER model and its tokenizer are downloaded (C3), each at its pinned commit.
+    The tokenizer repo's refs/main is pointed at its pin: GLiNER asks for it by name, and offline that
+    name resolves through refs/main to the pinned snapshot."""
+    import importlib
+
+    from leadforge.enrich.ner_worker import BACKBONE_NAME, MODEL_FILES, pinned_revision
+    importlib.invalidate_caches()  # huggingface_hub may have been installed seconds ago
+    from huggingface_hub import snapshot_download
+
+    for name, files in MODEL_FILES.items():
+        rev = pinned_revision(name)
+        snap = Path(snapshot_download(name, revision=rev, allow_patterns=list(files)))
+        if name == BACKBONE_NAME:
+            ref = snap.parent.parent / "refs" / "main"
+            ref.parent.mkdir(parents=True, exist_ok=True)
+            ref.write_text(rev, encoding="utf-8")
 
 
 def run_doctor(cfg: Config, fix: bool = False, strict: bool = False, full: bool = False,
