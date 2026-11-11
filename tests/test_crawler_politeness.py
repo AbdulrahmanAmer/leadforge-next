@@ -355,15 +355,40 @@ def test_workers_12_still_serializes_per_host_but_overlaps_across_hosts(tmp_path
     """Two real local servers stand in for two different hosts. A 'chain' of 3 businesses shares
     host A's domain; one business is on host B. Run all 4 through the SAME concurrency shape
     _crawl_stage uses (ThreadPoolExecutor(workers) + a shared HostThrottle) with workers=12:
-    consecutive host-A request start times must stay >= delay_s apart (jitter is -30%, so 65% of
-    delay_s is a safe floor); a host-B request must land inside host A's own span, proving the two
-    hosts actually ran concurrently rather than one waiting for the other to finish entirely."""
+    consecutive host-A request start times must stay >= delay_s minus the 30% jitter apart; a host-B
+    request must land inside host A's own span, proving the two hosts actually ran concurrently rather
+    than one waiting for the other to finish entirely.
+
+    Start times are the throttle's own grant times, read from the clock the throttle uses. Arrival
+    times at the server also carry each request's connect and thread-scheduling time, which on a busy
+    Windows runner varied by up to 0.1 s and made the arrival gap shorter than the start gap (L2
+    finding). The server still counts arrivals: every request host A saw must have passed the throttle."""
     import threading as _threading
+    import types
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    from leadforge import util
     from leadforge.enrich.crawler import SiteCrawler
     from leadforge.enrich.runner import _process_one
     from leadforge.util import HostThrottle
+
+    # The throttle's last clock reading on a thread is its grant time when wait() returns.
+    last_read = _threading.local()
+
+    def _perf_counter() -> float:
+        last_read.value = time.perf_counter()
+        return last_read.value
+
+    monkeypatch.setattr(util, "time", types.SimpleNamespace(
+        perf_counter=_perf_counter, monotonic=time.monotonic, sleep=time.sleep, time=time.time))
+    grants: dict[str, list[float]] = {}
+    grants_lock = _threading.Lock()
+
+    class _RecordingThrottle(HostThrottle):
+        def wait(self, host: str) -> None:
+            super().wait(host)
+            with grants_lock:
+                grants.setdefault(host, []).append(last_read.value)
 
     class _SlowHandler(http.server.BaseHTTPRequestHandler):
         times: list[float] = []
@@ -406,7 +431,7 @@ def test_workers_12_still_serializes_per_host_but_overlaps_across_hosts(tmp_path
         cfg = load_config(tmp_path)
         cfg.politeness.workers = 12
         cfg.politeness.delay_s = 0.4
-        throttle = HostThrottle(cfg.politeness.delay_s)
+        throttle = _RecordingThrottle(cfg.politeness.delay_s)
         host_a = f"127.0.0.1:{srv_a.server_address[1]}"
         host_b = f"127.0.0.1:{srv_b.server_address[1]}"
         businesses = (
@@ -426,11 +451,44 @@ def test_workers_12_still_serializes_per_host_but_overlaps_across_hosts(tmp_path
 
     a_times = sorted(HA.times)
     b_times = sorted(HB.times)
+    a_starts = sorted(grants.get(host_a, []))
     assert len(a_times) >= 2, "expected >=2 requests to host A (robots.txt + home, at least once)"
-    gaps = [t2 - t1 for t1, t2 in zip(a_times, a_times[1:], strict=False)]
-    assert all(g >= cfg.politeness.delay_s * 0.65 for g in gaps), f"host A gaps too small: {gaps}"
+    assert len(a_starts) == len(a_times), (
+        f"host A saw {len(a_times)} requests but the throttle released {len(a_starts)}")
+    floor = cfg.politeness.delay_s * (1 - throttle.jitter) - 1e-9
+    gaps = [round(t2 - t1, 4) for t1, t2 in zip(a_starts, a_starts[1:], strict=False)]
+    assert all(g >= floor for g in gaps), f"host A start gaps under {floor:.3f} s: {gaps}"
     assert b_times, "expected host B to be reached at all"
     assert b_times[0] <= a_times[-1], (
         "host B's first request should land within host A's own span if the two hosts ran "
         f"concurrently (host A span ends {a_times[-1]!r}, host B started {b_times[0]!r})"
     )
+
+def test_throttle_never_releases_a_request_before_its_delay(monkeypatch):
+    """L2 finding: on Windows with Python <= 3.12 `time.monotonic()` advances in 15.625 ms ticks. A
+    throttle that reads it can release the next request to a host up to one tick BEFORE the delay it
+    computed (CI saw a 0.25 s gap against a 0.28 s floor). A virtual clock replays that: `monotonic`
+    ticks like Windows, the exact time is what the site sees. The gap must be the full delay."""
+    import types
+
+    from leadforge import util
+
+    tick = 0.015625
+    now = [0.015]  # 15 ms into a tick: the coarse clock still reads 0.0
+
+    def _sleep(s: float) -> None:
+        now[0] += s
+
+    fake = types.SimpleNamespace(
+        monotonic=lambda: (now[0] // tick) * tick,  # what GetTickCount64 returns
+        perf_counter=lambda: now[0],                 # exact
+        sleep=_sleep,
+    )
+    monkeypatch.setattr(util, "time", fake)
+    throttle = util.HostThrottle(0.2, jitter=0.0)
+    throttle.wait("site.example")
+    first = now[0]
+    now[0] = 0.2032  # the next caller arrives just after the tick that follows 0.2 on the coarse clock
+    throttle.wait("site.example")
+    gap = round(now[0] - first, 4)
+    assert gap >= 0.2, f"the second request left {gap} s after the first, before the 0.2 s delay"

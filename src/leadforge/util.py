@@ -88,7 +88,9 @@ class HostThrottle:
     def wait(self, host: str) -> None:
         while True:
             with self._lock:
-                now = time.monotonic()
+                # perf_counter, not monotonic: on Windows with Python <= 3.12 monotonic moves in 15.625 ms
+                # ticks, and a stale reading lets a waiting request go up to one tick before its delay.
+                now = time.perf_counter()
                 ready = self._next.get(host, 0.0)
                 if now >= ready:
                     delay = self.delay_s * (1 + random.uniform(-self.jitter, self.jitter))
