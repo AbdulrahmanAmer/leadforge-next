@@ -1,4 +1,4 @@
-"""Account-intel profiling (WE SCORE spec, v0.1.1): tech stack, departments, employee estimate,
+"""Account-intel profiling (account_fit spec, v0.1.1): tech stack, departments, employee estimate,
 industry buying triggers — all tri-state facts where UNKNOWN is never NO.
 
 Every fact carries {"value", "state", "source"} with state in CONFIRMED | ESTIMATED | INFERRED | UNKNOWN.

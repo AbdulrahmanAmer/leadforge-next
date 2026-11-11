@@ -108,7 +108,7 @@ What to expect and set:
   one is ready (`dm export` → `dm apply`) — the pipeline waits at the DM gate, nothing is lost.
 - If runs get rate-limited (degraded queries pile up), pause and resume hours later; never work around it.
 
-## Account-fit profile (WE SCORE-style prospecting)
+## Account-fit profile (prospecting)
 
 For "prospecting engine" briefs (fixed 0-100 account rubric, A-D grades, contactability + data-confidence
 columns, MANUAL_REVIEW/READY_FOR_OUTREACH statuses), set `scoring: { profile: account_fit }` in answers.yaml.
@@ -123,8 +123,7 @@ only CONFIRMED negatives do (e.g. a stated headcount under 20).
 ## Company mode (Companies House, not Google Maps) — docs/09 Wave 2 H
 
 Set `target.mode: company` when the brief is "find UK-registered companies matching these SIC codes",
-not "find local businesses near a place" — most naturally GainLev's own client-acquisition pipeline,
-but usable for any UK B2B prospecting run. Full worked example: `config/icp.company.example.yaml`.
+not "find local businesses near a place" — usable for any UK B2B prospecting run. Full worked example: `config/icp.company.example.yaml`.
 
 What's different from the default `local_business` mode:
 
@@ -151,6 +150,3 @@ What's different from the default `local_business` mode:
   requiring the registered postcode, the legal name, or the company number to appear on the page. No
   search engines, no paid lookups (ADR-012) — every candidate is a guess made from public registry
   data and checked directly, never assumed.
-- **`GAINLEV_ICP_SIC`** (`leadforge/company.py`) is the curated "everyone who sells B2B" list this
-  example ICP uses — agencies, SaaS, consultancies, recruiters, wholesalers, estate/letting agents,
-  accountants, solicitors — deliberately excluding `82200` (call centres, owner decision 7).

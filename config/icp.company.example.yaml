@@ -14,7 +14,6 @@ target:
   sic_codes:
     # everyone who sells B2B: agencies, SaaS, consultancies, recruiters, wholesalers, estate/letting
     # agents, accountants, solicitors — EXCLUDING 82200 (call centres, owner decision 7).
-    # See leadforge.company.GAINLEV_ICP_SIC for the canonical list this mirrors.
     - "62012"   # business/domestic software development
     - "62020"   # IT consultancy
     - "62090"   # other IT service activities

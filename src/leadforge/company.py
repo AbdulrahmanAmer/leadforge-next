@@ -1,4 +1,4 @@
-"""Company mode (Unit H, docs/09 Wave 2 H): GainLev's own client pipeline on Companies House.
+"""Company mode (Unit H, docs/09 Wave 2 H): an operator's own client pipeline on Companies House.
 
 Two independent things live here:
   1. build_company_plan() — turns an ICP with target.mode=="company" into (sic-code-shard x area)
@@ -66,22 +66,6 @@ SIC_DESCRIPTIONS: dict[str, str] = {
 
 def sic_description(code: str) -> str:
     return SIC_DESCRIPTIONS.get(code, f"SIC {code}")
-
-
-# GainLev's own ICP: everyone who sells B2B — agencies, SaaS, consultancies, recruiters, wholesalers,
-# estate/letting agents, accountants, solicitors — EXCLUDING 82200 (owner decision 7: no call centres).
-GAINLEV_ICP_SIC: list[str] = [
-    "62012", "62020", "62090", "63110",   # software / IT consultancy / hosting
-    "70229", "74909",                     # management & other consultancy
-    "73110", "73120",                     # advertising agencies
-    "74100",                              # design
-    "78109", "78200",                     # recruitment
-    "68310", "68320",                     # estate & letting agents
-    "69201",                              # accountants
-    "69102",                              # solicitors
-    "71111",                              # architects
-    "82110", "82990",                     # office/business support (excl. 82200)
-]
 
 
 # ============================================================================ planning

@@ -143,7 +143,7 @@ leadforge benchmark dm-fields --in called.xlsx       # preview person-owned DM p
 leadforge benchmark dm-fields --in called.xlsx --apply
 ```
 
-The benchmark importer accepts CSV/TSV and calling workbooks. It understands WESCORE-style `Dialing List`, `List #2`,
+The benchmark importer accepts CSV/TSV and calling workbooks. It understands calling-workbook-style `Dialing List`, `List #2`,
 `List #3`, `Call Log`, and callback tabs, maps human dispositions to canonical outcomes, preserves sheet provenance,
 and uses stable business ID, domain, phone, or existing contact evidence for conservative matching. It is preview-only
 unless `--apply` is supplied. See [`docs/10-enrichment-phase0-baseline.md`](docs/10-enrichment-phase0-baseline.md) for
@@ -210,7 +210,7 @@ turns bounces, complaints, unsubscribes and replies into suppression rows and st
 add` records what happened on the phone so the next scoring pass learns from real outcomes. Full protocol:
 `skills/generate-leads/references/outreach.md` and `drafting.md`.
 
-**Company mode** (GainLev's own client pipeline): `target.mode: company` with SIC codes discovers companies
+**Company mode** (an operator's own client pipeline): `target.mode: company` with SIC codes discovers companies
 from Companies House by activity and location, resolves their websites without paid lookups, and scores them
 with a company rubric (incorporation age, new-director trigger, hiring). Example ICP:
 `config/icp.company.example.yaml`.

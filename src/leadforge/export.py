@@ -38,7 +38,7 @@ COLUMNS = [
     "Rating", "Reviews", "Likely Need (Hook)", "Why This Score", "Maps", "Source", "Verified On", "Stale?",
     "Opening Hours", "Company No", "Incorporated", "Company Status", "SIC Codes", "Call Readiness",
 ]
-# account_fit profile (WE SCORE spec) appends the account-intel columns
+# account_fit profile appends the account-intel columns
 ACCOUNT_COLUMNS = COLUMNS + [
     "Employees", "Employee Range", "Revenue", "Departments", "Microsoft 365", "CRM", "ERP",
     "Other Systems", "Trigger", "Trigger Strength", "LinkedIn", "Contactability", "Data Confidence",
@@ -275,7 +275,7 @@ def _row_for(conn: sqlite3.Connection, s, staleness_days: int = 90, *,
                              else "UNVERIFIED PHONE - confirm number" if row["Phone"]
                              else "NO PHONE - research first")
     meta = {f["factor"]: f for f in factors if f.get("group") == "meta"}
-    if profile == "account_fit":  # WE SCORE profile -> append the account-intel columns
+    if profile == "account_fit":  # account_fit profile -> append the account-intel columns
         enrich = json.loads(s["enrich_json"]) if s["enrich_json"] else {}
         prof = enrich.get("profile") or {}
         tech = prof.get("tech") or {}

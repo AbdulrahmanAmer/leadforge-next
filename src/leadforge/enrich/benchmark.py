@@ -88,7 +88,7 @@ def _header_key(value: Any) -> str:
 
 
 def _workbook_rows(path: Path) -> list[dict[str, str]]:
-    """Read the known WESCORE calling-workbook layouts without editing them."""
+    """Read the known calling-workbook layouts without editing them."""
     try:
         from openpyxl import load_workbook
     except ImportError as exc:  # pragma: no cover - dependency is in the core wheel
