@@ -179,7 +179,13 @@ class SiteCrawler:
             follow_redirects=True,
             timeout=cfg.crawl.timeout_s,
             headers={"User-Agent": cfg.politeness.user_agent, "Accept-Language": "en;q=0.9,*;q=0.5"},
+            # every request this client sends waits its turn for its site, a redirect hop included:
+            # with the wait only before client.get, the hops it followed went out with no pause
+            event_hooks={"request": [self._pace]},
         )
+
+    def _pace(self, request: httpx.Request) -> None:
+        self.throttle.wait(urlsplit(str(request.url)).netloc)
 
     def close(self) -> None:
         self.client.close()
@@ -215,8 +221,7 @@ class SiteCrawler:
             self._robots[host] = rp
             return rp
         try:
-            self.throttle.wait(host)
-            resp = self.client.get(urljoin(base, "/robots.txt"))
+            resp = self.client.get(urljoin(base, "/robots.txt"))  # paced by _pace
             if resp.status_code == 200:
                 rp.parse(resp.text.splitlines())
             elif resp.status_code >= 500:
@@ -253,8 +258,7 @@ class SiteCrawler:
             LOG.info("robots disallow: %s", url)
             self.last_failure = "robots"
             return None
-        self.throttle.wait(host)
-        try:
+        try:  # paced by _pace, each redirect hop too
             resp = self.client.get(url) if timeout is None else self.client.get(url, timeout=timeout)
             if resp.status_code >= 400:
                 self.last_failure = f"status:{resp.status_code}"

@@ -492,3 +492,41 @@ def test_throttle_never_releases_a_request_before_its_delay(monkeypatch):
     throttle.wait("site.example")
     gap = round(now[0] - first, 4)
     assert gap >= 0.2, f"the second request left {gap} s after the first, before the 0.2 s delay"
+
+
+def test_every_redirect_hop_waits_its_turn(tmp_path, monkeypatch, server):
+    """A redirect is one more request to a site. Each hop the client follows must pass the per-site
+    pause like any page: the site may see no request the throttle did not release."""
+    from leadforge.util import HostThrottle
+
+    base, handler = server
+
+    def do_get(self):  # noqa: N802 — http.server API
+        if self.path.startswith("/old"):
+            type(self).requests.append(self.path)
+            self.send_response(302)
+            self.send_header("Location", "/old2" if self.path == "/old" else "/new")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        _Handler.do_GET(self)
+
+    monkeypatch.setattr(handler, "do_GET", do_get)
+    released: list[str] = []
+
+    class _Counting(HostThrottle):
+        def wait(self, host: str) -> None:
+            super().wait(host)
+            released.append(host)
+
+    monkeypatch.chdir(tmp_path)
+    cfg = load_config(tmp_path)
+    crawler = SiteCrawler(cfg, throttle=_Counting(0.0))
+    try:
+        resp = crawler._get(f"{base}/old")
+    finally:
+        crawler.close()
+    assert resp is not None and resp.url.path == "/new"
+    assert handler.requests == ["/robots.txt", "/old", "/old2", "/new"]
+    assert len(released) == len(handler.requests), (
+        f"the site saw {len(handler.requests)} requests but the throttle released {len(released)}")
