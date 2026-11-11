@@ -7,6 +7,7 @@ Every command ends with exactly one LF_DIGEST line (docs/06). Human output stays
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -621,6 +622,16 @@ def suppress(ctx: typer.Context, action: str = typer.Argument(..., help="add|lis
         emit_digest(True, "suppress", counts={"suppressed": len(rows)})
 
 
+_SECRET_KEY_RE = re.compile(r"(key|token|secret|password|passwd|pass)$", re.IGNORECASE)
+
+
+def _shown(key: str, value) -> str:
+    """C2 (slice L2): a key, token or password is never printed; the operator sees only that it is set."""
+    if _SECRET_KEY_RE.search(key.split(".")[-1]) and value not in (None, "", {}):
+        return f"<hidden, {len(str(value))} chars>"
+    return repr(value)
+
+
 @app.command("config")
 def config_cmd(ctx: typer.Context,
                action: str = typer.Argument(..., help="set|get"),
@@ -637,7 +648,7 @@ def config_cmd(ctx: typer.Context,
         try:
             parsed = yaml.safe_load(value) if value else value
         except yaml.YAMLError as e:
-            emit_digest(False, "config", warnings=[f"value is not parseable YAML: {value[:60]}"], next_=None)
+            emit_digest(False, "config", warnings=[f"value is not parseable YAML: {_shown(key, value[:60])}"], next_=None)
             raise typer.Exit(2) from e
         node = data
         for p in parts[:-1]:
@@ -658,13 +669,13 @@ def config_cmd(ctx: typer.Context,
                 emit_digest(False, "config", warnings=[f"invalid value for {key}: {type(e).__name__}"], next_=None)
                 raise typer.Exit(2) from e
         path.write_text(merged, encoding="utf-8")
-        _say(ctx, f"{key} = {value!r} written to {path}")
+        _say(ctx, f"{key} = {_shown(key, value)} written to {path}")
         emit_digest(True, "config", counts={"set": 1}, next_=None)
     elif action == "get":
         node = data
         for p in parts:
             node = node.get(p, {}) if isinstance(node, dict) else {}
-        _say(ctx, f"{key} = {node!r}")
+        _say(ctx, f"{key} = {_shown(key, node)}")
         emit_digest(True, "config", counts={}, warnings=[], next_=None)
     else:
         emit_digest(False, "config", warnings=[f"unknown action '{action}' (set|get)"], next_=None)
