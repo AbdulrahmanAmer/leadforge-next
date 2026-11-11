@@ -427,3 +427,11 @@ Matches the Build proof (76 files, same scoring hash).
 - CI on GitHub: read for the final commit and written in the run report (`D:\homelab-work\runs\l3c-review.REPORT.md`), not here.
 
 Verdict: FIX 1143640
+
+### Merged as 0.7.1
+2026-11-11, run l3c-finish: version 0.7.1 in the six places that carry it, CHANGELOG entry added, `origin/master` (L2, 0.7.0) merged in
+without conflict, pull request 3 taken out of draft. The merge itself and its CI result are in `runs/l3c-finish.REPORT.md`.
+The FIX verdict above was closed by `1143640`.
+
+### For the next slice
+`docs/slices/L4-the-window-on-paper.md` carries the items below as its first block; `check.mjs` does not read slice files, so the shape is free.
