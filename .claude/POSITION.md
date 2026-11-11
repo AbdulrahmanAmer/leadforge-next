@@ -45,3 +45,9 @@ with bounded NER, then re-labels/scores/drafts/exports); restore draft.auto_max 
 - Check: `node check.mjs` -> `CHECK PASS sha=4bb9e30 tree=clean` (833 passed, 6 skipped). CI run 43035660304: all 11 jobs pass.
 - Verdict FIX 4bb9e30: one C3 blocker left, the `[ner]` model (and its unpinned deberta tokenizer) still downloads inside `run`.
 - L2 is a guardrail slice: a second look before merge. Do not merge without it.
+
+## POSITION — 2026-11-11, slice L2 (0.7.0): part C (NER download) merged, verdict PASS, PR 2 NOT merged
+
+- slice/L2 = the above + slice/L2-ner (part C, merged 139ddef). Proof: docs/slices/L2-pins-and-safety-floor.md (Review of part C).
+- Check: `CHECK PASS sha=7d5a2b1 tree=clean` (837 passed, 6 skipped). CI run 43044120999 on 7d5a2b1: all 11 jobs pass.
+- Next: one more reader decides on PR 2. Do not merge master without it.

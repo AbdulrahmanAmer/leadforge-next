@@ -10,7 +10,9 @@ stay off the screen. A workspace made by 0.6.15 opens unchanged.
   --permission-mode default --restricted`). If it fails, the built-in rules label and draft. An `agent.command` you
   set yourself is used exactly as written.
 - `run` no longer downloads the scraper binary or installs packages. If the binary is missing it stops and says
-  `leadforge doctor --fix`. (With the optional `[ner]` extra, the NER model is still fetched on first use.)
+  `leadforge doctor --fix`. With the optional `[ner]` extra it loads the NER model and its tokenizer from the local
+  cache only; if they are missing, NER is off for that run with one warning, and `leadforge doctor --fix --full`
+  fetches both at pinned commits.
 - The scraper binary is pinned by version and SHA-256; a file with another hash is deleted, never run. The
   optional NER model is loaded at a pinned revision.
 - The plugin launcher and `python install.py` install from `requirements.lock` with hashes; the launcher no longer
