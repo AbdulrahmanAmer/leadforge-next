@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.7.0] — 2026-11-11
+
+Pins and a safety floor. What LeadForge downloads is checked, the model call it makes has no tools, and keys
+stay off the screen. A workspace made by 0.6.15 opens unchanged.
+
+### Changed
+- The autopilot's own `claude -p` call runs with no tools (`--tools "" --disallowedTools "mcp__*"
+  --permission-mode default --restricted`). If it fails, the built-in rules label and draft. An `agent.command` you
+  set yourself is used exactly as written.
+- `run` never downloads or installs anything. If the scraper binary is missing it stops and says
+  `leadforge doctor --fix`.
+- The scraper binary is pinned by version and SHA-256; a file with another hash is deleted, never run. The
+  optional NER model is loaded at a pinned revision.
+- The plugin launcher installs from `requirements.lock` with hashes and no longer upgrades pip.
+
+### Fixed
+- `config set` and `config get` never print a key, token or password, also when the command names the section
+  that holds it, or a proxy address with a password.
+- The per-site pause holds: it reads a fine clock on Windows, every redirect hop waits its turn, and a redirect
+  into a path robots.txt disallows is not followed.
+
+### Added
+- Golden tests for the contracts users and agents rely on; the saved test pages are made up.
+
 ## [0.6.15] — 2026-11-11
 
 Installs again. This is the first update plugin users receive since 0.5.0: every 0.6 change reaches them now.
