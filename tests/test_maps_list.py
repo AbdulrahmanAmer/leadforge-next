@@ -239,7 +239,7 @@ def test_available_never_launches_browser(tmp_path, monkeypatch):
     def _boom(*a, **k):
         raise AssertionError("available() must never touch sync_playwright")
 
-    import playwright.sync_api as pw_sync
+    pw_sync = pytest.importorskip("playwright.sync_api")  # optional [browser] extra; CI's [dev] lacks it
     monkeypatch.setattr(pw_sync, "sync_playwright", _boom)
     ok, reason = MapsListProvider(cfg).available()
     assert isinstance(ok, bool) and isinstance(reason, str)
