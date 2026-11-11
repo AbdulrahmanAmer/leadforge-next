@@ -190,6 +190,10 @@ Architecture, data model, pipeline behavior and every decision are documented in
   exports on its own by default, through the operator's own Claude Code in headless print mode — no API key, no
   paid dependency, disable with `agent.command: []` or `--no-autopilot`. It stops at a drafted, unsent sheet;
   outreach still requires `outreach approve` and `--live` exactly as before.
+- **The model gets no tools (C1):** the prompt carries text taken from websites, so the call LeadForge builds itself
+  runs with `--tools "" --disallowedTools "mcp__*" --permission-mode default --restricted`; if that call fails, the
+  built-in rules label and draft instead, and it is never repeated with tools. An `agent.command` you set yourself
+  is used exactly as written: what it lets the model do is your responsibility.
 
 See [`docs/07-compliance.md`](docs/07-compliance.md) for the practical GDPR/PECR/CAN-SPAM posture. Not legal advice.
 

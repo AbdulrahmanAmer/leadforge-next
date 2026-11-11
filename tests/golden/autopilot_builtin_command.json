@@ -9,7 +9,14 @@
     "--no-session-persistence",
     "--strict-mcp-config",
     "--settings",
-    "{\"disableAllHooks\": true}"
+    "{\"disableAllHooks\": true}",
+    "--tools",
+    "",
+    "--disallowedTools",
+    "mcp__*",
+    "--permission-mode",
+    "default",
+    "--restricted"
   ],
   "isolate": true
 }

@@ -102,7 +102,7 @@ def test_resolve_command_auto_detects_claude_on_path(cfg, monkeypatch):
     cmd = agent_runner.resolve_command(cfg)
     assert cmd == [r"C:\bin\claude.exe", "-p", "--model", "sonnet", "--output-format", "text",
                    "--no-session-persistence", "--strict-mcp-config", "--settings",
-                   json.dumps({"disableAllHooks": True})]
+                   json.dumps({"disableAllHooks": True}), *agent_runner.NO_TOOLS_ARGS]
     assert agent_runner.is_available(cfg) is True
 
 
@@ -112,7 +112,7 @@ def test_resolve_command_isolate_false_omits_isolation_flags(cfg, monkeypatch):
                         lambda name: r"C:\bin\claude.exe" if name == "claude" else None)
     cmd = agent_runner.resolve_command(cfg)
     assert cmd == [r"C:\bin\claude.exe", "-p", "--model", "sonnet", "--output-format", "text",
-                   "--no-session-persistence"]
+                   "--no-session-persistence", *agent_runner.NO_TOOLS_ARGS]  # C1: tools stay off
     assert "--strict-mcp-config" not in cmd
 
 
