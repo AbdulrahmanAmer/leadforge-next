@@ -241,7 +241,7 @@ campaign: auto-repair-houston-webdesign
 offer:
   what: "Website redesign + booking system for auto repair shops"
   value_prop: "More booked jobs, fewer missed calls"
-  sender: "Striker's agency"
+  sender: "Example Agency"
 target:
   categories: ["auto repair shop", "car repair", "transmission shop"]
   geography: { areas: ["Houston, TX"], grid: auto }   # or bbox: [minLng,minLat,maxLng,maxLat]
@@ -296,4 +296,4 @@ Departments, Microsoft 365, CRM, ERP, Other Systems, Trigger, Trigger Strength, 
 Data Confidence, Status.
 
 **Summary sheet:** run config, counts per stage, tier histogram, degradations/warnings, top hooks ranked, compliance reminder for the
-chosen region profile. **About sheet:** column dictionary + tier semantics (so the sheet explains itself to the partner).
+chosen region profile. **About sheet:** column dictionary + tier semantics (so the sheet explains itself to its reader).

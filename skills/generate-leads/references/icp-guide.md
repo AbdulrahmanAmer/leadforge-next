@@ -27,7 +27,7 @@ campaign: short-slug-you-invent          # kebab, unique per campaign
 offer:
   what: "Website redesign + booking system for auto repair shops"
   value_prop: "More booked jobs, fewer missed calls"
-  sender: "Striker's agency"
+  sender: "Example Agency"
 target:
   categories: ["auto repair shop", "transmission shop"]   # 1-5, Maps-style phrasing
   geography:

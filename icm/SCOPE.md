@@ -5,7 +5,7 @@ and exactly where the edges are. Read it once; it removes almost all judgment ca
 
 ## What LeadForge is
 
-A **B2B sales-prospecting research tool for internal use by its two owners.** It is the same category of
+A **B2B sales-prospecting research tool for internal use by its owner.** It is the same category of
 software as Apollo, Hunter, Clay, or any "local business lead list" tool: it reads **publicly available
 business information** and organizes it into a spreadsheet a salesperson can work from.
 
@@ -50,7 +50,7 @@ rather than either refusing silently or building it.
 
 ## Hard boundaries — never add these, whatever a task seems to ask
 
-These are out of scope by explicit decision of the owners. Nothing in the build plan requires any of them,
+These are out of scope by explicit decision of the owner. Nothing in the build plan requires any of them,
 and no gate can be passed by adding one. If you believe a unit needs one, you have misread the unit — stop
 and say so.
 

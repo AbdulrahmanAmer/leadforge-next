@@ -4,7 +4,7 @@ campaign: auto-repair-houston-webdesign
 offer:
   what: "Website redesign + booking system for auto repair shops"
   value_prop: "More booked jobs, fewer missed calls"
-  sender: "Striker's agency"
+  sender: "Example Agency"
 target:
   categories: ["auto repair shop", "car repair", "transmission shop"]
   # country is REQUIRED (ISO2): a bare city name is ambiguous worldwide and would scrape the wrong place
