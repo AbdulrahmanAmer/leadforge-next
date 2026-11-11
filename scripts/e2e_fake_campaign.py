@@ -36,6 +36,7 @@ GOLDEN = FIX / "expected.json"
 WORLD = json.loads((FIX / "world.json").read_text(encoding="utf-8"))
 HOSTS = [s["host"] for s in WORLD["sites"]]
 SECRETISH = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH|ANTHROPIC|OPENAI|GITHUB|^GH_|PROXY", re.I)
+PUBLIC_RESOLVERS = {"8.8.8.8", "1.1.1.1"}
 KEEP_ENV = ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP", "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "OS")
 
 CONFIG_YAML = f"""discovery:
@@ -243,7 +244,12 @@ def normalized(data: dict, ws: str) -> dict:
     d = _walk({k: v for k, v in data.items() if k not in ("label", "files")}, ws)
     for s in d["steps"]:
         s.pop("seconds", None)
-    d["refused"] = sorted([r["kind"], r["host"], r["port"] or 0, r["caller"]] for r in data["refused"])
+    # a DNS packet to the machine's own resolvers (read from the OS) differs per machine in address and number: keep
+    # that it happened, once; packets to leadforge's fixed fallbacks (enrich/validate.py get_resolver) keep their count
+    refused = [[r["kind"], r["host"], r["port"] or 0, r["caller"]] for r in data["refused"]]
+    own = [x for x in refused if x[0] == "sendto" and x[2] == 53 and x[1] not in PUBLIC_RESOLVERS]
+    other = [x for x in refused if x not in own]
+    d["refused"] = sorted(other + [list(t) for t in {("sendto", "<system resolver>", 53, x[3]) for x in own}])
     # request log: order depends on thread timing -> compare as a sorted multiset without the user agent
     d["requests"] = sorted(f'{r["host"]} {r["path"]} {r["status"]}' for r in data["requests"])
     return d
@@ -296,7 +302,7 @@ def main() -> int:
     exp = json.loads(GOLDEN.read_text(encoding="utf-8"))
     got = json.loads(json.dumps(norm, sort_keys=True))
     if got == exp:
-        print(f"PASS - result equals tests/fixtures/e2e/expected.json ({len(norm['refused'])} refused outside attempts, as saved)")
+        print(f"PASS - result equals tests/fixtures/e2e/expected.json ({len(norm['refused'])} refused-call entries, as saved)")
         return 0
     diffs = [k for k in sorted(set(exp) | set(got)) if exp.get(k) != got.get(k)]
     print(f"FAIL - differs from expected.json in: {', '.join(diffs)}  (full result: {out / 'result.json'})")
