@@ -13,7 +13,8 @@ stay off the screen. A workspace made by 0.6.15 opens unchanged.
   `leadforge doctor --fix`.
 - The scraper binary is pinned by version and SHA-256; a file with another hash is deleted, never run. The
   optional NER model is loaded at a pinned revision.
-- The plugin launcher installs from `requirements.lock` with hashes and no longer upgrades pip.
+- The plugin launcher and `python install.py` install from `requirements.lock` with hashes; the launcher no longer
+  upgrades pip.
 
 ### Fixed
 - `config set` and `config get` never print a key, token or password, also when the command names the section
