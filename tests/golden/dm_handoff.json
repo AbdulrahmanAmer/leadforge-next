@@ -1,0 +1,144 @@
+{
+  "apply_counts": {
+    "applied": 2,
+    "rejected": 1,
+    "skipped": 1
+  },
+  "batch_after_apply": [
+    0,
+    0
+  ],
+  "batch_lines": [
+    {
+      "biz": "biz_dm_a",
+      "candidates": [
+        {
+          "i": 0,
+          "name": "Alex Example",
+          "origin": "heuristic",
+          "snippet": "Alex Example founded the firm.",
+          "title": "Owner"
+        },
+        {
+          "i": 1,
+          "name": "Sam Sample",
+          "origin": "heuristic",
+          "snippet": "Sam Sample fitted our boiler.",
+          "title": "Engineer"
+        }
+      ],
+      "category": "plumber",
+      "icp_titles": [
+        "Owner",
+        "General Manager"
+      ],
+      "name": "Example Plumbing Co"
+    },
+    {
+      "biz": "biz_dm_b",
+      "candidates": [
+        {
+          "i": 0,
+          "name": "Jo Placeholder",
+          "origin": "registry",
+          "snippet": "Jo Placeholder, director.",
+          "title": "Director"
+        }
+      ],
+      "category": "plumber",
+      "icp_titles": [
+        "Owner",
+        "General Manager"
+      ],
+      "name": "Sample Heating Ltd"
+    }
+  ],
+  "batch_returns": [
+    2,
+    1
+  ],
+  "cli": {
+    "apply": [
+      "--in"
+    ],
+    "export": [
+      "--icp",
+      "--max",
+      "--out",
+      "--tsv"
+    ]
+  },
+  "empty_batch_text": "",
+  "people_after_apply": [
+    {
+      "business_id": "biz_dm_a",
+      "dm_confidence": 0.9,
+      "is_dm": 1,
+      "labeled_by": "agent",
+      "name": "Alex Example",
+      "title": "Owner"
+    },
+    {
+      "business_id": "biz_dm_a",
+      "dm_confidence": 0.0,
+      "is_dm": 0,
+      "labeled_by": "heuristic",
+      "name": "Sam Sample",
+      "title": "Engineer"
+    },
+    {
+      "business_id": "biz_dm_b",
+      "dm_confidence": 0.8,
+      "is_dm": 1,
+      "labeled_by": "agent",
+      "name": "Jo Placeholder",
+      "title": "Managing Director"
+    },
+    {
+      "business_id": "biz_dm_c",
+      "dm_confidence": 0.0,
+      "is_dm": -1,
+      "labeled_by": "agent",
+      "name": "Pat Fictional",
+      "title": "Apprentice"
+    }
+  ],
+  "tsv_rows": [
+    [
+      "biz_dm_a",
+      "Example Plumbing Co",
+      "0",
+      "Owner",
+      "Alex Example",
+      "Alex Example founded the firm.",
+      "heuristic"
+    ],
+    [
+      "biz_dm_a",
+      "Example Plumbing Co",
+      "1",
+      "Engineer",
+      "Sam Sample",
+      "Sam Sample fitted our boiler.",
+      "heuristic"
+    ],
+    [
+      "biz_dm_b",
+      "Sample Heating Ltd",
+      "0",
+      "Director",
+      "Jo Placeholder",
+      "Jo Placeholder, director.",
+      "registry"
+    ],
+    [
+      "biz_dm_c",
+      "Demo Drains",
+      "0",
+      "Apprentice",
+      "Pat Fictional",
+      "Pat Fictional answered the phone.",
+      "gbp"
+    ]
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "1_first_run": {
+    "businesses": 2,
+    "calls": {
+      "crawl": 1,
+      "fetch": 1
+    },
+    "contacts": 1,
+    "counts": {
+      "dm_pending": 1
+    },
+    "people": 1,
+    "queries": {
+      "done": 1
+    },
+    "runs": 1,
+    "same_run": true,
+    "scores": 0,
+    "stage": "dm_pending"
+  },
+  "2_resume_while_waiting_for_labels": {
+    "businesses": 2,
+    "calls": {
+      "crawl": 1,
+      "fetch": 1
+    },
+    "contacts": 1,
+    "counts": {
+      "dm_pending": 1
+    },
+    "people": 1,
+    "queries": {
+      "done": 1
+    },
+    "runs": 1,
+    "same_run": true,
+    "scores": 0,
+    "stage": "dm_pending"
+  },
+  "3_resume_after_kill_mid_enrich": {
+    "businesses": 2,
+    "calls": {
+      "crawl": 1,
+      "fetch": 1
+    },
+    "contacts": 1,
+    "counts": {
+      "dm_pending": 1
+    },
+    "people": 1,
+    "queries": {
+      "done": 1
+    },
+    "runs": 1,
+    "same_run": true,
+    "scores": 0,
+    "stage": "dm_pending"
+  },
+  "4_resume_after_dm_apply": {
+    "businesses": 2,
+    "calls": {
+      "crawl": 1,
+      "fetch": 1
+    },
+    "contacts": 1,
+    "counts": [
+      "dm_labeled",
+      "dm_unlabeled",
+      "dq",
+      "draft_abstained",
+      "draft_rejected",
+      "drafted",
+      "drafts_by_author",
+      "leads",
+      "runner",
+      "tier_a",
+      "tier_b",
+      "tier_c"
+    ],
+    "people": 1,
+    "queries": {
+      "done": 1
+    },
+    "runs": 1,
+    "same_run": true,
+    "scores": 2,
+    "stage": "exported"
+  },
+  "5_resume_when_already_exported": {
+    "businesses": 2,
+    "calls": {
+      "crawl": 1,
+      "fetch": 1
+    },
+    "contacts": 1,
+    "counts": {},
+    "people": 1,
+    "queries": {
+      "done": 1
+    },
+    "runs": 1,
+    "same_run": true,
+    "scores": 2,
+    "stage": "exported"
+  }
+}

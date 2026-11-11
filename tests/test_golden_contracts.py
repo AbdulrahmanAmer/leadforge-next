@@ -102,7 +102,8 @@ def test_golden_scoring_rules_data():
 
 
 @pytest.mark.parametrize("name", ["plugin_contract", "agent_contract", "sheet_columns", "scoring_rules", "autopilot_builtin_command",
-                                  "campaign_file", "guardrail_defaults", "provenance", "workspace_schema"])
+                                  "campaign_file", "guardrail_defaults", "provenance", "workspace_schema",
+                                  "dm_handoff", "draft_handoff", "sheet_export", "resume"])
 def test_golden_files_are_committed(name):
     assert (GOLDEN / f"{name}.json").exists()
 
@@ -212,3 +213,284 @@ def test_golden_saved_workspace_opens(tmp_path):
     assert tuple(row) == ("Golden Example Plumbing", "https://plumbing.example")
     conn.close()
     _check("workspace_schema", _fresh_tables(tmp_path))
+
+
+# --- 3. the hand-off files: a dm batch, the label lines `dm apply` accepts, a draft packet, the gate ------------
+# Every value below is made up (.example domains, invented names). The CLI verb that reads labels back is
+# `dm apply` (there is no `dm import`).
+def _dm_workspace(conn):
+    from leadforge import db
+    from leadforge.models import Business, Person
+
+    rid = db.create_run(conn, "icp.yaml", "h")
+    for bid, name, reviews in (("biz_dm_a", "Example Plumbing Co", 30), ("biz_dm_b", "Sample Heating Ltd", 20),
+                               ("biz_dm_c", "Demo Drains", 10)):
+        db.upsert_business(conn, Business(id=bid, run_id=rid, name=name, category="plumber", source="gosom",
+                                          dedupe_key=f"dk-{bid}", review_count=reviews))
+    db.add_person(conn, Person(business_id="biz_dm_a", name="Alex Example", title="Owner",
+                               snippet="Alex Example founded the firm.", origin="heuristic"))
+    db.add_person(conn, Person(business_id="biz_dm_a", name="Sam Sample", title="Engineer",
+                               snippet="Sam Sample fitted our boiler.", origin="heuristic"))
+    db.add_person(conn, Person(business_id="biz_dm_b", name="Jo Placeholder", title="Director",
+                               snippet="Jo Placeholder, director.", origin="registry", labeled_by="registry"))
+    db.add_person(conn, Person(business_id="biz_dm_c", name="Pat Fictional", title="Apprentice",
+                               snippet="Pat Fictional answered the phone.", origin="gbp", labeled_by="gbp"))
+    conn.commit()
+    return rid
+
+
+def test_golden_dm_handoff(conn, sample_icp, tmp_path):
+    import typer.main
+
+    from leadforge import db
+    from leadforge.cli import app
+    from leadforge.enrich.dm import apply_labels, export_batch
+    from leadforge.util import InputError
+
+    _dm_workspace(conn)
+    ndjson, tsv = tmp_path / "dm_batch.ndjson", tmp_path / "dm_batch.tsv"
+    first = export_batch(conn, sample_icp, ndjson, max_biz=2)
+    export_batch(conn, sample_icp, tsv, max_biz=60, tsv=True)
+    batch = [json.loads(ln) for ln in ndjson.read_text(encoding="utf-8").splitlines()]
+    tsv_rows = [ln.split("\t") for ln in tsv.read_text(encoding="utf-8").splitlines()]
+
+    labels = tmp_path / "dm_labels.ndjson"  # the canonical NDJSON line, the documented TSV line, a reject, a skip
+    labels.write_text(json.dumps({"biz": "biz_dm_a", "pick": 0, "confidence": 0.9}) + "\n"
+                      + "biz_dm_b\t0\t0.8\tManaging Director\n"
+                      + json.dumps({"biz": "biz_dm_c", "pick": -1}) + "\n"
+                      + json.dumps({"biz": "biz_dm_a"}) + "\n", encoding="utf-8")
+    counts = apply_labels(conn, labels)
+    people = [{k: p[k] for k in ("business_id", "name", "title", "is_dm", "dm_confidence", "labeled_by")}
+              for b in ("biz_dm_a", "biz_dm_b", "biz_dm_c") for p in db.people_for(conn, b)]
+    bad = tmp_path / "bad.ndjson"
+    bad.write_text("not a label line\n", encoding="utf-8")
+    with pytest.raises(InputError, match="bad label line"):
+        apply_labels(conn, bad)
+    after = export_batch(conn, sample_icp, tmp_path / "empty.ndjson")
+
+    dm = typer.main.get_command(app).commands["dm"]
+    _check("dm_handoff", {
+        "cli": {name: sorted(o for p in cmd.params for o in getattr(p, "opts", []))
+                for name, cmd in sorted(dm.commands.items())},
+        "batch_returns": list(first),
+        "batch_lines": batch,
+        "tsv_rows": tsv_rows,
+        "apply_counts": counts,
+        "people_after_apply": people,
+        "batch_after_apply": list(after),
+        "empty_batch_text": (tmp_path / "empty.ndjson").read_text(encoding="utf-8"),
+    })
+
+
+def _norm_at(obj):
+    """Fact timestamps (`at`) are provenance, not contract: replaced so the golden never holds a clock."""
+    if isinstance(obj, dict):
+        return {k: ("<at>" if k == "at" else _norm_at(v)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_norm_at(v) for v in obj]
+    return obj
+
+
+def test_golden_draft_packet_and_gate(cfg, conn, tmp_path):
+    from leadforge import db
+    from leadforge.draft import service
+    from leadforge.draft.gate import check_draft
+    from leadforge.draft.template import template_draft
+    from leadforge.models import ICP, Business, Score, ScoreFactor
+
+    icp = ICP.model_validate({
+        "campaign": "golden-draft",
+        "offer": {"what": "website refresh", "value_prop": "more bookings", "sender": "Example Sender"},
+        "target": {"categories": ["plumber"], "geography": {"areas": ["Nottingham"], "country": "GB"}},
+        "compliance": {"region_profile": "uk"},
+    })
+    rid = db.create_run(conn, "icp.yaml", "h")
+    db.upsert_business(conn, Business(
+        id="biz_draft", name="Example Plumbing Co", category="Plumber", address_city="Nottingham",
+        website="https://plumbing-co.example", rating=4.6, review_count=120, source="gosom",
+        dedupe_key="dk-biz-draft",
+        enrich={"crawled_at": "2026-01-01T00:00:00Z", "pages": 1, "signals": {"careers": True}}))
+    db.save_score(conn, Score(business_id="biz_draft", run_id=rid, total=85, tier="A",
+                              factors=[ScoreFactor(factor="x", group="fit", weight=1, score=1, points=1, why="w")]))
+    conn.commit()
+    ids = service.ensure_targets(conn, rid, {"A"}, "golden-draft")
+    lines, counts = service.build_packets(conn, cfg, icp, ids, "gainlev_leadgen")
+    path = tmp_path / "packets.ndjson"
+    path.write_text("\n".join(json.dumps(ln) for ln in lines) + "\n", encoding="utf-8")
+    packet = service.load_packets(path)[ids[0]]
+    assert packet == lines[1]["packet"]
+
+    clean = template_draft(packet)
+    invented_fact = {"subject": "Quick note for Example Plumbing Co",
+                     "observation": "Noticed Example Plumbing Co has online booking.", "used_fact": "booking"}
+    invented_number = {"subject": "Quick note for Example Plumbing Co",
+                       "observation": "Noticed Example Plumbing Co has 5.0 stars (300 reviews).",
+                       "used_fact": "rating"}
+    gate = {name: check_draft(packet, d) for name, d in
+            (("template", clean), ("invented_fact", invented_fact), ("invented_number", invented_number))}
+    applied = service.apply_drafts(conn, cfg, {ids[0]: packet},
+                                   [{"target": ids[0], **clean}, {"target": ids[0], **invented_fact}],
+                                   author="agent")
+    stored = [dict(r) for r in conn.execute(
+        "SELECT step, state, used_fact, author FROM messages WHERE target_id=? ORDER BY step", (ids[0],))]
+    _check("draft_handoff", {
+        "header": lines[0],
+        "line_keys": sorted(lines[1]),
+        "line": _norm_at({k: v for k, v in lines[1].items() if k != "target"}),
+        "build_counts": counts,
+        "template_draft": clean,
+        "gate": gate,
+        "apply_counts": applied,
+        "stored_messages": stored,
+    })
+
+
+# --- 4. the sheet: four tabs, no empty cell, the CSV mirror, report.json ------------------------------------
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ][0-9:.]+Z?)?")
+
+
+def test_golden_sheet_export(cfg, conn):
+    import csv
+
+    from openpyxl import load_workbook
+
+    from leadforge import db
+    from leadforge.export import export_run
+    from leadforge.models import ICP, Business, Contact, Person, Score, ScoreFactor
+
+    icp = ICP.model_validate({"campaign": "golden-sheet", "offer": {"what": "website refresh"},
+                              "target": {"categories": ["plumber"],
+                                         "geography": {"areas": ["Nottingham"], "country": "GB"}}})
+    rid = db.create_run(conn, "icp.yaml", "h")
+    db.upsert_business(conn, Business(id="full", name="Example Plumbing Co", source="gosom", category="Plumber",
+                                      website="https://plumbing-co.example", phone_e164="+441154960100",
+                                      address_city="Nottingham", rating=4.6, review_count=120,
+                                      dedupe_key="dk-full"))
+    db.upsert_business(conn, Business(id="bare", name="Sample Heating Ltd", source="gosom", dedupe_key="dk-bare"))
+    db.add_person(conn, Person(business_id="full", name="Alex Example", title="Owner", labeled_by="agent",
+                               is_dm=1, dm_confidence=0.9))
+    db.add_contact(conn, Contact(business_id="full", kind="email", value="alex@plumbing-co.example",
+                                 label="personal", tier="valid", affinity="own_domain"))
+    for bid, total, tier in (("full", 80, "A"), ("bare", 40, "C")):
+        db.save_score(conn, Score(business_id=bid, run_id=rid, total=total, tier=tier,
+                                  factors=[ScoreFactor(factor="x", group="fit", weight=1, score=1, points=1,
+                                                       why="w")]))
+    conn.commit()
+    arts = [Path(a) for a in export_run(conn, icp, rid, cfg.exports_dir, ["xlsx", "csv"], cfg=cfg)]
+    assert all(a.parent == cfg.exports_dir / rid for a in arts)
+
+    wb = load_workbook(next(a for a in arts if a.suffix == ".xlsx"))
+    leads = [[c.value for c in row] for row in wb["Leads"].iter_rows()]
+    empty = [(r, c) for r, row in enumerate(leads) for c, v in enumerate(row) if v is None or str(v).strip() == ""]
+    assert not empty, f"empty Leads cells at {empty[:5]}"
+    with open(next(a for a in arts if a.suffix == ".csv"), encoding="utf-8-sig", newline="") as fh:
+        csv_rows = list(csv.reader(fh))
+    assert csv_rows == [[str(v) for v in row] for row in leads]  # the CSV mirrors the Leads tab cell for cell
+    bare = dict(zip(leads[0], leads[-1], strict=True))
+    assert bare["Business"] == "Sample Heating Ltd"
+    report = json.loads(next(a for a in arts if a.name == "report.json").read_text(encoding="utf-8"))
+    assert report.pop("run") == rid and _DATE.fullmatch(report.pop("generated"))
+    _check("sheet_export", {
+        "artifacts": [a.name for a in arts],
+        "tabs": wb.sheetnames,
+        "csv_header": csv_rows[0],
+        "bare_row": {k: _DATE.sub("<date>", str(v)) for k, v in bare.items()},
+        "report_keys": sorted([*report, "run", "generated"]),
+        "report": report,
+    })
+
+
+# --- 5. runs that resume: a re-started run continues where it stopped and duplicates nothing ---------------------
+@pytest.fixture
+def offline_pipeline(monkeypatch):
+    """Discovery, crawl, registry and email checks replaced with made-up, offline answers; calls counted."""
+    from leadforge.enrich.crawler import CrawlResult, Page, SiteCrawler
+    from leadforge.models import RawListing
+    from leadforge.util import now_iso
+
+    calls = {"fetch": 0, "crawl": 0}
+
+    def fetch(self, query, limit=None):
+        calls["fetch"] += 1
+        return [
+            RawListing(provider="gosom", fetched_at=now_iso(), data={
+                "title": "Example Plumbing Co", "category": "plumber", "address": "1 Example Street, Nottingham",
+                "complete_address": {"street": "1 Example Street", "city": "Nottingham", "postal_code": "NG1 1AA",
+                                     "country": "United Kingdom"},
+                "phone": "0115 496 0100", "web_site": "https://plumbing-co.example",
+                "review_rating": "4.6", "review_count": "120", "place_id": "PID_GOLDEN_A"}),
+            RawListing(provider="gosom", fetched_at=now_iso(), data={
+                "title": "Sample Heating Ltd", "category": "plumber", "address": "2 Sample Road, Nottingham",
+                "phone": "0115 496 0200", "review_rating": "4.1", "review_count": "15",
+                "place_id": "PID_GOLDEN_B"}),
+        ]
+
+    def crawl(self, website, business_domain=None):
+        calls["crawl"] += 1
+        if "plumbing-co.example" in website:
+            text = "Owner Alex Example founded the firm in 2010. Contact alex@plumbing-co.example"
+            html = f"<html><body>{text} <a href='mailto:alex@plumbing-co.example'>email</a></body></html>"
+            return CrawlResult(ok=True, pages=[Page(website, html, text)],
+                               signals={"https": True, "stale_site": False, "booking_hint": False})
+        return CrawlResult(ok=False, error="unreachable")
+
+    monkeypatch.setattr("leadforge.pipeline.ensure_ready", lambda cfg: None)
+    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.available", lambda self: (True, "offline"))
+    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.fetch", fetch)
+    monkeypatch.setattr(SiteCrawler, "crawl", crawl)
+    monkeypatch.setattr("leadforge.providers.registry.get_registries", lambda cfg: [])
+    monkeypatch.setattr("leadforge.enrich.runner.validate_email",
+                        lambda email, label, cfg: ("valid" if label == "personal" else "role", {}))
+    return calls
+
+
+def test_golden_resume(cfg, offline_pipeline, tmp_path):
+    import yaml
+
+    from leadforge import db
+    from leadforge.enrich.dm import apply_labels
+    from leadforge.models import ICP
+    from leadforge.pipeline import run_pipeline
+
+    icp = ICP.model_validate({"campaign": "golden-resume", "offer": {"what": "website refresh"},
+                              "target": {"categories": ["plumber"],
+                                         "geography": {"areas": ["Nottingham"], "country": "GB"}},
+                              "decision_maker": {"titles_priority": ["Owner", "Director"]}})
+    icp_path = tmp_path / "icp.yaml"
+    icp_path.write_text(yaml.safe_dump(icp.model_dump(mode="json")), encoding="utf-8")
+    first_run: list[str] = []
+
+    def snap(r: dict) -> dict:
+        conn = db.connect(cfg.db_path)
+
+        def one(sql: str) -> int:
+            return conn.execute(sql).fetchone()[0]
+
+        first_run[:1] = first_run[:1] or [r["run"]]
+        out = {"stage": r["stage"], "same_run": r["run"] == first_run[0], "counts": r["counts"],
+               "runs": one("SELECT COUNT(*) FROM runs"), "businesses": one("SELECT COUNT(*) FROM businesses"),
+               "people": one("SELECT COUNT(*) FROM people"), "contacts": one("SELECT COUNT(*) FROM contacts"),
+               "scores": one("SELECT COUNT(*) FROM scores"),
+               "queries": {s: n for s, n in conn.execute(
+                   "SELECT status, COUNT(*) FROM queries GROUP BY status ORDER BY status")},
+               "calls": dict(offline_pipeline)}
+        conn.close()
+        return out
+
+    steps = {"1_first_run": snap(run_pipeline(cfg, icp, icp_path, autopilot=False))}
+    steps["2_resume_while_waiting_for_labels"] = snap(run_pipeline(cfg, icp, icp_path, resume=True, autopilot=False))
+    conn = db.connect(cfg.db_path)
+    db.set_stage(conn, first_run[0], "enriching")  # the process died mid-enrich
+    conn.close()
+    steps["3_resume_after_kill_mid_enrich"] = snap(run_pipeline(cfg, icp, icp_path, resume=True, autopilot=False))
+    conn = db.connect(cfg.db_path)
+    biz = db.dm_pending(conn, 10)[0]["id"]
+    labels = tmp_path / "dm_labels.ndjson"
+    labels.write_text(json.dumps({"biz": biz, "pick": 0, "confidence": 0.9}) + "\n", encoding="utf-8")
+    apply_labels(conn, labels)
+    conn.close()
+    resumed = run_pipeline(cfg, icp, icp_path, resume=True, autopilot=False)
+    resumed["counts"] = sorted(resumed["counts"])  # export digest counts: their keys are the contract here
+    steps["4_resume_after_dm_apply"] = snap(resumed)
+    steps["5_resume_when_already_exported"] = snap(run_pipeline(cfg, icp, icp_path, resume=True, autopilot=False))
+    _check("resume", steps)
