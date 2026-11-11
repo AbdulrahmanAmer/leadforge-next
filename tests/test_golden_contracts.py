@@ -101,7 +101,8 @@ def test_golden_scoring_rules_data():
     })
 
 
-@pytest.mark.parametrize("name", ["plugin_contract", "agent_contract", "sheet_columns", "scoring_rules", "autopilot_builtin_command"])
+@pytest.mark.parametrize("name", ["plugin_contract", "agent_contract", "sheet_columns", "scoring_rules", "autopilot_builtin_command",
+                                  "campaign_file", "guardrail_defaults", "provenance", "workspace_schema"])
 def test_golden_files_are_committed(name):
     assert (GOLDEN / f"{name}.json").exists()
 
@@ -121,3 +122,93 @@ def test_golden_agent_command(tmp_path, monkeypatch):
     monkeypatch.setattr("shutil.which", lambda _: "CLAUDE")
     # C1 changes this call on purpose (tools off); that change must be listed in its slice.
     _check("autopilot_builtin_command", {"argv": resolve_command(cfg), "isolate": cfg.agent.isolate})
+
+
+# --- 1. the campaign file: its fields, "country required", and the hash that ignores caps ---------------
+def _schema_shape(schema: dict) -> dict:
+    """Field names and the required list of every object in a JSON schema (not types or descriptions)."""
+    defs = {"ICP": schema, **schema.get("$defs", {})}
+    return {name: {"fields": sorted(d.get("properties", {})), "required": sorted(d.get("required", []))}
+            for name, d in sorted(defs.items()) if d.get("type") == "object"}
+
+
+def test_golden_campaign_file(sample_icp):
+    from pydantic import ValidationError
+
+    from leadforge.models import ICP, Answers
+
+    base = sample_icp.icp_hash()
+    capped = sample_icp.model_copy(update={"caps": sample_icp.caps.model_copy(update={"max_leads": 9999}),
+                                          "notes": "raised the cap"})
+    moved = sample_icp.model_validate({**sample_icp.model_dump(mode="json"),
+                                       "target": {**sample_icp.target.model_dump(mode="json"),
+                                                  "geography": {"areas": ["Leeds"], "country": "GB"}}})
+    assert capped.icp_hash() == base  # caps and notes are not part of the campaign's identity
+    assert moved.icp_hash() != base
+    no_country = sample_icp.model_dump(mode="json")
+    del no_country["target"]["geography"]["country"]
+    with pytest.raises(ValidationError, match="country"):
+        ICP.model_validate(no_country)
+    assert Answers.model_json_schema()["properties"] == ICP.model_json_schema()["properties"]
+    _check("campaign_file", {"shape": _schema_shape(ICP.model_json_schema()), "sample_hash": base})
+
+
+# --- 6. the guardrails that exist: their defaults ---------------------------------------------------------
+def test_golden_guardrail_defaults():
+    from leadforge.config import Config
+    from leadforge.models import Caps
+    from leadforge.util import HostThrottle
+
+    cfg = Config()
+    out = cfg.outreach
+    _check("guardrail_defaults", {
+        "politeness": {"delay_s": cfg.politeness.delay_s, "user_agent": cfg.politeness.user_agent},
+        "throttle": {"jitter": HostThrottle(1.0).jitter},
+        "caps": Caps().model_dump(),
+        "outreach": {"armed": out.armed, "transport": out.transport,
+                     "bounce_rate_pause": out.bounce_rate_pause, "complaint_rate_pause": out.complaint_rate_pause,
+                     "require_email_confirmation": out.require_email_confirmation},
+    })
+
+
+# --- 7. where every fact came from: the provenance records and their tables --------------------------------
+def _fresh_tables(tmp_path: Path) -> dict:
+    from leadforge import db
+
+    conn = db.connect(tmp_path / "fresh.sqlite3")
+    names = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+    tables = {n: [r[1] for r in conn.execute(f"PRAGMA table_info('{n}')")] for n in names}
+    conn.close()
+    return tables
+
+
+def test_golden_provenance(tmp_path):
+    from leadforge.models import EnrichmentObservation, Evidence
+
+    tables = _fresh_tables(tmp_path)
+    _check("provenance", {
+        "Evidence": sorted(Evidence.model_fields),
+        "EnrichmentObservation": sorted(EnrichmentObservation.model_fields),
+        "tables": {n: cols for n, cols in tables.items() if n in ("evidence", "enrichment_observations")},
+    })
+
+
+# --- 10. a workspace made by the current version still opens ------------------------------------------------
+SAVED_WORKSPACE = GOLDEN / "workspace_current.sqlite3"
+
+
+def test_golden_saved_workspace_opens(tmp_path):
+    """`workspace_current.sqlite3` was made by this version (schema 7) with one made-up business in it. A
+    new version that cannot open it breaks every user's workspace. Re-make it only together with a
+    schema change that the slice lists."""
+    import shutil
+
+    from leadforge import db
+
+    copy = tmp_path / "db.sqlite3"
+    shutil.copyfile(SAVED_WORKSPACE, copy)
+    conn = db.connect(copy)  # refuses any other schema_version
+    row = conn.execute("SELECT name, website FROM businesses WHERE id='biz_golden'").fetchone()
+    assert tuple(row) == ("Golden Example Plumbing", "https://plumbing.example")
+    conn.close()
+    _check("workspace_schema", _fresh_tables(tmp_path))
