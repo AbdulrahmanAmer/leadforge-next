@@ -152,9 +152,9 @@ install via `/plugins` → `$generate-leads` visible; `npx skills add Abdulrahma
 | **U8.2** Live E2E validation | full campaign on the real Windows machine: small ICP → sheet; fix selector/field drift found | — | ✅ |
 | **U8.3** CI | GitHub Actions: ruff + pytest on 3.11/3.12, Win+Ubuntu matrix; `claude plugin validate` step | `.github/workflows/ci.yml` | ✅ |
 | **U8.4** Compliance guardrails audit | verify invariants list docs/04 §5 against code; suppression E2E test | — | ✅ |
-| **U8.5** Versioning & share | tag v0.1.0, README install matrix verified with partner's harness, CHANGELOG | — | ✅ |
+| **U8.5** Versioning & share | tag v0.1.0, README install matrix verified with a second harness, CHANGELOG | — | ✅ |
 
-**Gate G8 (ship):** partner installs from the GitHub link on his machine and completes a campaign without editing code · CI green ·
+**Gate G8 (ship):** a second operator installs from the GitHub link on another machine and completes a campaign without editing code · CI green ·
 `docs/` matches behavior (audit) · v0.1.0 tagged.
 
 ---

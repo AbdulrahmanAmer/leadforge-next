@@ -104,7 +104,7 @@ Confidence** and **All Hooks**. v0.4 appends **Draft Subject / Draft Body / Draf
 message, never sent.
 
 The workbook also carries a **Summary** tab (counts, tier split, top hooks, compliance reminder for your region)
-and an **About** tab that explains the columns — so your partner can read it without asking you.
+and an **About** tab that explains the columns — so whoever reads it can do so without asking you.
 
 ## Enrichment coverage and verification
 

@@ -143,12 +143,12 @@ Any failure is a bug; fix it before shipping.
 ## U8.5 — Tag & share
 
 1. Update `CHANGELOG.md` with what landed since the scaffold.
-2. Push to GitHub, then **actually test the install matrix from the repo URL** on the partner's harness:
+2. Push to GitHub, then **actually test the install matrix from the repo URL** on a second harness:
    - Claude Code: `/plugin marketplace add AbdulrahmanAmer/leadforge` → `/plugin install leadforge@leadforge`
    - Codex: `codex plugin marketplace add AbdulrahmanAmer/leadforge` → install from `/plugins`
    - Then: `leadforge doctor --fix` and one small campaign, without editing any code.
    Fix whatever breaks — **this is the real acceptance test for the whole project.**
 3. `git tag v0.1.0 && git push --tags`.
 
-**Gate G8 (ship):** partner installs from the link and completes a campaign unaided; CI green; guardrail audit
+**Gate G8 (ship):** a second operator installs from the link and completes a campaign unaided; CI green; guardrail audit
 clean; docs match behavior; tag pushed.

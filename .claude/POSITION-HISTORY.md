@@ -62,7 +62,7 @@ estimated hours — a tiled 3×5 plan is large (the plan digest now reports cell
 
 ## POSITION — 2026-09-02, assessment session (no code changed; report published)
 
-**Report:** https://claude.ai/code/artifact/12a2c6af-4482-4871-9cd5-88b53145c1dd (the owners' decision memo:
+**Report:** https://claude.ai/code/artifact/12a2c6af-4482-4871-9cd5-88b53145c1dd (the owner's decision memo:
 coverage, accuracy, sendable funnel, outreach + drafting design, own-client discovery, phased plan, decisions).
 
 **Corrections to the block above (measured, not inferred):**

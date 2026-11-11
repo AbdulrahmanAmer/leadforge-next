@@ -1,22 +1,15 @@
-# CLAUDE.md
+@AGENTS.md
 
-## ⚡ Build trigger
+# Claude-only notes
 
-**If the user says `BUILD LEADFORGE`, `/finalize`, "finish the build", or "continue the ICM": immediately read
-`icm/HANDOFF.md`, then `icm/STATE.md`, then `docs/05-icm-build-plan.md`, then `AGENTS.md` — and start working
-the remaining units in the order `icm/STATE.md` lists.** Do not explore the repo first and do not re-architect
-anything; the design is decided and documented. Verify the baseline (`pip install -e .[dev] && pytest -q &&
-ruff check src tests` → full suite green (see icm/STATE.md for the current count)) before writing code.
+LeadForge: a B2B lead-generation engine (Python CLI) driven by agents through two plugin skills.
+Check everything with one command: `node check.mjs` (last line `CHECK PASS|FAIL ...`). CI runs `node check.mjs --ci`.
 
-The same instructions exist as a pasteable prompt in `icm/PROMPT.txt` and as the `/finalize` command.
-
----
-
-Read `AGENTS.md` — it is the canonical agent guide for this repo (instructions there apply to Claude Code fully).
-
-Claude-specific notes:
-
-- This repo is a Claude Code plugin **and** its own marketplace: `/plugin marketplace add AbdulrahmanAmer/leadforge` →
+- This repo is a Claude Code plugin **and** its own marketplace: `/plugin marketplace add AbdulrahmanAmer/leadforge` ->
   `/plugin install leadforge@leadforge`. Local dev: `claude --plugin-dir .` and `claude plugin validate .`.
 - The skill is namespaced `/leadforge:generate-leads` and auto-triggers on lead-gen requests via its description.
-- When finalizing the build, follow the one-shot protocol in `docs/05-icm-build-plan.md` exactly; keep `pytest` green after every unit.
+- Release = version bump. Plugin users stay on their cached copy until `.claude-plugin/plugin.json` `version` changes,
+  so every version copy (pyproject, `__init__`, both plugin manifests, both skills) moves together; `check.mjs` fails otherwise.
+- Rollback: before merge delete the slice branch; after merge `git revert -m 1 <merge>` plus a new patch version.
+- Work is planned in slices: `docs/slices/`. Where the work stands: `.claude/POSITION.md`.
+- `icm/`, `/finalize` and `docs/05-icm-build-plan.md` are the old, finished build plan. Do not follow them.

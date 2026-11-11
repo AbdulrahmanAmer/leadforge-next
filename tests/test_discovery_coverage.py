@@ -459,7 +459,7 @@ def test_a3_stopped_exactly_at_cap_stays_stopped_on_resume(cfg, monkeypatch):
 
 def test_a3_reenters_when_cap_was_raised_past_what_is_credited(cfg, monkeypatch):
     """item 1 (docs/09): the live campaign's exact shape — cap_reached True from a stop under an
-    OLDER (lower) cap, but the owners raise caps.max_leads before the tiled sweep, so credited < the
+    OLDER (lower) cap, but the operator raises caps.max_leads before the tiled sweep, so credited < the
     NEW cap -> discovery must re-enter and pick up the still-pending queries."""
     monkeypatch.setattr("leadforge.pipeline.ensure_ready", lambda c: None)
 

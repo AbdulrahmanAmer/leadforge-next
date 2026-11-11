@@ -6,6 +6,7 @@ autopilot state machine — all under controlled conditions via monkeypatching."
 from __future__ import annotations
 
 import json
+import sys
 
 import pytest
 import yaml
@@ -123,21 +124,21 @@ def test_run_agent_raises_agent_unavailable(cfg, monkeypatch):
 # ---------------------------------------------------------------------------
 def test_agent_failed_on_timeout(cfg, monkeypatch):
     """run_agent raises AgentFailed on subprocess timeout."""
-    monkeypatch.setattr(cfg.agent, "command", ["cmd", "/c", "timeout", "/t", "10"])
+    monkeypatch.setattr(cfg.agent, "command", [sys.executable, "-c", "import time; time.sleep(10)"])
     with pytest.raises(AgentFailed, match="timed out"):
         run_agent(cfg, "prompt", timeout_s=0)
 
 
 def test_agent_failed_on_nonzero_exit(cfg, monkeypatch):
     """run_agent raises AgentFailed on non-zero exit code."""
-    monkeypatch.setattr(cfg.agent, "command", ["cmd", "/c", "exit /b 1"])
+    monkeypatch.setattr(cfg.agent, "command", [sys.executable, "-c", "import sys; sys.exit(1)"])
     with pytest.raises(AgentFailed, match="exited 1"):
         run_agent(cfg, "prompt")
 
 
 def test_agent_failed_on_empty_stdout(cfg, monkeypatch):
     """run_agent raises AgentFailed when stdout is empty."""
-    monkeypatch.setattr(cfg.agent, "command", ["cmd", "/c", ""])
+    monkeypatch.setattr(cfg.agent, "command", [sys.executable, "-c", "pass"])
     with pytest.raises(AgentFailed, match="empty stdout"):
         run_agent(cfg, "prompt")
 

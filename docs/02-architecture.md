@@ -12,7 +12,7 @@ flowchart TB
     subgraph HARNESS["Agent harness (Claude Code / Codex)"]
         AGENT["AI agent\n(runs the generate-leads skill)"]
     end
-    USER(["Operator\n(Striker / partner)"])
+    USER(["Operator\n(the owner)"])
     subgraph HOST["Operator machine (Win/mac/Linux)"]
         CLI["leadforge CLI\n(Python 3.11+)"]
         SCRAPER["gosom google-maps-scraper\n(pinned OSS binary)"]

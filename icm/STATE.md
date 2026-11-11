@@ -58,8 +58,8 @@ Single source of truth for what's done vs left. Current baseline (v0.1.4, 2026-0
 - [x] **U8.3** CI verified locally (matrix/lint/test/manifests all present); green GH Actions run UNPROVEN until first push
 - [x] **U8.4** Guardrails audit — all 10 items pass (max_leads hard stop + export suppression filter were fixed to pass)
 - [x] **U8.5** Pushed to https://github.com/AbdulrahmanAmer/leadforge (public), tagged v0.1.0, CI run
-      33354980045 green on all 5 jobs (win+ubuntu × py3.11/3.12 + manifests). Partner install from the
-      GitHub link UNPROVEN — that's the final G8 acceptance and needs the partner's machine.
+      33354980045 green on all 5 jobs (win+ubuntu × py3.11/3.12 + manifests). Second-machine install from the
+      GitHub link UNPROVEN — that's the final G8 acceptance and needs a second machine.
 
 ## Notes / decisions log (append as you go)
 - 2026-08-31 U8.2: gosom full-depth run on 1 query took >30m (visits every place page) — added depth=1 cap

@@ -30,3 +30,10 @@ Thumbs.db
 
 # builder worktrees created by the orchestration harness (never commit)
 .claude/worktrees/
+
+# blueprint v1.1.0
+.claude/worktrees/
+CLAUDE.local.md
+.env*
+!.env.example
+.dev.vars

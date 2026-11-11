@@ -1,6 +1,6 @@
 # LeadForge — Vision & Scope
 
-> **Status:** Approved · **Owner:** Striker + partner · **Type:** Internal tool (not a product) · **Doc set:** `docs/00`–`08`
+> **Status:** Approved · **Owner:** AbdulrahmanAmer · **Type:** Internal tool (not a product) · **Doc set:** `docs/00`–`08`
 
 ## 1. Problem
 
@@ -20,8 +20,8 @@ profile), kick off the pipeline, adjudicate decision-maker candidates from tiny 
 
 | User | Mode | Needs |
 |---|---|---|
-| Striker | Claude Code (Windows) | Fast campaign setup, repeatable runs, clean XLSX output |
-| Partner | Codex or Claude Code (OS unknown → must be cross-platform) | Install from the GitHub link, zero manual dependency setup |
+| Operator | Claude Code (Windows) | Fast campaign setup, repeatable runs, clean XLSX output |
+| Second operator | Codex or Claude Code (OS unknown → must be cross-platform) | Install from the GitHub link, zero manual dependency setup |
 
 ## 4. Goals (measurable)
 
@@ -71,7 +71,7 @@ profile), kick off the pipeline, adjudicate decision-maker candidates from tiny 
 
 ## 8. Success scenario (canonical walkthrough)
 
-> Partner installs from the repo link into Codex. He types "find me B2B leads". The skill triggers, asks 7 intake questions
+> A second operator installs from the repo link into Codex. He types "find me B2B leads". The skill triggers, asks 7 intake questions
 > (offer, category, geography, size band, qualifications, disqualifiers, DM titles). The agent writes `answers.yaml`, runs
 > `leadforge intake`, then `leadforge run --icp icp.yaml`. The CLI bootstraps the Maps scraper binary, grids the geography, scrapes
 > listings, normalizes them, crawls each business site politely, extracts contacts + DM candidates, and pauses. The agent runs

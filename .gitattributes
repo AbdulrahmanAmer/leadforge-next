@@ -1,3 +1,9 @@
 * text=auto eol=lf
 *.png binary
 *.xlsx binary
+
+# blueprint v1.1.0: launchers stay LF, Windows scripts CRLF
+bin/* text eol=lf
+*.sh text eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf

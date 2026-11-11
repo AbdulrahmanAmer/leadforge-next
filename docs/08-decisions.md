@@ -41,7 +41,7 @@ fields; `install.py` bridges user-scope installs. **Consequences:** one skill bo
 inside the skill.
 
 ## ADR-007 — No paid APIs anywhere; free-registration registries opt-in
-**Context:** explicit scope decision by the owners. **Decision:** default pipeline requires zero keys; Companies House/OpenCorporates
+**Context:** explicit scope decision by the owner. **Decision:** default pipeline requires zero keys; Companies House/OpenCorporates
 adapters exist but are config-gated no-ops without keys; no SerpAPI/Places/Hunter code paths at all. **Consequences:** reliability rests
 on OSS scraper health — mitigated by provider chain + pinning; volume ceilings accepted.
 
@@ -70,7 +70,7 @@ gate and the company must be active; the auto-pick inherits both.*
 
 ## ADR-011 — Email sending is in scope, under guardrails (v0.3, owner decision 2026-09-02)
 **Context:** `icm/SCOPE.md` #4 and docs/00 §5 excluded sending so the compliance posture could rest on
-"it sends nothing". The owners now need the tool to carry outreach for GainLev and for clients, and the
+"it sends nothing". The owner now needs the tool to carry outreach for GainLev and for clients, and the
 measured live campaign showed that the honest sendable list is small (45–100 of 816) while 793 rows have a
 phone. **Decision:** sending is allowed as a bounded, audited extension: phone-first `Next Action`; dry-run
 default; `--live` only with `outreach.armed` + `--i-am`; approval bound to the draft's content hash;
@@ -84,7 +84,7 @@ LeadForge-owned controls; the skill gains an outreach section; SCOPE #4 rewritte
 claims the tool cannot send.
 
 ## ADR-012 — Pluggable transport, in-harness drafting, no paid dependencies (v0.3)
-**Context:** the tool is internal open source; the owners want the sending method chosen by the operator at
+**Context:** the tool is internal open source; the owner wants the sending method chosen by the operator at
 send time, not baked in, and no API key required anywhere. **Decision:** a `Transport` ABC with `file`
 (dry-run `.eml`, the default) and `smtp` (stdlib `smtplib` + `imaplib`, any mailbox) built in and an adapter
 registry for platforms later; secrets are referenced by environment-variable *name* in SQLite, never stored.
