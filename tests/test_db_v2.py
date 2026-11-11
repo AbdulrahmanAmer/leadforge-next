@@ -120,7 +120,8 @@ def test_merge_phone_duplicates_repairs_existing_pairs_and_skips_unrelated(conn)
     assert conn.execute("SELECT COUNT(*) FROM businesses WHERE id='biz_r2'").fetchone()[0] == 1  # unrelated survived
 
 
-def test_create_run_twice_in_one_second_never_collides(conn):
+def test_create_run_twice_in_one_second_never_collides(conn, monkeypatch):
+    monkeypatch.setattr(db, "now_iso", lambda: "2026-11-11T18:03:33+00:00")  # one fixed second: the test is about the collision, not the clock
     a = db.create_run(conn, "icp.yaml", "abc")
     b = db.create_run(conn, "icp.yaml", "abc")
     assert a != b and b.startswith(a)

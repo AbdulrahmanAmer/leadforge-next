@@ -7,3 +7,4 @@ wall-clock time. CI run 43045072218 (2026-11-11, slice/L2 pull request) needed a
 assertion with something that does not depend on it (for example each call overlapping another, by count of concurrent calls).
 (b) Left out of L3c because they sat in L2 files: the unused dependencies `tenacity` and `rich` (declared, never imported), and the
 `gainlev_leadgen` skeleton rename (`PURPOSES` in `src/leadforge/draft/skeletons.py`, `data/skeletons/gainlev_leadgen.yaml`).
+(c) `skills/send-outreach/SKILL.md` points at three files of the `generate-leads` skill (`outreach.md`, `drafting.md`, `troubleshooting.md`; lines 15, 16, 28, 52, 60), so installed alone it cannot open its guardrail detail.
