@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.15] — 2026-11-11
+
+Installs again. This is the first update plugin users receive since 0.5.0: every 0.6 change reaches them now.
+A workspace made by an older version is refused, as before.
+
+### Fixed
+- A fresh install works again: `selectolax` is held below 1.0 (1.0 removed the parser the crawler imports).
+- Every version copy (package, both plugin manifests, both skills) is 0.6.15; `check.mjs` fails when one drifts.
+
+### Added
+- `uv.lock` and `.python-version`; one check command `node check.mjs`; `SECURITY.md`.
+- CI actions pinned by commit hash with a read-only token.
+
+### Changed
+- `CLAUDE.md` imports `AGENTS.md` and no longer sends agents to the old build plan.
+- The licence and manifests name the sole owner.
+
 ## [0.6.14] — 2026-10-14
 
 Person microdata metadata extraction.

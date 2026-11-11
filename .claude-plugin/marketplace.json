@@ -1,6 +1,6 @@
 {
   "name": "leadforge",
-  "owner": { "name": "Striker" },
+  "owner": { "name": "AbdulrahmanAmer" },
   "metadata": { "description": "Self-marketplace for the LeadForge internal B2B lead-gen plugin." },
   "plugins": [
     {
