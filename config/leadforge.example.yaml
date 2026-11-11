@@ -7,7 +7,7 @@ progress_window: true             # headless runs pop a console with the live pr
 default_region: US                # ISO2 fallback for phone parsing when a listing has no country
 
 discovery:
-  providers: [gosom]              # order matters; append fallback_rest only if you run its docker container (deliberately not default)
+  providers: [gosom]              # order matters
   grid_mode: "off"                # off | auto  (auto = gosom -grid-bbox tiling; flag formats not yet live-verified — deferred to v0.2)
   grid_cell_km: 3.0
   depth: 10                       # gosom scroll depth per query (auto-capped to 1 when `--limit <= 20` — smoke runs shouldn't scrape for 30 min)
@@ -17,8 +17,6 @@ discovery:
   stall_s: 180                    # kill gosom when its results file stops growing this long (v1.17.4 hangs after finishing; written listings are salvaged)
   proxies: []                     # e.g. ["socks5://user:pass@host:port"] — passthrough to the engine
   email_crawl: false              # gosom -email (slow); we do our own site crawl instead
-  fallback_rest:
-    url: http://localhost:8765
 
 crawl:
   pages_per_site: 6

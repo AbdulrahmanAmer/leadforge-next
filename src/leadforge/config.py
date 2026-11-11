@@ -14,10 +14,6 @@ import yaml
 from pydantic import BaseModel, Field, field_validator
 
 
-class FallbackRestCfg(BaseModel):
-    url: str = "http://localhost:8765"
-
-
 class DvsaCfg(BaseModel):
     """DVSA 'Active MOT test stations' register (gov.uk, OGL, refreshed quarterly) - v0.3 provider `dvsa`."""
 
@@ -60,7 +56,6 @@ class DiscoveryCfg(BaseModel):
     stall_s: float = 180.0  # kill gosom when results stop growing this long (v1.17.4 hangs after finishing)
     proxies: list[str] = Field(default_factory=list)
     email_crawl: bool = False
-    fallback_rest: FallbackRestCfg = Field(default_factory=FallbackRestCfg)
     # v0.3 coverage: explicit [minLng, minLat, maxLng, maxLat] per area label bypasses the geocoder
     area_bbox: dict[str, list[float]] = Field(default_factory=dict)
     subdivide_at: int = 100        # a tiled query returning >= this many listings is split into 4 child tiles
@@ -175,13 +170,6 @@ class RegistryCfg(BaseModel):
     active_only: bool = True           # v0.3: dissolved/liquidated companies are never matched
 
 
-class PaidEnrichmentCfg(BaseModel):
-    """Optional licensed enrichment adapters; no paid adapter runs unless explicitly enabled."""
-
-    enabled: bool = False
-    providers: list[str] = Field(default_factory=list)
-
-
 class OutreachCfg(BaseModel):
     """v0.3 sending layer (ADR-011/012). Nothing sends unless `armed` is true AND `--live` AND `--i-am` agree."""
 
@@ -266,7 +254,6 @@ class Config(BaseModel):
     enrich: EnrichCfg = Field(default_factory=EnrichCfg)
     validation: ValidationCfg = Field(default_factory=ValidationCfg)
     registry: RegistryCfg = Field(default_factory=RegistryCfg)
-    paid_enrichment: PaidEnrichmentCfg = Field(default_factory=PaidEnrichmentCfg)
     social: SocialCfg = Field(default_factory=SocialCfg)
     export: ExportCfg = Field(default_factory=ExportCfg)
     outreach: OutreachCfg = Field(default_factory=OutreachCfg)

@@ -17,7 +17,7 @@ def test_all_modules_import():
     mods = [
         "leadforge.config", "leadforge.models", "leadforge.db", "leadforge.util", "leadforge.doctor",
         "leadforge.intake", "leadforge.grid", "leadforge.normalize", "leadforge.score", "leadforge.export",
-        "leadforge.providers.base", "leadforge.providers.gosom", "leadforge.providers.fallback_rest",
+        "leadforge.providers.base", "leadforge.providers.gosom",
         "leadforge.enrich.crawler", "leadforge.enrich.extract", "leadforge.enrich.validate",
         "leadforge.enrich.dm", "leadforge.enrich.runner",
     ]

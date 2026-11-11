@@ -1,7 +1,4 @@
-"""Provider adapter tests. gosom parsing is fixture-based (no binary/network).
-
-The fallback_rest test is a TODO stub tied to ICM U3.6 — see docs/05.
-"""
+"""Provider adapter tests. gosom parsing is fixture-based (no binary/network)."""
 import json
 
 from leadforge.config import load_config
@@ -38,67 +35,6 @@ def test_gosom_available_without_binary(tmp_path, monkeypatch):
     cfg = load_config(tmp_path)
     ok, reason = GosomProvider(cfg).available()
     assert ok is False and "doctor" in reason
-
-
-# --- U3.6 fallback REST provider ------------------------------------------------------------
-import httpx  # noqa: E402
-import pytest  # noqa: E402
-
-from leadforge.grid import PlannedQuery  # noqa: E402
-from leadforge.providers.fallback_rest import FallbackRestProvider  # noqa: E402
-from leadforge.util import ProviderDegraded  # noqa: E402
-
-
-class _FakeResp:
-    def __init__(self, payload):
-        self._payload = payload
-
-    def raise_for_status(self):
-        pass
-
-    def json(self):
-        return self._payload
-
-
-def test_fallback_rest_maps_fields(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    cfg = load_config(tmp_path)
-    prov = FallbackRestProvider(cfg)
-    fake_rows = [{"name": "A Shop", "phone_number": "713-555-0100",
-                  "website": "http://a.com", "reviews": 12, "lat": 29.7, "lng": -95.3}]
-    monkeypatch.setattr("leadforge.providers.fallback_rest.httpx.get",
-                        lambda *a, **k: _FakeResp(fake_rows))
-    out = prov.fetch(PlannedQuery(text="auto repair in Houston", category="", area=""))
-    assert len(out) == 1
-    assert out[0].data["title"] == "A Shop"
-    assert out[0].data["web_site"] == "http://a.com"
-    assert out[0].data["latitude"] == 29.7
-    assert out[0].data["name"] == "A Shop"  # original keys preserved
-
-
-def test_fallback_rest_unreachable_is_degraded(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    cfg = load_config(tmp_path)
-    prov = FallbackRestProvider(cfg)
-
-    def _boom(*a, **k):
-        raise httpx.ConnectError("refused")
-
-    monkeypatch.setattr("leadforge.providers.fallback_rest.httpx.get", _boom)
-    with pytest.raises(ProviderDegraded):
-        prov.fetch(PlannedQuery(text="x", category="", area=""))
-    ok, reason = prov.available()
-    assert ok is False and "not reachable" in reason
-
-
-def test_fallback_rest_non_list_is_degraded(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    cfg = load_config(tmp_path)
-    prov = FallbackRestProvider(cfg)
-    monkeypatch.setattr("leadforge.providers.fallback_rest.httpx.get",
-                        lambda *a, **k: _FakeResp({"detail": "error"}))
-    with pytest.raises(ProviderDegraded):
-        prov.fetch(PlannedQuery(text="x", category="", area=""))
 
 
 def test_gosom_timeout_salvages_partial_output(tmp_path, monkeypatch):
@@ -199,7 +135,7 @@ def test_fallback_without_tile_support_warns_about_lost_geo_constraint(tmp_path,
     from leadforge.pipeline import _fetch_with_chain
 
     class _TextOnly:
-        name = "fallback_rest"
+        name = "text_only"
         supports_tiles = False
 
         def available(self):

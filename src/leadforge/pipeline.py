@@ -317,8 +317,8 @@ def _run_discover_parallel(conn, cfg: Config, icp: ICP, run_id: str, chain, prov
 
 def _fetch_with_chain(chain, pq, limit, warns) -> tuple[list, str, bool]:
     """Returns (listings, status, tiled_honoured). tiled_honoured is True only when the provider that
-    actually answered declares supports_tiles=True — a chain fallback that ignores query.tile (e.g.
-    FallbackRestProvider) must never be treated as having constrained the search to that tile, or A2
+    actually answered declares supports_tiles=True — a chain fallback that ignores query.tile (a provider
+    with supports_tiles=False) must never be treated as having constrained the search to that tile, or A2
     saturation subdivision would split a whole-area answer into quadrants that get the exact same
     whole-area rows back, recursing pointlessly against the politeness budget (docs/09 A2 review)."""
     last_degraded = False

@@ -174,7 +174,7 @@ def test_subdivision_never_fires_when_the_answering_provider_ignores_tiles(cfg, 
     @register
     class FakeUntiledSaturated(DiscoveryProvider):
         name = "fakeuntiled_saturated_a2"
-        supports_tiles = False  # ignores query.tile entirely, like FallbackRestProvider
+        supports_tiles = False  # ignores query.tile entirely
 
         def available(self):
             return True, "fake"
