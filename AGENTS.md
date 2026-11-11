@@ -2,13 +2,6 @@
 
 Internal B2B lead-generation tool. One repo, three consumers: **Claude Code** (plugin), **OpenAI Codex** (plugin/skills), and humans.
 
-## ⚡ Build trigger
-
-**If the user says `BUILD LEADFORGE`, "finish the build", or "continue the ICM": read `icm/HANDOFF.md`, then
-`icm/STATE.md`, then `docs/05-icm-build-plan.md`, then the rest of this file — and start working the remaining
-units in the order `icm/STATE.md` lists.** Don't explore blindly or re-architect; the design is decided.
-The same instructions are pasteable from `icm/PROMPT.txt`.
-
 ## What to know first
 
 - The user-facing behavior lives in the skill: `skills/generate-leads/SKILL.md`. If the user wants leads, follow that skill.
@@ -30,8 +23,6 @@ leadforge doctor --fix --full  # bootstrap EVERYTHING: runtime deps, pinned scra
 
 ## Working on the codebase
 
-- Read `docs/05-icm-build-plan.md` first — it enumerates every unit, its status (IMPLEMENTED/STUB/TO-BUILD), acceptance criteria, and the
-  **one-shot finalize protocol**. Do units in the given order; a unit is done only when its acceptance criteria pass.
 - Architecture, data model, pipeline behavior, and decisions: `docs/02`–`04`, `docs/08`. Do not contradict an ADR without recording a new
   one in `docs/08-decisions.md`.
 - Canonical schema lives in `src/leadforge/models.py`; the SQLite DDL in `db.py` must mirror it and `docs/03-data-model.md`.

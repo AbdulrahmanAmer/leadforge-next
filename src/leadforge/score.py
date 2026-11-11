@@ -476,7 +476,7 @@ def score_run_default(conn: sqlite3.Connection, icp: ICP, run_id: str, cfg: Conf
 
 
 # ====================================================================================== account_fit
-# WE SCORE profile (v0.1.1): a fixed 0-100 account-fit rubric with A-D grades, plus separate
+# account_fit profile (v0.1.1): a fixed 0-100 account-fit rubric with A-D grades, plus separate
 # contactability and data-confidence scores (stored as meta factors so export can surface them).
 # Hard rule: UNKNOWN never scores as NO - unknown inputs earn 0 points but lower data confidence,
 # never a disqualification.

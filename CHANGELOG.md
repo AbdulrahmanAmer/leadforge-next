@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.1] — 2026-11-11
+
+Cleanup only; nothing new. Unused modules, the `fallback_rest` provider, the old build plan, the bench scripts and the
+`/finalize` command are gone, the owner's business names are out of the defaults, and the four copies of the skill
+reference files are one. A config that lists `fallback_rest` as a provider now stops with `unknown provider`.
+
 ## [0.7.0] — 2026-11-11
 
 Pins and a safety floor. What LeadForge downloads is checked, the model call it makes has no tools, and keys

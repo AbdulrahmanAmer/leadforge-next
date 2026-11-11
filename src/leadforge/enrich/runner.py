@@ -146,7 +146,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
                         out["people"].append(cand)
                     out["people"].extend(extract_structured_people(rendered, b["website"]))
                     # a rescued site scores on the same evidence as a crawled one: signals + profile
-                    # (without these, phone_only_booking mis-fired and WE SCORE columns came out empty)
+                    # (without these, phone_only_booking mis-fired and account_fit columns came out empty)
                     out["signals"].update(SiteCrawler.compute_signals([page], cfg.crawl.stale_after_years))
                     from leadforge.enrich.profile import build_profile
                     try:
@@ -175,7 +175,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
             for cand in people_fn(page.text, page.url):
                 out["people"].append(cand)
             out["people"].extend(extract_structured_people(page.html, page.url))
-        # WE SCORE account-intel profile (v0.1.1): tech stack, departments, headcount, triggers.
+        # account_fit account-intel profile (v0.1.1): tech stack, departments, headcount, triggers.
         from leadforge.enrich.profile import build_profile
         try:
             out["profile"] = build_profile(res.pages, b["domain"], b["category"])

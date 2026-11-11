@@ -14,10 +14,6 @@ import yaml
 from pydantic import BaseModel, Field, field_validator
 
 
-class FallbackRestCfg(BaseModel):
-    url: str = "http://localhost:8765"
-
-
 class DvsaCfg(BaseModel):
     """DVSA 'Active MOT test stations' register (gov.uk, OGL, refreshed quarterly) - v0.3 provider `dvsa`."""
 
@@ -60,7 +56,6 @@ class DiscoveryCfg(BaseModel):
     stall_s: float = 180.0  # kill gosom when results stop growing this long (v1.17.4 hangs after finishing)
     proxies: list[str] = Field(default_factory=list)
     email_crawl: bool = False
-    fallback_rest: FallbackRestCfg = Field(default_factory=FallbackRestCfg)
     # v0.3 coverage: explicit [minLng, minLat, maxLng, maxLat] per area label bypasses the geocoder
     area_bbox: dict[str, list[float]] = Field(default_factory=dict)
     subdivide_at: int = 100        # a tiled query returning >= this many listings is split into 4 child tiles
@@ -102,8 +97,8 @@ class PolitenessCfg(BaseModel):
     # (scratchpad/speed/enrich/result_A.json vs result_B.json): raising workers alone (4 -> 16) did NOT
     # improve throughput because the slow tail (403/Cloudflare blocks, dead hosts, the browser-render
     # semaphore) dominated — see crawl.site_budget_s / crawl.page_timeout_s / enrich.browser_concurrency,
-    # which is what actually lets more workers help. 12 is the number those fixes are measured against
-    # (scripts/bench_enrich.py) — per-host pacing is unchanged at any worker count.
+    # which is what actually lets more workers help. 12 is the number those fixes are measured against;
+    # per-host pacing is unchanged at any worker count.
     # 2026-09-24 (Layer 3): with NER moved to its own GPU/CPU worker process the crawl threads are pure I/O;
     # same 200 sites from identical DB copies: 12 workers 22.9 sites/min, 24 workers 26.3 (one run each —
     # network variance applies). Per-host pacing is unchanged, so 24 costs no site anything extra.
@@ -173,13 +168,6 @@ class RegistryCfg(BaseModel):
     opencorporates_token: str = ""
     min_name_similarity: float = 0.45  # v0.3: a registry hit must also resemble the business name
     active_only: bool = True           # v0.3: dissolved/liquidated companies are never matched
-
-
-class PaidEnrichmentCfg(BaseModel):
-    """Optional licensed enrichment adapters; no paid adapter runs unless explicitly enabled."""
-
-    enabled: bool = False
-    providers: list[str] = Field(default_factory=list)
 
 
 class OutreachCfg(BaseModel):
@@ -266,7 +254,6 @@ class Config(BaseModel):
     enrich: EnrichCfg = Field(default_factory=EnrichCfg)
     validation: ValidationCfg = Field(default_factory=ValidationCfg)
     registry: RegistryCfg = Field(default_factory=RegistryCfg)
-    paid_enrichment: PaidEnrichmentCfg = Field(default_factory=PaidEnrichmentCfg)
     social: SocialCfg = Field(default_factory=SocialCfg)
     export: ExportCfg = Field(default_factory=ExportCfg)
     outreach: OutreachCfg = Field(default_factory=OutreachCfg)

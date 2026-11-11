@@ -116,7 +116,7 @@ def _warnings(icp: ICP) -> list[str]:
         excluded = [c for c in icp.target.sic_codes if c == "82200"]
         if excluded:
             w.append("target.sic_codes includes 82200 (call centres) — owner decision 7 excludes it "
-                     "from GAINLEV_ICP_SIC by default; the provider will drop any company matched only "
+                     "by default; the provider will drop any company matched only "
                      "via an excluded SIC code")
     return w
 

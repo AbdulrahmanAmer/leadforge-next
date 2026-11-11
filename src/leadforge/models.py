@@ -153,7 +153,7 @@ class DecisionMaker(BaseModel):
 
 class Scoring(BaseModel):
     weights_override: dict[str, float] = Field(default_factory=dict)
-    profile: str = "default"  # default | account_fit (WE SCORE 0-100 rubric + contactability + data confidence)
+    profile: str = "default"  # default | account_fit (0-100 rubric + contactability + data confidence)
 
 
 class Caps(BaseModel):

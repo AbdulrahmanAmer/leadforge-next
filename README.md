@@ -143,7 +143,7 @@ leadforge benchmark dm-fields --in called.xlsx       # preview person-owned DM p
 leadforge benchmark dm-fields --in called.xlsx --apply
 ```
 
-The benchmark importer accepts CSV/TSV and calling workbooks. It understands WESCORE-style `Dialing List`, `List #2`,
+The benchmark importer accepts CSV/TSV and calling workbooks. It understands calling-workbook-style `Dialing List`, `List #2`,
 `List #3`, `Call Log`, and callback tabs, maps human dispositions to canonical outcomes, preserves sheet provenance,
 and uses stable business ID, domain, phone, or existing contact evidence for conservative matching. It is preview-only
 unless `--apply` is supplied. See [`docs/10-enrichment-phase0-baseline.md`](docs/10-enrichment-phase0-baseline.md) for
@@ -168,7 +168,7 @@ All diagrams as images: [`docs/diagrams/`](docs/diagrams/).
 Architecture, data model, pipeline behavior and every decision are documented in [`docs/`](docs/):
 [vision](docs/00-vision.md) · [research](docs/01-research.md) · [architecture](docs/02-architecture.md) ·
 [data model](docs/03-data-model.md) · [pipeline](docs/04-pipeline-behavior.md) ·
-[build plan](docs/05-icm-build-plan.md) · [token contract](docs/06-token-contract.md) ·
+[token contract](docs/06-token-contract.md) ·
 [compliance](docs/07-compliance.md) · [decisions](docs/08-decisions.md) ·
 [customized-workspace upgrade prompt](docs/UPGRADE-MERGE-PROMPT.md).
 
@@ -210,7 +210,7 @@ turns bounces, complaints, unsubscribes and replies into suppression rows and st
 add` records what happened on the phone so the next scoring pass learns from real outcomes. Full protocol:
 `skills/generate-leads/references/outreach.md` and `drafting.md`.
 
-**Company mode** (GainLev's own client pipeline): `target.mode: company` with SIC codes discovers companies
+**Company mode** (an operator's own client pipeline): `target.mode: company` with SIC codes discovers companies
 from Companies House by activity and location, resolves their websites without paid lookups, and scores them
 with a company rubric (incorporation age, new-director trigger, hiring). Example ICP:
 `config/icp.company.example.yaml`.
@@ -249,7 +249,7 @@ Companies House profile (company number, incorporation, status, SIC codes); a **
 that bot-wall the plain HTTP client (robots.txt is always honored — disallowed sites never escalate).
 Deferred to v0.2: a grid-tiling live run and real Facebook/Instagram presence probes. gosom serve mode is
 closed by design (resume + a stall watchdog cover it). Previously deferred, shipped in 0.1.4:
-`claude plugin validate` in CI, TSV dm reconciliation, grid bbox flag-format verification (see `icm/STATE.md`).
+`claude plugin validate` in CI, TSV dm reconciliation, grid bbox flag-format verification.
 
 ```bash
 pip install -e .[dev] && pytest -q && ruff check src tests   # suite must be fully green (no xfails)
