@@ -101,6 +101,23 @@ def test_golden_scoring_rules_data():
     })
 
 
-@pytest.mark.parametrize("name", ["plugin_contract", "agent_contract", "sheet_columns", "scoring_rules"])
+@pytest.mark.parametrize("name", ["plugin_contract", "agent_contract", "sheet_columns", "scoring_rules", "autopilot_builtin_command"])
 def test_golden_files_are_committed(name):
     assert (GOLDEN / f"{name}.json").exists()
+
+
+# --- 11. an operator's own agent command is used as written; today's built-in call is pinned -----------
+def test_golden_agent_command(tmp_path, monkeypatch):
+    from leadforge.agent_runner import resolve_command
+    from leadforge.config import load_config
+
+    monkeypatch.chdir(tmp_path)
+    cfg = load_config(tmp_path)
+    own = ["my-wrapper.cmd", "--flag", "value with spaces"]
+    monkeypatch.setattr(cfg.agent, "command", own)
+    assert resolve_command(cfg) == own  # verbatim: nothing added, nothing removed
+
+    monkeypatch.setattr(cfg.agent, "command", None)
+    monkeypatch.setattr("shutil.which", lambda _: "CLAUDE")
+    # C1 changes this call on purpose (tools off); that change must be listed in its slice.
+    _check("autopilot_builtin_command", {"argv": resolve_command(cfg), "isolate": cfg.agent.isolate})

@@ -22,6 +22,9 @@ Gate changes: `tests/golden/**` (new).
    names, exit codes 1/3/4/5 and agent 4, the `LF_DIGEST ` prefix), sheet columns and order (item 4), scoring rules data by SHA-256 (item 9).
    Watched fail, all at once (codex plugin name, `InputError` exit code, first two columns swapped, one comment line in the scoring YAML):
    `4 failed, 4 passed`; reverted: `8 passed`.
+2b. **Golden item 11** `test_golden_agent_command`: an operator's `agent.command` comes back verbatim; today's built-in autopilot argv is
+   pinned in `tests/golden/autopilot_builtin_command.json` (it shows the hole C1 closes: no `--tools ""`, hooks disabled). Watched fail:
+   `+ ["--x"]` appended in `resolve_command` -> `AssertionError ... == [...]`, 1 failed; reverted: 10 passed.
 3. **C2 printing.** `config set|get` print `<hidden, N chars>` for any key ending key/token/secret/password; the value is still written.
    `tests/test_config_secrets.py` plants a fake key. On the old `cli.py`: `FAILED ...never_print_a_key, 1 failed, 1 passed`; after: `2 passed`.
 
@@ -30,12 +33,12 @@ Gate changes: `tests/golden/**` (new).
 792 passed, 6 skipped in 153.35s (0:02:33)
 CHECK PASS sha=66c16d8 tree=dirty steps=5 skipped=0 secs=157      (dirty = this slice file only)
 ```
-Tests: 782 passed at L1 -> 792 passed (10 new: 8 golden, 2 C2), 6 skipped. CI not run on this branch (CI runs on pull requests; none opened).
+Tests: 782 passed at L1 -> 792 passed (10 new: 8 golden, 2 C2; +2 golden for item 11 after that run, file run: 10 passed), 6 skipped. CI not run on this branch (CI runs on pull requests; none opened).
 
 ### Not done (in order)
 - Goldens still missing for section 3 items 1 (campaign file + hash), 3 (hand-off files), 4 (four tabs, "a cell is never empty", CSV mirror,
   `report.json` by running an export on a made-up workspace), 5 (resume), 6 (guardrails), 7 (provenance), 10 (a saved current workspace),
-  11 (`agent.command` used as written).
+  (item 11 done, see 2b).
 - C1 (autopilot tools off): its first step is the probe on today's code with `claude -p`; not run by this track (no `claude` starts here).
 - C2 rest: the OpenCorporates token in the address (`registry.py:207`) - needs a check of the API's header support.
 - C3 (pinned helper binary + SHA-256, model revision, no download inside `run`, hashed launcher lock).

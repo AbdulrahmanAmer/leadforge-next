@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "CLAUDE",
+    "-p",
+    "--model",
+    "sonnet",
+    "--output-format",
+    "text",
+    "--no-session-persistence",
+    "--strict-mcp-config",
+    "--settings",
+    "{\"disableAllHooks\": true}"
+  ],
+  "isolate": true
+}
