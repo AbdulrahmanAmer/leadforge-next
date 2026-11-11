@@ -259,6 +259,60 @@ summary, the laptop shared with two other test runs); `pytest -n 4`: `5 failed, 
 - `scripts/bench/gliner_bench.py` still loads the model unpinned (a bench script; L3c deletes it).
 - A local `CHECK PASS` on an idle laptop.
 
+## Build (part C: the NER download)   (builder: Opus 5.5, run l2c-fix, 2026-11-11 16:26-). Branch: slice/L2-ner from slice/L2 (50e3b38).
+Closes the Review's one blocker against C3. Nothing else touched: worker design, politeness code, crawler, agent
+command and version 0.7.0 unchanged.
+
+### Done
+1. **`run` loads from the local cache only.** `ner_worker.NerWorker` starts its child process inside `offline_env()`
+   (`HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`) so the child inherits them from its first line, and `_process_entry`
+   sets them again before the target imports gliner; the parent's own environment is restored after the start.
+   Both loaders (`_worker_main` and the in-thread `extract._gliner_model`) pass `local_files_only=True` next to the
+   pinned `revision=`; the in-thread one imports gliner inside `offline_env()`.
+2. **Missing cache = NER off, one warning.** `runner._start_ner_worker` asks `ner_worker.ner_cache_ready()` (pinned
+   snapshot files of both repos present, and the tokenizer repo's `refs/main` equal to its pin; the cache root is
+   found by huggingface_hub's own precedence without importing it). If not: one warning naming
+   `leadforge doctor --fix --full`, no worker started, and `_people_fn` returns the heuristic extractor, exactly the
+   path a machine without `[ner]` takes.
+3. **The fetch lives in `doctor --fix --full` only, pinned for both repos.** `doctor.fetch_ner_model()` (called by
+   `install_quality_extras` once the `[ner]` extra is in; reported as check `ner-model`) runs `snapshot_download`
+   with `revision=` for the model (`urchade/gliner_small-v2.1` @ `4e091416...a47f`, the pin already set) and for the
+   tokenizer repo, then points the tokenizer repo's `refs/main` at its pin: GLiNER asks for the backbone by name, and
+   offline that name resolves through `refs/main`, so the by-name lookup lands on exactly the pinned files.
+   Files fetched: the model's `gliner_config.json, pytorch_model.bin`; the tokenizer repo's `config.json, spm.model,
+   tokenizer_config.json` (not its weights).
+4. **Tokenizer pin:** `microsoft/deberta-v3-small` @ `a36c739020e01763fe789b4b85e2df55d6180012`, the `sha` of
+   `GET https://huggingface.co/api/models/microsoft/deberta-v3-small` read 2026-11-11 16:29 (+02:00); the record's
+   `lastModified` 2022-09-26; files `.gitattributes, README.md, config.json, pytorch_model.bin, spm.model,
+   tf_model.h5, tokenizer_config.json`. The constant is `ner_worker.BACKBONE_NAME` (a name holding "token" made
+   gitleaks' generic-api-key rule flag the public commit id).
+
+### Tests (3 new, 1 changed) in `tests/test_downloads_pinned.py`, red on 50e3b38 first
+- `test_run_ner_path_with_empty_cache_opens_no_socket_and_warns_once`: sockets blocked, an empty `HF_HUB_CACHE`, a
+  made-up gliner that dials the Hub unless offline or told local files only, the real loader run in-process; then
+  the in-thread loader. Red: `AssertionError: the NER path opened the network: ["create_connection(('huggingface.co', 443),)"]`
+- `test_loader_process_is_offline_before_model_libraries_load`: a real spawned worker reports its switches and which
+  of gliner/transformers/huggingface_hub/torch were imported. Red: `{'HF_HUB_OFFLINE': None} != {'HF_HUB_OFFLINE': '1'}`,
+  `{'TRANSFORMERS_OFFLINE': None} != {'TRANSFORMERS_OFFLINE': '1'}`
+- `test_doctor_fetch_pins_the_model_and_the_tokenizer`: a made-up `huggingface_hub.snapshot_download` that fails any
+  call without a revision; asserts both pinned calls, and that `ner_cache_ready()` is False before and True after.
+  Red: `AttributeError: module 'leadforge.enrich.ner_worker' has no attribute 'TOKENIZER_NAME'` (the fetch did not exist).
+- Changed: `test_model_is_loaded_by_pinned_revision` now expects `local_files_only=True` beside the revision.
+Green after the change: `11 passed in 6.91s` (the file); with `tests/test_ner_worker.py`:
+`24 passed, 1 skipped, 1 error` at below-normal priority, the error `worker did not become ready within 10.0s` (the
+load-timing failure part B saw on the base code); that test alone at normal priority: `1 passed in 6.24s`.
+Lint `ruff check src tests`: `All checks passed!`. Secret scan `gitleaks git --log-opts="origin/slice/L2..HEAD"`:
+`no leaks found`.
+
+### Not done / UNPROVEN
+- UNPROVEN against the real libraries (gliner, transformers, torch are not installed here; tests use made-up
+  modules): that the installed GLiNER's `from_pretrained` takes `local_files_only`, that transformers resolves the
+  backbone by name offline through `refs/main`, and that GLiNER needs no backbone weights. If any is false, the
+  worker fails to start, `run` warns and carries on with the heuristic extractor; it does not download. Settled by:
+  `doctor --fix --full` then `enrich` with sockets blocked, on a machine with `[ner]` installed.
+- `scripts/bench/gliner_bench.py` still loads unpinned (bench script, L3c deletes it); not touched.
+- `doctor --fix --full` still installs the extras with pip and no hashes (Review's NOT DONE, outside this job).
+
 ## Review   (reviewer: Opus 5.5, run l2-review, 2026-11-11 15:40-16:20; fixing reviewer; did not see the build)
 Branch slice/L2 = part A + merge of slice/L2b (8f388aa; one conflict, in this file: both Build parts kept in order).
 Builders' reports not read. Version 0.7.0 set in every copy (1de03f8); the header's "0.7.0 (not bumped yet)" is the
