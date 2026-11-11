@@ -342,7 +342,10 @@ def test_known_flag_set_when_cid_already_known(cfg):
 
 # --------------------------------------------------------------------------- pipeline: parallel_queries
 def _run_sleepy_discover(parallel_queries: int, tmp_path, monkeypatch, n_queries: int = 4,
-                         sleep_s: float = 0.2) -> float:
+                         sleep_s: float = 0.2) -> int:
+    """The most fetches that were in flight at the same moment during one discover run."""
+    import threading
+
     import yaml
 
     from leadforge.config import load_config
@@ -364,6 +367,9 @@ def _run_sleepy_discover(parallel_queries: int, tmp_path, monkeypatch, n_queries
     icp_path.write_text(yaml.safe_dump(icp.model_dump(mode="json")), encoding="utf-8")
     monkeypatch.setattr("leadforge.pipeline.ensure_ready", lambda cfg: None)
 
+    in_flight = [0, 0]  # now, most
+    lock = threading.Lock()
+
     class _Sleepy:
         name = "fake_sleepy"
         supports_tiles = False
@@ -372,30 +378,35 @@ def _run_sleepy_discover(parallel_queries: int, tmp_path, monkeypatch, n_queries
             return True, "ok"
 
         def fetch(self, pq, limit=None):
+            with lock:
+                in_flight[0] += 1
+                in_flight[1] = max(in_flight)
             time.sleep(sleep_s)
+            with lock:
+                in_flight[0] -= 1
             return [RawListing(provider="fake_sleepy", fetched_at=now_iso(), data={
                 "title": f"Biz {pq.text}", "phone": f"713-555-{abs(hash(pq.text)) % 10000:04d}",
                 "place_id": f"PID_{pq.text}"})]
 
     monkeypatch.setattr("leadforge.pipeline.get_chain", lambda cfg, only=None: [_Sleepy()])
 
-    t0 = time.monotonic()
     run_id, counts, warns = run_discover(cfg, icp, icp_path)
-    elapsed = time.monotonic() - t0
 
     conn = db.connect(cfg.db_path)
     statuses = [r["status"] for r in conn.execute(
         "SELECT status FROM queries WHERE run_id=?", (run_id,)).fetchall()]
     assert len(statuses) == n_queries and all(s == "done" for s in statuses)
     assert conn.execute("SELECT COUNT(*) c FROM businesses").fetchone()["c"] == n_queries
-    return elapsed
+    return in_flight[1]
 
 
 def test_parallel_queries_is_faster_than_serial(tmp_path, monkeypatch):
-    t_parallel = _run_sleepy_discover(4, tmp_path, monkeypatch)
-    t_serial = _run_sleepy_discover(1, tmp_path, monkeypatch)
-    assert t_parallel < 0.5, f"parallel_queries=4 took {t_parallel:.2f}s (expected < 0.5s)"
-    assert t_serial >= 0.8, f"serial (parallel_queries=1) took {t_serial:.2f}s (expected >= 0.8s)"
+    # Overlap is counted, not timed: a wall-clock bound (4 x 0.2 s sleeps under 0.5 s) also timed the
+    # rest of run_discover and failed on loaded Windows runners at 0.50 s to 2.06 s.
+    most_parallel = _run_sleepy_discover(4, tmp_path, monkeypatch)
+    most_serial = _run_sleepy_discover(1, tmp_path, monkeypatch)
+    assert most_parallel >= 2, f"parallel_queries=4 never ran two fetches at once (most: {most_parallel})"
+    assert most_serial == 1, f"parallel_queries=1 ran {most_serial} fetches at once"
 
 
 class _FakePage:
