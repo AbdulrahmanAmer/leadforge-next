@@ -19,9 +19,8 @@
 from __future__ import annotations
 
 import threading
-from urllib.parse import urlsplit
 
-from leadforge.util import LOG, EnvError
+from leadforge.util import LOG, EnvError, site_key
 
 # v0.3 speed unit (2026-09-02, build item 2): was a hardcoded threading.Semaphore(2) — renders are the
 # heavyweight exception (a real Chromium instance) regardless of politeness.workers, so they get their
@@ -59,7 +58,7 @@ def fetch_rendered(url: str, cfg, throttle) -> str:
     """
     if not is_available():
         raise EnvError("browser extra not installed — run: pip install -e .[browser] && crawl4ai-setup")
-    throttle.wait(urlsplit(url).netloc)
+    throttle.wait(site_key(url))
     try:
         import asyncio
 

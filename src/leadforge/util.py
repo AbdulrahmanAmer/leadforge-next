@@ -101,6 +101,19 @@ class HostThrottle:
             time.sleep(min(sleep_for, 1.0))
 
 
+def site_key(url: str) -> str:
+    """The one name of a site for its pause and its robots.txt answer, as the HTTP client sends it (lower
+    case, IDNA, no default port), so the plain fetch, its redirect hops and the browser pass agree."""
+    import httpx
+
+    try:
+        return httpx.URL(url).netloc.decode("ascii").lower()
+    except Exception:  # noqa: BLE001 — httpx cannot send such an address; any stable name will do
+        from urllib.parse import urlsplit
+
+        return urlsplit(url).netloc.lower()
+
+
 # --- small utilities ------------------------------------------------------------------------
 def now_iso() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")

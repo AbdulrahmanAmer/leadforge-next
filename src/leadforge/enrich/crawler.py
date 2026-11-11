@@ -18,7 +18,7 @@ import httpx
 from selectolax.parser import HTMLParser
 
 from leadforge.config import Config
-from leadforge.util import LOG, HostThrottle
+from leadforge.util import LOG, HostThrottle, site_key
 
 PAGE_KEYWORDS = re.compile(
     r"(about|team|staff|people|leadership|founders?|management|meet|contact|reach[\s-]?us|"
@@ -196,7 +196,7 @@ class SiteCrawler:
         # are exempt: they are how the answer is found.
         if not self._fetching_robots and not self._allowed(url):
             raise _RobotsRefused(f"robots disallow: {url}", request=request)
-        self.throttle.wait(urlsplit(url).netloc)
+        self.throttle.wait(site_key(url))
 
     def close(self) -> None:
         self.client.close()
@@ -221,7 +221,7 @@ class SiteCrawler:
 
     # --- robots ------------------------------------------------------------------
     def _robots_for(self, base: str) -> urllib.robotparser.RobotFileParser:
-        host = urlsplit(base).netloc.lower()
+        host = site_key(base)
         rp = self._robots.get(host)
         if rp is not None:
             return rp
@@ -263,7 +263,7 @@ class SiteCrawler:
         """timeout overrides the client's default (home-page) timeout — pass cfg.crawl.page_timeout_s
         for secondary/candidate pages so a dead or slow non-home page costs less than the home fetch."""
         self.last_failure: str | None = None
-        host = urlsplit(url).netloc.lower()
+        host = site_key(url)
         dead = self._host_dead_reason(host)
         if dead is not None:
             self.last_failure = dead
@@ -410,6 +410,9 @@ class SiteCrawler:
             # structurally (the loop is unreachable from this branch); the test suite now proves it
             # against a real server rather than trusting the control flow by inspection.
             cause = getattr(self, "last_failure", None) or "unknown"
+            if cause == "robots":  # the home page redirected into a path robots.txt disallows
+                result.error = "robots-disallowed"
+                return result
             result.error = f"home unreachable ({cause})"
             # Only a block-shaped refusal (WAF/bot wall) earns the rendered-browser retry — a
             # person's browser might still be served. Dead DNS, 404s, PDFs and timeouts get
@@ -468,7 +471,8 @@ class SiteCrawler:
                 return result
             resp = self._get(agg_url)
             if resp is None:
-                result.error = "aggregator"  # the aggregator page itself was unreachable
+                # a redirect into a disallowed path is a refusal; otherwise the page itself was unreachable
+                result.error = "robots-disallowed" if self.last_failure == "robots" else "aggregator"
                 return result
             home_html = resp.text[: self.cfg.crawl.max_text_bytes]
         target = self._first_real_link(agg_url, home_html)

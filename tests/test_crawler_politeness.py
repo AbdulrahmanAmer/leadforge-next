@@ -571,3 +571,51 @@ def test_throttle_treats_a_site_name_in_any_case_as_one_site(monkeypatch):
     throttle.wait("Shop.Example")
     throttle.wait("shop.example")
     assert now[0] >= 0.2, f"the second request left {now[0]} s after the first"
+
+
+def test_every_path_names_a_site_the_same_way(monkeypatch):
+    """The plain fetch, its redirect hops and the browser pass share one pause per site: an address with a
+    non-ASCII name, an explicit default port or capitals is the same site as its plain spelling."""
+    from leadforge.enrich import browser
+    from leadforge.util import site_key
+
+    spellings = ["https://bücher-shop.de/", "https://XN--BCHER-SHOP-9DB.de:443/a", "https://xn--bcher-shop-9db.de/b"]
+    assert len({site_key(u) for u in spellings}) == 1, [site_key(u) for u in spellings]
+
+    class _Stop(Exception):
+        pass
+
+    class _Recorder:
+        def wait(self, host):
+            self.host = host
+            raise _Stop  # stop before any browser could start
+
+    rec = _Recorder()
+    monkeypatch.setattr(browser, "is_available", lambda: True)
+    with pytest.raises(_Stop):
+        browser.fetch_rendered(spellings[0], None, rec)
+    assert rec.host == site_key(spellings[2])
+
+
+def test_a_home_redirect_refused_by_robots_is_reported_as_robots(tmp_path, monkeypatch, server):
+    """A home page that redirects into a disallowed path is a site that said no, not a dead site."""
+    base, handler = server
+    handler.robots = b"User-agent: *\nDisallow: /private\n"
+
+    def do_get(self):  # noqa: N802 — http.server API
+        if self.path == "/":
+            type(self).requests.append(self.path)
+            self.send_response(302)
+            self.send_header("Location", "/private/home")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        _Handler.do_GET(self)
+
+    monkeypatch.setattr(handler, "do_GET", do_get)
+    cfg, crawler = _crawler(tmp_path, monkeypatch)
+    try:
+        res = crawler.crawl(f"{base}/")
+    finally:
+        crawler.close()
+    assert res.error == "robots-disallowed", res.error
