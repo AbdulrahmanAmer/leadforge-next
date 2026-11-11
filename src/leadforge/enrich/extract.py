@@ -631,7 +631,9 @@ def _gliner_model():
         with _NER_LOCK:
             if _GLINER_MODEL is None:
                 from gliner import GLiNER
-                _GLINER_MODEL = GLiNER.from_pretrained("urchade/gliner_small-v2.1")
+
+                from leadforge.enrich.ner_worker import MODEL_NAME, pinned_revision
+                _GLINER_MODEL = GLiNER.from_pretrained(MODEL_NAME, revision=pinned_revision(MODEL_NAME))
                 _apply_torch_threads()
     return _GLINER_MODEL
 
