@@ -221,8 +221,16 @@ _NORMS = [
 ]
 
 
+def _ws_forms(ws: str) -> list[str]:
+    """The workspace path as a child may print it: as given, with / separators, and resolved (Windows hands out the
+    8.3 short temp name, RUNNER~1, while the child prints the long one). Longest first."""
+    forms = {ws, os.path.realpath(ws)}
+    forms |= {f.replace("\\", "/") for f in forms}
+    return sorted(forms, key=len, reverse=True)
+
+
 def norm_str(s: str, ws: str) -> str:
-    for w in (ws, ws.replace("\\", "/")):
+    for w in _ws_forms(ws):
         s = s.replace(w, "<WS>")
     for rx, rep in _NORMS:
         s = rx.sub(rep, s)
@@ -236,6 +244,17 @@ def _walk(o, ws: str):
         return [_walk(x, ws) for x in o]
     if isinstance(o, dict):
         return {norm_str(k, ws): _walk(v, ws) for k, v in o.items()}
+    return o
+
+
+def one_separator(o):
+    """Compare across systems: a path is written with backslash on Windows and / elsewhere (applied to both sides of a compare)."""
+    if isinstance(o, str):
+        return o.replace("\\", "/")
+    if isinstance(o, list):
+        return [one_separator(x) for x in o]
+    if isinstance(o, dict):
+        return {one_separator(k): one_separator(v) for k, v in o.items()}
     return o
 
 
@@ -322,8 +341,8 @@ def main() -> int:
         GOLDEN.write_text(json.dumps(norm, indent=1, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
         print(f"golden saved: {GOLDEN}")
         return 0
-    exp = json.loads(GOLDEN.read_text(encoding="utf-8"))
-    got = json.loads(json.dumps(norm, sort_keys=True))
+    exp = one_separator(json.loads(GOLDEN.read_text(encoding="utf-8")))
+    got = one_separator(json.loads(json.dumps(norm, sort_keys=True)))
     if got == exp:
         print(f"PASS - result equals tests/fixtures/e2e/expected.json ({len(norm['refused'])} refused-call entries, as saved)")
         return 0

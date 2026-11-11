@@ -64,6 +64,10 @@ jobs:
           python -m pip install --disable-pip-version-check --require-hashes -r requirements.lock
           python -m pip install --disable-pip-version-check --no-deps --no-build-isolation -e .
 
+      - name: Resolver the runner uses (diagnostic)
+        if: runner.os == 'Linux'
+        run: grep -E '^nameserver' /etc/resolv.conf
+
       # An invented campaign through the CLI, every outside call refused; compared with tests/fixtures/e2e/expected.json.
       # The script exits 1 on FAIL; the grep makes a printed FAIL fail the job even if that ever changes.
       - name: Run the fake campaign
