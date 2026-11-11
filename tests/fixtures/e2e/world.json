@@ -1,0 +1,38 @@
+{
+  "port": 18765,
+  "sites": [
+    {
+      "host": "harbour-motors.example",
+      "mode": "normal"
+    },
+    {
+      "host": "kestrel-garage.example",
+      "mode": "normal"
+    },
+    {
+      "host": "millbrook-autos.example",
+      "mode": "normal"
+    },
+    {
+      "host": "northgate-tyres.example",
+      "mode": "normal"
+    },
+    {
+      "host": "oakfield-repairs.example",
+      "mode": "robots_all"
+    },
+    {
+      "host": "pennine-motors.example",
+      "mode": "redirect_disallowed"
+    },
+    {
+      "host": "quayside-service.example",
+      "mode": "not_found"
+    },
+    {
+      "host": "riverside-auto.example",
+      "mode": "slow"
+    }
+  ],
+  "slow_seconds": 2.0
+}

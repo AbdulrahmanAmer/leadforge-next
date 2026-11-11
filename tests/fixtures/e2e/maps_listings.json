@@ -1,0 +1,186 @@
+[
+  {
+    "title": "Harbour Motors",
+    "category": "Car repair and maintenance service",
+    "categories": [
+      "Car repair and maintenance service",
+      "MOT testing service"
+    ],
+    "address": "14 Quay Lane, Bristol BS1 1AA, United Kingdom",
+    "complete_address": {
+      "street": "14 Quay Lane",
+      "city": "Bristol",
+      "postal_code": "BS1 1AA",
+      "country": "GB"
+    },
+    "phone": "0117 496 0101",
+    "web_site": "http://harbour-motors.example:18765/",
+    "review_rating": 4.0,
+    "review_count": 20,
+    "latitude": 51.45,
+    "longitude": -2.59,
+    "place_id": "fixture-place-01",
+    "cid": "1000"
+  },
+  {
+    "title": "Kestrel Garage",
+    "category": "Car repair and maintenance service",
+    "categories": [
+      "Car repair and maintenance service",
+      "MOT testing service"
+    ],
+    "address": "3 Mill Road, Bristol BS1 2AA, United Kingdom",
+    "complete_address": {
+      "street": "3 Mill Road",
+      "city": "Bristol",
+      "postal_code": "BS1 2AA",
+      "country": "GB"
+    },
+    "phone": "0117 496 0102",
+    "web_site": "http://kestrel-garage.example:18765/",
+    "review_rating": 4.1,
+    "review_count": 27,
+    "latitude": 51.451,
+    "longitude": -2.5909999999999997,
+    "place_id": "fixture-place-02",
+    "cid": "1001"
+  },
+  {
+    "title": "Millbrook Autos",
+    "category": "Car repair and maintenance service",
+    "categories": [
+      "Car repair and maintenance service",
+      "MOT testing service"
+    ],
+    "address": "88 Brook Street, Bristol BS1 3AA, United Kingdom",
+    "complete_address": {
+      "street": "88 Brook Street",
+      "city": "Bristol",
+      "postal_code": "BS1 3AA",
+      "country": "GB"
+    },
+    "phone": "0117 496 0103",
+    "web_site": "http://millbrook-autos.example:18765/",
+    "review_rating": 4.2,
+    "review_count": 34,
+    "latitude": 51.452000000000005,
+    "longitude": -2.5919999999999996,
+    "place_id": "fixture-place-03",
+    "cid": "1002"
+  },
+  {
+    "title": "Northgate Tyres",
+    "category": "Car repair and maintenance service",
+    "categories": [
+      "Car repair and maintenance service",
+      "MOT testing service"
+    ],
+    "address": "21 North Gate, Bristol BS1 4AA, United Kingdom",
+    "complete_address": {
+      "street": "21 North Gate",
+      "city": "Bristol",
+      "postal_code": "BS1 4AA",
+      "country": "GB"
+    },
+    "phone": "0117 496 0104",
+    "web_site": "http://northgate-tyres.example:18765/",
+    "review_rating": 4.3,
+    "review_count": 41,
+    "latitude": 51.453,
+    "longitude": -2.593,
+    "place_id": "fixture-place-04",
+    "cid": "1003"
+  },
+  {
+    "title": "Oakfield Repairs",
+    "category": "Car repair and maintenance service",
+    "categories": [
+      "Car repair and maintenance service",
+      "MOT testing service"
+    ],
+    "address": "5 Oak Field Way, Bristol BS1 5AA, United Kingdom",
+    "complete_address": {
+      "street": "5 Oak Field Way",
+      "city": "Bristol",
+      "postal_code": "BS1 5AA",
+      "country": "GB"
+    },
+    "phone": "0117 496 0105",
+    "web_site": "http://oakfield-repairs.example:18765/",
+    "review_rating": 4.4,
+    "review_count": 48,
+    "latitude": 51.454,
+    "longitude": -2.594,
+    "place_id": "fixture-place-05",
+    "cid": "1004"
+  },
+  {
+    "title": "Pennine Motors",
+    "category": "Car repair and maintenance service",
+    "categories": [
+      "Car repair and maintenance service",
+      "MOT testing service"
+    ],
+    "address": "70 High Moor, Bristol BS1 6AA, United Kingdom",
+    "complete_address": {
+      "street": "70 High Moor",
+      "city": "Bristol",
+      "postal_code": "BS1 6AA",
+      "country": "GB"
+    },
+    "phone": "0117 496 0106",
+    "web_site": "http://pennine-motors.example:18765/",
+    "review_rating": 4.0,
+    "review_count": 55,
+    "latitude": 51.455000000000005,
+    "longitude": -2.5949999999999998,
+    "place_id": "fixture-place-06",
+    "cid": "1005"
+  },
+  {
+    "title": "Quayside Service",
+    "category": "Car repair and maintenance service",
+    "categories": [
+      "Car repair and maintenance service",
+      "MOT testing service"
+    ],
+    "address": "9 Wharf Row, Bristol BS1 7AA, United Kingdom",
+    "complete_address": {
+      "street": "9 Wharf Row",
+      "city": "Bristol",
+      "postal_code": "BS1 7AA",
+      "country": "GB"
+    },
+    "phone": "0117 496 0107",
+    "web_site": "http://quayside-service.example:18765/",
+    "review_rating": 4.1,
+    "review_count": 62,
+    "latitude": 51.456,
+    "longitude": -2.5959999999999996,
+    "place_id": "fixture-place-07",
+    "cid": "1006"
+  },
+  {
+    "title": "Riverside Auto",
+    "category": "Car repair and maintenance service",
+    "categories": [
+      "Car repair and maintenance service",
+      "MOT testing service"
+    ],
+    "address": "46 River Walk, Bristol BS1 8AA, United Kingdom",
+    "complete_address": {
+      "street": "46 River Walk",
+      "city": "Bristol",
+      "postal_code": "BS1 8AA",
+      "country": "GB"
+    },
+    "phone": "0117 496 0108",
+    "web_site": "http://riverside-auto.example:18765/",
+    "review_rating": 4.2,
+    "review_count": 69,
+    "latitude": 51.457,
+    "longitude": -2.597,
+    "place_id": "fixture-place-08",
+    "cid": "1007"
+  }
+]
