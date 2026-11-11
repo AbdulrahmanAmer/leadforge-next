@@ -42,5 +42,7 @@ Tests: 782 passed at L1 -> 792 passed (10 new: 8 golden, 2 C2; +2 golden for ite
 - C1 (autopilot tools off): its first step is the probe on today's code with `claude -p`; not run by this track (no `claude` starts here).
 - C2 rest: the OpenCorporates token in the address (`registry.py:207`) - needs a check of the API's header support.
 - C3 (pinned helper binary + SHA-256, model revision, no download inside `run`, hashed launcher lock).
-- The flaky timing tests named in L1's slice file.
+- `test_crawler_politeness.py::test_workers_12_still_serializes_per_host_but_overlaps_across_hosts` failed again on CI (PR 2, Windows
+  py3.12, sha 7230595; 793 passed): host A's FIRST gap was 0.25 s against a 0.4 s delay, exactly 0.25 in all three failures seen. Likely not
+  noise but a real short first gap (robots.txt then the first page?). Investigate before calling it flaky. Other CI jobs on PR 2: green.
 - Version 0.7.0 and the changelog line; CI on the branch; review; merge.
