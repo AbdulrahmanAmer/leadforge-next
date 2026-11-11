@@ -240,6 +240,19 @@ def test_run_ner_path_with_empty_cache_opens_no_socket_and_warns_once(cfg, tmp_p
     assert extract_calls[0][1].get("local_files_only") is True
 
 
+def test_in_thread_loader_refuses_when_the_hub_client_was_imported_online(monkeypatch, no_sockets):
+    from leadforge.enrich import extract
+
+    calls: list = []
+    _hub_like_gliner(monkeypatch, calls)
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", types.ModuleType("huggingface_hub"))
+    monkeypatch.setattr(extract, "_GLINER_MODEL", None)
+    with pytest.raises(RuntimeError, match="imported before the offline switches"):
+        extract._gliner_model()
+    assert calls == [] and no_sockets == []
+
+
 def test_doctor_fetch_pins_the_model_and_the_tokenizer(tmp_path, monkeypatch):
     from leadforge.enrich import ner_worker
 
