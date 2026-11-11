@@ -304,6 +304,15 @@ load-timing failure part B saw on the base code); that test alone at normal prio
 Lint `ruff check src tests`: `All checks passed!`. Secret scan `gitleaks git --log-opts="origin/slice/L2..HEAD"`:
 `no leaks found`.
 
+### Check and CI
+On STRIKERFORCE, `node check.mjs` once, at below-normal priority, on the committed tree:
+```
+836 passed, 6 skipped in 346.09s (0:05:46)
+CHECK PASS sha=f088e83 tree=clean steps=5 skipped=0 secs=363
+```
+CI (workflow_dispatch on slice/L2-ner, run 43040464433, sha f088e83): `completed success`, all 11 jobs pass
+(Ubuntu and Windows py3.11-3.14, version strings, manifests, `claude plugin validate`). No test needs a browser.
+
 ### Not done / UNPROVEN
 - UNPROVEN against the real libraries (gliner, transformers, torch are not installed here; tests use made-up
   modules): that the installed GLiNER's `from_pretrained` takes `local_files_only`, that transformers resolves the
