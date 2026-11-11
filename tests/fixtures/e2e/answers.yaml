@@ -1,0 +1,18 @@
+version: 1
+campaign: bristol-garages-fixture
+offer:
+  what: "Online booking for independent garages"
+  value_prop: "Fewer missed calls, more booked jobs"
+  sender: "Fixture Agency"
+target:
+  categories: ["car repair"]
+  geography: { areas: ["Bristol"], country: GB, grid: "off" }
+  size: { min_reviews: 0, max_reviews: null }
+qualify:
+  hard: []
+  soft: [website_missing, stale_site]
+decision_maker:
+  titles_priority: ["Owner", "General Manager", "Service Manager"]
+scoring: { weights_override: {} }
+caps: { max_leads: 50, max_sites: 50, max_tiles: 10 }
+compliance: { region_profile: uk }
