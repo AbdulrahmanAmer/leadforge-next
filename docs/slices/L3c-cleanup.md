@@ -257,11 +257,11 @@ data files: ['leadforge/data/category_aliases.yaml', 'leadforge/data/scoring.def
 
 leadforge/data/scoring.default.yaml: 3148 bytes, sha256 57ca6009501c66c5cc3df98c62ef936661a17995d605d2b375fc06ce2ff0e8f2
 --- first 12 lines:
-# Default scoring rubric (docs/01 §5, docs/03, docs/09 "D — Scoring and export truth" v0.3).
+# Default scoring rubric (docs/01 5, docs/03, docs/09 "D  Scoring and export truth" v0.3).
 # ICP `scoring.weights_override` merges over `factors.*.weight`.
 #
 # v2 (v0.3): `fit` is the ONLY thing that feeds `total`/tier. Reachability (DM/email/phone/registry) is
-# no longer blended into fit — it is graded separately as `contactability` (0-100, a meta ScoreFactor,
+# no longer blended into fit  it is graded separately as `contactability` (0-100, a meta ScoreFactor,
 # computed in score.py, never affecting total) so a hot-but-uncontactable lead and a lukewarm-but-
 # call-ready one are never confused by one blended number.
 version: 2
@@ -303,7 +303,7 @@ source file sha256 (git, same bytes):
 ### Decisions taken on my own
 - **Kept `icm/SCOPE.md`.** It is the scope statement and red-lines document, cited about 25 times by live code (`maps_list.py`, `infer_email.py`, `social.py`, `config.py` ...), skills and `AGENTS.md`; it is not a build plan.
   Moving it to `docs/` would add a file (pass line: additions only this file). Say so if you want it moved or deleted.
-- Replaced dangling pointers to deleted files with shorter text instead of leaving them (one line each, listed under commit 3). That is where nearly all of the 38 added lines come from: each is a
+- Replaced dangling pointers to deleted files with shorter text instead of leaving them (one line each, listed under commit 3). That is where all of the 41 added lines other than this file come from: each is a
   one-line replacement of a deleted-and-rewritten line (`git diff --numstat` in the proof). New files added: none besides this one. The "merged reference file" is not a new file: the surviving
   copy under `generate-leads/references/` is the single one.
 - Editing comment lines in `pipeline.py` (2 lines) and `enrich/runner.py` (2 lines): comment text only, no code. These files are fragile and L2 touches nearby code, so a trivial textual conflict is possible at the reviewer's rebase.
