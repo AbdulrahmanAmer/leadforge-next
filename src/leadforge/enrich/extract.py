@@ -640,7 +640,7 @@ def _gliner_model():
 
 NER_LABELS = ["person name", "job title"]
 NER_THRESHOLD = 0.4  # keeps short titles like "Owner" (scores ~0.45) that 0.5 drops
-NER_TEXT_CHARS = 6000  # matches the GPU benchmark (scripts/bench/gliner_bench.py) and worker requests
+NER_TEXT_CHARS = 6000  # matches the GPU benchmark and worker requests
 
 
 def _ner_plausible_name(name: str) -> bool:

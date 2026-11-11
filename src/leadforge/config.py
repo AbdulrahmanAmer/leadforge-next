@@ -98,7 +98,7 @@ class PolitenessCfg(BaseModel):
     # improve throughput because the slow tail (403/Cloudflare blocks, dead hosts, the browser-render
     # semaphore) dominated — see crawl.site_budget_s / crawl.page_timeout_s / enrich.browser_concurrency,
     # which is what actually lets more workers help. 12 is the number those fixes are measured against
-    # (scripts/bench_enrich.py) — per-host pacing is unchanged at any worker count.
+    # Per-host pacing is unchanged at any worker count.
     # 2026-09-24 (Layer 3): with NER moved to its own GPU/CPU worker process the crawl threads are pure I/O;
     # same 200 sites from identical DB copies: 12 workers 22.9 sites/min, 24 workers 26.3 (one run each —
     # network variance applies). Per-host pacing is unchanged, so 24 costs no site anything extra.
