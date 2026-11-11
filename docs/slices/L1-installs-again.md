@@ -73,11 +73,15 @@ Wording search (`partner|Striker|two owners|the owners` over tracked files) afte
 |---|---|
 | Before: fresh `pip install .` fails to import the crawler; after: it imports | HOLDS (above) |
 | Plugin launcher installs into an empty folder and prints a version | HOLDS |
-| CI green in every job, Ubuntu and Windows, for the exact commit | see CI below |
+| CI green in every job, Ubuntu and Windows, for the exact commit | HOLDS for f6a45d6: run 43012378892, all 11 jobs pass (8 test jobs Ubuntu+Windows py3.11-3.14, versions, manifests, plugin validate). Later commits change only `docs/slices/**` and `.claude/POSITION.md` |
 | A session in the repo shows the `AGENTS.md` lines loaded | NOT RUN: no `claude` start in this folder before L2 (adoption plan rule), and the track may not touch the live config. Settle: in a lab `CLAUDE_CONFIG_DIR`, `claude` at the repo root, `/memory` lists `AGENTS.md` |
 | The wording search of section 7 | HOLDS |
 | The "versions agree" step fails when one copy is changed | HOLDS |
 | A plugin install made before the bump updates after it | HOLDS for the launcher (venv reinstalls on the version change). Claude Code's own plugin-cache refresh UNPROVEN: needs `/plugin update` on a real pre-bump install |
 | 15 map citations drawn at random hold | HOLDS (15/15) |
 | Jay reads the other laptop's clone for unpushed work | NOT DONE: the other laptop is not contacted by this track. Must happen before L1 reaches the public repo |
+CI history on this branch: run 43011757825 (6ab7dc3) FAILED: Ubuntu x4 on three `cmd /c` autopilot tests (fixed in f6a45d6);
+Windows py3.11 and py3.12 each on one timing test (`test_crawler_politeness.py::test_workers_12_still_serializes_per_host_but_overlaps_across_hosts`
+gap 0.25 s < 0.26 s; `test_maps_list.py::test_parallel_queries_is_faster_than_serial` 0.50 s). Those two are flaky on slow runners, not
+changed here; the next run passed them. Named for L2's goldens work.
 Coverage: not measured (no coverage tool in `[dev]`; not installed). Time: the suite takes 182 s serial on this laptop.
