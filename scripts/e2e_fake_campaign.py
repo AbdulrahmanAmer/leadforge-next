@@ -255,6 +255,29 @@ def normalized(data: dict, ws: str) -> dict:
     return d
 
 
+def leaf_diffs(exp, got, path: str = "", out: list | None = None) -> list[str]:
+    """Where two results differ, one short line per leaf (lists of different length: entries only on one side)."""
+    out = [] if out is None else out
+    if isinstance(exp, dict) and isinstance(got, dict):
+        for k in sorted(set(exp) | set(got)):
+            if k not in exp or k not in got:
+                out.append(f"{path}.{k}: only in {'expected' if k in exp else 'got'}")
+            else:
+                leaf_diffs(exp[k], got[k], f"{path}.{k}", out)
+    elif isinstance(exp, list) and isinstance(got, list):
+        if len(exp) == len(got):
+            for i, (x, y) in enumerate(zip(exp, got)):
+                leaf_diffs(x, y, f"{path}[{i}]", out)
+        else:
+            ex, go = [json.dumps(x, sort_keys=True) for x in exp], [json.dumps(x, sort_keys=True) for x in got]
+            out.append(f"{path}: expected {len(exp)} entries, got {len(go)}")
+            out += [f"{path}: only in expected: {x[:200]}" for x in ex if x not in go]
+            out += [f"{path}: only in got: {x[:200]}" for x in go if x not in ex]
+    elif exp != got:
+        out.append(f"{path}: expected {json.dumps(exp)[:200]} got {json.dumps(got)[:200]}")
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--python", default=sys.executable, help="interpreter of the leadforge install to run")
@@ -306,6 +329,11 @@ def main() -> int:
         return 0
     diffs = [k for k in sorted(set(exp) | set(got)) if exp.get(k) != got.get(k)]
     print(f"FAIL - differs from expected.json in: {', '.join(diffs)}  (full result: {out / 'result.json'})")
+    lines = leaf_diffs(exp, got)
+    for line in lines[:30]:
+        print("  " + line)
+    if len(lines) > 30:
+        print(f"  ... {len(lines) - 30} more")
     return 1
 
 
