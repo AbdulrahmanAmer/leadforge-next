@@ -74,5 +74,46 @@ The old half: `python scripts/e2e_fake_campaign.py --python <old venv python> --
 - UNPROVEN: D5 and D6 causes (see table).
 - The guard is a Python-level guard: it does not stop a child that is not Python or a native socket call; the campaign starts no such child (`runner: none`, no `claude` process).
 
-## Review
-(none yet; an independent reader checks this proof)
+## Review   (reader: run l4-proof-read, Opus 5.5, 2026-11-11 18:39-19:00; did not see the build, did not read its run report)
+
+### Checks, by reading first
+1. **Guard.** Every campaign step is started by `run_campaign` with `child_env` (only system variables kept, every key/token/proxy name dropped, `PYTHONPATH` = the harness folder), the same for `--python <old>`. That the guard was loaded in the campaign processes, not only in the probe: the fixture Maps stand-in lives in the same `sitecustomize.py`, and `discover` found its 10 businesses in both versions. No campaign step started a non-Python child (no file in any `leadforge_data/bin`, `agent.command: []`, `social.enabled: false`); no `.exe` or archive is in any output folder. Guard logs: every entry is refused; the only hosts that are not DNS resolvers are `github.com`/`api.github.com` in the old `run`. Not covered by this guard and not exercised: asyncio's Windows connect (`ConnectEx`) and native sockets; nothing on this campaign path uses them (no Playwright in the locked environment). Fixture addresses are all `http://<name>.example:18765`; the Google Maps links in `maps_listings.json` are text fields, never requested.
+2. **Same input, invented.** Both versions are driven by the same script, fixture files and config text. Names, `.example` domains and 0117 496 0xxx numbers are invented. One gap: `dvsa_register.csv` row V9000004 (Bath) has phone `01225 496 001`, not in Ofcom's drama range; that row is outside the campaign area and never reaches the output. Left for the next slice (changing it moves `expected.json`).
+3. **Stages really ran.** Counts match the fixtures: 8 listings + 3 Bristol DVSA rows (Bath dropped) - 1 merge = 10 businesses; 5 sites crawled (4 normal + slow; robots-all, redirect-into-disallowed and 404 not crawled), 6 in old (Pennine followed); 2 with no website (the two DVSA-only rows); 5 drafts = the 5 tier-B leads in new.
+4. **Differences.** My own leaf-by-leaf diff of `out-old/run2-pinned/result.json` vs `out-new/run5-pass/result.json` (requests and refused calls as multisets): cell changes are only the Pennine row; the rest is rows re-ordering by score. Nothing is missing from the table. Corrections:
+   - **D1 is 5 refused calls, not 3.** The old `run` doctor also probed DNS (`leadforge.doctor:249`, one packet each to 8.8.8.8 and 1.1.1.1, its `dns-mx` check). Same reason: e9b4847 (`run_doctor(network=False)` for `run`).
+   - **D6 is therefore 38 vs 32, not 40 vs 32,** and the guard's leadforge frame settles it: the extra 6 are one more domain checked (one more `enrich.profile:191` packet per fallback resolver, one more `enrich.validate:34` system probe per own resolver) = Pennine, crawled in old only. Explained, from D2.
+   - **D5 traced:** `draft.auto_tiers` defaults to `["A", "B"]` (`config.py:201`). In old, Pennine is tier B, so a draft target with nothing to say (abstained); in new it is tier C, not a target. Explained, from D2.
+   - UNEXPLAINED: none.
+5. **Re-run** (fresh clone at `D:\homelab-work\l4-read`, interpreter `D:\homelab-work\l4\venv-new`, whose leadforge is the 0.7.1 source of this branch):
+   - The branch as pushed could not run: `answers.yaml` is ignored by the root `.gitignore` and was only untracked in the builder's copy. Fixed in 496a16d (the builder's file, force-added).
+   - The saved result held this laptop's own DNS resolver addresses (two private ones) and their number, so it could pass only here. Fixed in dc21602: packets to the machine's own resolvers are kept once as `<system resolver>`; packets to leadforge's fixed fallbacks keep their count. Golden rewritten from my run's raw data (only the `refused` key changed).
+   - Real output, in order:
+```
+--probe:
+refused: create_connection 203.0.113.9:80 -> gaierror [Errno 11001] LF_GUARD: name lookup refused (not loopback)
+refused: raw connect 203.0.113.9:80 -> ConnectionRefusedError LF_GUARD: connect to 203.0.113.9:80 refused (not loopback)
+refused: lookup www.example.org -> gaierror [Errno 11001] LF_GUARD: name lookup refused (not loopback)
+refused: udp send 192.0.2.53:53 -> ConnectionRefusedError LF_GUARD: sendto 192.0.2.53:53 refused (not loopback)
+loopback allowed: 127.0.0.1 61673
+PROBE PASS
+branch as pushed (1e43d96):
+FileNotFoundError: [Errno 2] No such file or directory: 'D:\\homelab-work\\l4-read\\leadforge-next\\tests\\fixtures\\e2e\\answers.yaml'
+after 496a16d:
+PASS - result equals tests/fixtures/e2e/expected.json (32 refused outside attempts, as saved)
+kestrel-garage.example/team.html "<p>Owner</p>" -> "<p>Apprentice</p>":
+FAIL - differs from expected.json in: csv, report, steps, tabs  (full result: D:\homelab-work\l4-read\r2\result.json)
+(restored with git checkout; tree clean)
+after dc21602:
+PASS - result equals tests/fixtures/e2e/expected.json (21 refused outside attempts, as saved)
+```
+   The PASS line now says "refused-call entries" (message text only, changed after that run). The fresh clone has LF fixtures where the builder's copy had CRLF; the result is the same.
+6. **Nothing public, no key.** Public `AbdulrahmanAmer/leadforge`: last push 2026-10-25, one branch (`master`). Old clone: `origin DISABLED (push)`, HEAD 4506fbd. `leadforge-next` is private. gitleaks: `6 commits scanned ... no leaks found` (branch), `no leaks found` on `out-new` and on `out-old`. A search for common key shapes (`sk-ant-`, `ghp_`, `gho_`, `github_pat_`, `AIza`, `AKIA`, `xox`) in both output folders and my run: 0 hits.
+
+### Gaps (none changes what the proof says about the refactor)
+- G-a: the golden is now machine-independent for DNS by construction, but has only passed on this laptop: UNPROVEN on Linux and on another Windows machine until G2's CI job runs it.
+- G-b: `node check.mjs` NOT RUN by the reader. My changes touch only `scripts/e2e_fake_campaign.py` and fixtures, which neither the suite nor lint reads; `py_compile` of the script passed; there is no CI run for this branch.
+- G-c: one DVSA fixture phone is outside the drama range (above).
+- G-d: the guard is Python-level (as the Build says).
+
+Verdict: PROOF HOLDS WITH GAPS dc21602 (G-a to G-d above)
