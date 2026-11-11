@@ -1,8 +1,8 @@
 """Tests for the maps_list provider (speed unit, docs/09, ADR-014).
 
 No network anywhere in this file. The one test that touches a real (headless) browser only loads a
-static fixture via page.set_content() — tests/fixtures/maps_feed.html, captured once from a live
-search (see scratchpad/speed/builder/capture_feed_fixture.py) — and skips cleanly when Playwright or
+static fixture via page.set_content() — tests/fixtures/maps_feed.html, a MADE-UP results list of the
+live shape written by tests/fixtures/make_maps_feed.py (slice L2) — and skips cleanly when Playwright or
 its Chromium binary is unavailable.
 """
 from __future__ import annotations
@@ -261,10 +261,10 @@ def test_extraction_js_against_live_fixture():
         cards = page.evaluate(_EXTRACT_JS)
         browser.close()
 
-    assert len(cards) >= 10, "fixture should carry a real batch of cards"
+    assert len(cards) >= 10, "fixture should carry a full batch of cards"
     parsed = [c for c in (parse_card(r) for r in cards) if c is not None]
     assert len(parsed) == len(cards)
-    assert sum(1 for p in parsed if p["cid"]) == len(parsed)  # every real card has a CID
+    assert sum(1 for p in parsed if p["cid"]) == len(parsed)  # every card has a CID
     assert sum(1 for p in parsed if p["phone"]) >= len(parsed) * 0.9  # measured 119-120/120 live
     # every extracted website must already be unwrapped (never a google.com/url redirect)
     for p in parsed:

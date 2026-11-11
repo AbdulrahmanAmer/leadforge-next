@@ -4,7 +4,8 @@ Invocation mode: one subprocess per query batch, JSON output file, conservative 
 Field reference (36 fields) + flags verified 2026-08-31 against the v1.17.4 README (docs/01 §2).
 
 FIELD_MAP drift is the expected maintenance surface: when Google or gosom changes output,
-fix the map + refresh tests/fixtures/gosom_sample.ndjson from a real run (ICM U8.2).
+fix the map + reshape the MADE-UP tests/fixtures/gosom_sample.ndjson to the new field shape.
+Never commit a real run's output as a fixture (slice L2: fixtures are made up, never saved copies).
 """
 
 from __future__ import annotations

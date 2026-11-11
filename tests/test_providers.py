@@ -148,7 +148,7 @@ def test_gosom_grid_bbox_is_lat_first(tmp_path, monkeypatch):
 
 
 def test_gosom_real_fixture_maps_to_business(tmp_path, monkeypatch):
-    """U8.2: real bytes from a live Guildford run must map cleanly through to_business()."""
+    """U8.2: a made-up gosom row of the live field shape (Guildford) must map cleanly through to_business()."""
     from pathlib import Path
 
     from leadforge.models import ICP, RawListing
