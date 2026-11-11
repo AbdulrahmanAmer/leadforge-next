@@ -38,3 +38,10 @@ with bounded NER, then re-labels/scores/drafts/exports); restore draft.auto_max 
 - L1 "installs again": selectolax<1.0, uv.lock, every version copy 0.6.15, check.mjs, pinned CI. Proof: docs/slices/L1-installs-again.md.
 - Check: `node check.mjs` (782 passed, 6 skipped). Plan: claude-migration/design/blueprint/LEADFORGE-ADOPTION.md section 9.
 - Next: L2 (fixtures made up first, then goldens, then the autopilot/keys/downloads floor).
+
+## POSITION — 2026-11-11, slice L2 (0.7.0) reviewed, PR 2 open and ready, NOT merged
+
+- slice/L2 = part A + part B (merged 8f388aa) + the review's fixes; head 4bb9e30 + this note. Proof: docs/slices/L2-pins-and-safety-floor.md (Review).
+- Check: `node check.mjs` -> `CHECK PASS sha=4bb9e30 tree=clean` (833 passed, 6 skipped). CI run 43035660304: all 11 jobs pass.
+- Verdict FIX 4bb9e30: one C3 blocker left, the `[ner]` model (and its unpinned deberta tokenizer) still downloads inside `run`.
+- L2 is a guardrail slice: a second look before merge. Do not merge without it.

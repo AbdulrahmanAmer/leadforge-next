@@ -258,3 +258,113 @@ summary, the laptop shared with two other test runs); `pytest -n 4`: `5 failed, 
   installed. Closing it: load with `local_files_only=True` and fetch the model in `doctor --fix --full`. Not built.
 - `scripts/bench/gliner_bench.py` still loads the model unpinned (a bench script; L3c deletes it).
 - A local `CHECK PASS` on an idle laptop.
+
+## Review   (reviewer: Opus 5.5, run l2-review, 2026-11-11 15:40-16:20; fixing reviewer; did not see the build)
+Branch slice/L2 = part A + merge of slice/L2b (8f388aa; one conflict, in this file: both Build parts kept in order).
+Builders' reports not read. Version 0.7.0 set in every copy (1de03f8); the header's "0.7.0 (not bumped yet)" is the
+Spec's line and is left as written.
+
+### Proofs re-run, and the builders' guards broken again (worktree, each target asserted, restored clean)
+```
+=== C1 tools args removed
+E         Right contains 7 more items, first extra item: '--tools'
+=== C2 _shown prints the value
+E             'FAKE-KEY-0123456789abcdef-not-real' is contained here:
+=== C3 hash check trusts any file
+FAILED tests/test_downloads_pinned.py::test_doctored_binary_is_refused_deleted_and_never_run
+=== C3 ensure_ready fixes over the network
+E       AssertionError: run opened the network: ['create_connection(60,)', 'create_connection(8,)', "socket.sendto(b'...
+=== C3 download keeps a wrong hash
+E       Failed: DID NOT RAISE EnvError
+=== politeness old clock
+E       AssertionError: the second request left 0.1882 s after the first, before the 0.2 s delay
+=== politeness hook removed
+E       AssertionError: two same-host fetches took only 0.02s with delay_s=1.0
+restored: clean
+```
+The C3 socket guard raises (`OSError("network blocked by test ...")`) on connect, connect_ex, sendto,
+create_connection and getaddrinfo: it blocks, it does not only record. The three pinned gosom SHA-256 values equal
+GitHub's own asset digests (`gh api repos/gosom/google-maps-scraper/releases/tags/v1.17.4`); the model revision
+equals the Hub's current `sha` for `urchade/gliner_small-v2.1` (last modified 2024-04-10).
+
+### The politeness finding: is the stated cause the cause
+Experiment (scratch, not committed): the OLD check (arrival gaps at the server on `time.monotonic`, floor 0.26 s)
+through the real `_process_one`, jitter forced to its low end (every delay 0.28 s), 12 runs per batch:
+```
+old clock: runs 12, runs failing the old 0.26 floor 4, of them on the first gap 1; smallest gaps [0.235, 0.25, 0.25, 0.25]; gaps == 0.25: 3
+new clock: runs 12, runs failing the old 0.26 floor 2, of them on the first gap 0; smallest gaps [0.25, 0.25, 0.265, 0.265]; gaps == 0.25: 2
+old clock: runs 12, runs failing the old 0.26 floor 3, of them on the first gap 0; smallest gaps [0.25, 0.25, 0.25, 0.265]; gaps == 0.25: 3
+new clock: runs 12, runs failing the old 0.26 floor 0, of them on the first gap 0; smallest gaps [0.265, 0.265, 0.265, 0.265]; gaps == 0.25: 0
+```
+The 0.25 s gap happens with the coarse clock and becomes rarer with the fine clock, but not gone (2 of 12 once):
+the builder's two-part cause (coarse clock in the throttle, plus arrival timing that carries connect and
+scheduling time) holds. Why CI's failures were always the FIRST gap: UNPROVEN (here 1 of 7 failing runs was the
+first gap). The new test check is NARROWER (0.28 s floor instead of 0.26 s) and the virtual-clock test fails on a
+too-early release. Nothing in the slice shortened a delay, widened a tolerance or skipped a wait.
+**But the guardrail had a hole of its own (before L2):** the crawler's client follows redirects, and only the first
+request of a `client.get` passed the throttle. Red on the old code:
+```
+E       AssertionError: the site saw 4 requests but the throttle released 2
+E       AssertionError: ['/robots.txt', '/old', '/private/page']
+```
+Fixed: an httpx `request` hook paces every request, redirect hops included, and asks robots.txt about each hop.
+
+### Findings and fixes (each commit carries its test; each test seen red first, then green)
+| # | Finding | Fix | Red before the fix |
+|---|---|---|---|
+| 1 | C2: `config get registry` printed the key; `config set registry "{...}"`, unparseable YAML for a section and a proxy `user:password@` too | e0eb1ff | `config get registry printed the key: registry = {'companies_house_key': 'FAKE-KEY-...'}` |
+| 2 | Politeness: redirect hops skipped the per-site pause | 91c2f53 | `the site saw 4 requests but the throttle released 2` |
+| 3 | Politeness: a redirect into a robots-disallowed path was followed | d99dc1e | `['/robots.txt', '/old', '/private/page']` |
+| 4 | Pause and robots keyed by the name as written: capitals made two sites | 8fef6d2 | `the second request left 0.0 s after the first` |
+| 5 | `test_parallel_queries_is_faster_than_serial` timed the whole `run_discover` (red here at 0.51 s and on CI before) | a075715 | serial path forced: `parallel_queries=4 never ran two fetches at once (most: 1)` |
+| 6 | C3: `python install.py` installed with open-ended dependencies | 09b2402 | the old argv `[... '-m', 'pip', 'install', '-e', ...]` |
+| 7 | Goldens for section 3 items 3, 4 (rest), 5 were missing | 3f0c1e0 | 6 breaks, each `contract '...' changed` or `empty Leads cells at [...]`, `1 failed, 25 passed` |
+| 8 | (second look at my own fixes, by a fresh agent) IDNA names and `:443` gave the browser pass another pause key than the plain fetch (no pause after a 403), and a double robots.txt fetch; a robots-refused home redirect read as a dead site in the export and outreach | a7540f2 | `assert 'b�cher-shop.de' == 'xn--bcher-shop-9db.de'` (the browser half, broken alone); `AssertionError: home unreachable (robots)` |
+| 9 | (same) proxy passwords holding `@` or `/`, a proxy without a scheme, plural key names | a78015f | `discovery = {'proxies': ['http://<hidden>@x@proxy.example:8080', 'user:FAKE-KEY-...` |
+| 10 | CHANGELOG said `run` never downloads; with `[ner]` it still fetches the model | 4bb9e30 | (wording) |
+Fail-first count: 13 new tests or goldens, each seen red for the right reason once (9 by me, 4 goldens by an agent
+under my brief, verified green here); 7 of the builders' guards broken again. Item 7's goldens: dm batch and label
+lines (`dm apply --in`; there is no `dm import`), draft packet and the "no invented fact" gate, the sheet's four tabs
+`Leads, Drafts, Summary, About`, no empty cell, CSV mirror equal to the Leads tab, `report.json` keys, and a five-step
+resume (one run, two businesses, one fetch and one crawl throughout).
+
+### NOT DONE (with the reason)
+- C3: GLiNER still downloads inside `run` on first use when `[ner]` is installed (part B said so). Worse than
+  stated: the pinned model repo has no tokenizer (files: `.gitattributes, README.md, gliner_config.json,
+  pytorch_model.bin`) and names `"model_name": "microsoft/deberta-v3-small"`, which GLiNER fetches by name with NO
+  revision. Not fixed: gliner is not installed here and its loader cannot be read or tested without installing torch.
+- C3: `doctor --fix --full` installs the optional extras and `doctor --fix` reinstalls the package with pip, both
+  without hashes (explicit commands, not `run`, not the launcher). README/AGENTS still show `pip install -e .`.
+- C2: the OpenCorporates token still travels in the address (`registry.py:207`); not printed (only the error's type
+  name is logged). An operator's own `agent.command` is printed in full in `AgentFailed` messages if it fails to start.
+- C17: `tests/fixtures/dvsa_sample.csv` (from 2026-09-02) has Leeds/Sheffield names and 0113/0114 numbers outside the
+  drama range: made up or real is UNPROVEN. It is open government data, not Google content; the three Google
+  fixtures are made up (read: `.example` sites, drama numbers, no key; `git grep AIza` hits only the two masked proofs).
+- The `uv.lock` entry for the project itself still says 0.6.14 (L1 left it); not checked by anything; not changed.
+
+### UNPROVEN
+- `--tools ""` through a `claude.cmd` (npm) shim on Windows (part A's note stands).
+- A real `python install.py` with the lock (the launcher's real install was part B's; install.py is tested by argv).
+- Robots on a cross-site redirect hop is tested by reading and by the reviewer agent's loopback probe only.
+
+### Check
+On STRIKERFORCE, Windows 11, Python 3.12 `.venv` (`uv sync --extra dev --frozen`; `uv.lock` untouched), run alone:
+```
+833 passed, 6 skipped in 414.81s (0:06:54)
+CHECK PASS sha=4bb9e30 tree=clean steps=5 skipped=0 secs=431
+```
+(The first gate on the merge, 8f388aa plus my first fix, was `1 failed, 816 passed, 6 skipped`: the wall-clock test of
+finding 5, `parallel_queries=4 took 0.51s (expected < 0.5s)`.) No test needs a browser on this branch; the Maps
+browser test skips without Playwright. Secret scan: `gitleaks git --log-opts="origin/master..HEAD"` -> `no leaks found`
+(21 commits at 3f0c1e0).
+
+### CI
+PR 2, commit 4bb9e30, run 43035660304: `completed success`, all 11 jobs pass (Ubuntu and Windows py3.11-3.14,
+versions, manifests, `claude plugin validate`). Commit 3f0c1e0, run 43034803068: the same, all pass. The Windows
+politeness timing test was green on all four Windows jobs both times; not re-run to get there.
+
+Verdict: FIX 4bb9e30. Every builder pass line holds, the findings above are fixed with tests, CI and the local
+gate are green, and PR 2 is ready for the second look. One blocker against C3 as written ("nothing downloads inside
+`run`"): with the optional `[ner]` extra, `run` still fetches the GLiNER model on first use and its backbone
+tokenizer (`microsoft/deberta-v3-small`) by name with no revision. Closing it: load with `local_files_only=True`, fetch
+both at pinned revisions in `doctor --fix --full`, and a socket-blocked test of the NER load path.
