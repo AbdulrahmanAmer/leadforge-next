@@ -67,8 +67,13 @@ if [ "${need_install}" -eq 1 ]; then
         fi
     fi
 
-    "${venv_python}" -m pip install --quiet --upgrade pip
-    "${venv_python}" -m pip install --quiet "${plugin_root}"
+    # C3: every dependency comes from the hashed lock (a changed or unlisted file is refused), the
+    # build backend included, so building the package itself fetches nothing unchecked. pip is the
+    # venv's own; it is not upgraded from the network.
+    "${venv_python}" -m pip install --quiet --disable-pip-version-check --require-hashes \
+        -r "${plugin_root}/requirements.lock"
+    "${venv_python}" -m pip install --quiet --disable-pip-version-check --no-deps --no-build-isolation \
+        "${plugin_root}"
     printf '%s' "${plugin_version}" > "${stamp_file}"
 fi
 
