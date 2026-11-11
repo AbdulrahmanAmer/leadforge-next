@@ -622,9 +622,10 @@ def suppress(ctx: typer.Context, action: str = typer.Argument(..., help="add|lis
         emit_digest(True, "suppress", counts={"suppressed": len(rows)})
 
 
-_SECRET_KEY_RE = re.compile(r"(key|token|secret|password|passwd|pass)$", re.IGNORECASE)
+_SECRET_KEY_RE = re.compile(r"(key|token|secret|password|passwd|pass)s?$", re.IGNORECASE)
 _SECRET_WORD_RE = re.compile(r"key|token|secret|pass|://", re.IGNORECASE)
-_URL_USERINFO_RE = re.compile(r"(?<=://)[^/@\s]+@")
+# user:password@ before a host, with or without a scheme; the password may hold '@' or '/' (greedy to the last '@')
+_URL_USERINFO_RE = re.compile(r"^((?:[a-z][a-z0-9+.-]*://)?)[^\s/@:]*:\S*@", re.IGNORECASE)
 
 
 def _redacted(name: str, value):
@@ -637,7 +638,7 @@ def _redacted(name: str, value):
     if _SECRET_KEY_RE.search(name) and value not in (None, "", {}):
         return f"<hidden, {len(str(value))} chars>"
     if isinstance(value, str):
-        return _URL_USERINFO_RE.sub("<hidden>@", value)
+        return _URL_USERINFO_RE.sub(lambda m: m.group(1) + "<hidden>@", value)
     return value
 
 

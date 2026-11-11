@@ -57,3 +57,19 @@ def test_config_never_prints_a_key_through_its_parent_or_a_proxy_address(tmp_pat
     res = runner.invoke(app, ["config", "get", "registry"])
     assert "opencorporates_token" in _out(res) and "hidden" in _out(res)
     assert "proxy.example:8080" in _out(runner.invoke(app, ["config", "get", "discovery.proxies"]))
+
+
+def test_config_hides_every_shape_of_proxy_password_and_plural_key_names(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    proxies = [f"http://user:{FAKE}@x@proxy.example:8080", f"user:{FAKE}@proxy.example:8080",
+               f"http://user:{FAKE.replace('-', '/')}@proxy.example:8080"]
+    res = runner.invoke(app, ["config", "set", "discovery.proxies", str(proxies)])
+    assert res.exit_code == 0, _out(res)
+    out = _out(runner.invoke(app, ["config", "get", "discovery"]))
+    assert "proxy.example:8080" in out
+    for secret in (FAKE, FAKE.replace("-", "/"), "not-real", "not/real"):
+        assert secret not in out, out
+    (tmp_path / "leadforge.yaml").write_text(f"registry:\n  extra_tokens: [{FAKE}]\n", encoding="utf-8")
+    out = _out(runner.invoke(app, ["config", "get", "registry"]))
+    assert FAKE not in out, out
