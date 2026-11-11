@@ -530,3 +530,29 @@ def test_every_redirect_hop_waits_its_turn(tmp_path, monkeypatch, server):
     assert handler.requests == ["/robots.txt", "/old", "/old2", "/new"]
     assert len(released) == len(handler.requests), (
         f"the site saw {len(handler.requests)} requests but the throttle released {len(released)}")
+
+
+def test_a_redirect_into_a_disallowed_path_is_not_followed(tmp_path, monkeypatch, server):
+    """robots.txt is asked about every address the crawler fetches, also one a redirect leads to."""
+    base, handler = server
+    handler.robots = b"User-agent: *\nDisallow: /private\n"
+
+    def do_get(self):  # noqa: N802 — http.server API
+        if self.path == "/old":
+            type(self).requests.append(self.path)
+            self.send_response(302)
+            self.send_header("Location", "/private/page")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        _Handler.do_GET(self)
+
+    monkeypatch.setattr(handler, "do_GET", do_get)
+    cfg, crawler = _crawler(tmp_path, monkeypatch)
+    try:
+        resp = crawler._get(f"{base}/old")
+        failure = crawler.last_failure
+    finally:
+        crawler.close()
+    assert handler.requests == ["/robots.txt", "/old"], handler.requests
+    assert resp is None and failure == "robots"

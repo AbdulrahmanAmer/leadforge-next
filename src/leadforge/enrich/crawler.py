@@ -167,6 +167,10 @@ def _is_connection_failure(e: Exception) -> bool:
     return isinstance(e, _CONNECTION_FAILURE_TYPES)
 
 
+class _RobotsRefused(httpx.RequestError):
+    """A redirect led to an address the site's robots.txt does not allow; it is not fetched."""
+
+
 class SiteCrawler:
     _dead_hosts: dict[str, str] = {}  # host -> reason, shared process-wide across all instances
     _dead_hosts_lock = threading.Lock()
@@ -175,6 +179,7 @@ class SiteCrawler:
         self.cfg = cfg
         self.throttle = throttle or HostThrottle(cfg.politeness.delay_s)
         self._robots: dict[str, urllib.robotparser.RobotFileParser] = {}
+        self._fetching_robots = False
         self.client = httpx.Client(
             follow_redirects=True,
             timeout=cfg.crawl.timeout_s,
@@ -185,7 +190,13 @@ class SiteCrawler:
         )
 
     def _pace(self, request: httpx.Request) -> None:
-        self.throttle.wait(urlsplit(str(request.url)).netloc)
+        url = str(request.url)
+        # robots.txt is asked about every address, also one a redirect leads to (the first address of
+        # a _get was already checked; its answer is cached). A robots.txt fetch and its own redirects
+        # are exempt: they are how the answer is found.
+        if not self._fetching_robots and not self._allowed(url):
+            raise _RobotsRefused(f"robots disallow: {url}", request=request)
+        self.throttle.wait(urlsplit(url).netloc)
 
     def close(self) -> None:
         self.client.close()
@@ -220,6 +231,7 @@ class SiteCrawler:
             rp.parse(["User-agent: *", "Disallow: /"])  # known-dead host -> unreachable -> disallow
             self._robots[host] = rp
             return rp
+        fetching, self._fetching_robots = self._fetching_robots, True
         try:
             resp = self.client.get(urljoin(base, "/robots.txt"))  # paced by _pace
             if resp.status_code == 200:
@@ -233,6 +245,8 @@ class SiteCrawler:
             if _is_connection_failure(e):
                 self._mark_host_dead(host, f"transport:{type(e).__name__}")
             rp.parse(["User-agent: *", "Disallow: /"])  # transport failure = unreachable = disallow
+        finally:
+            self._fetching_robots = fetching
         self._robots[host] = rp
         return rp
 
@@ -268,6 +282,10 @@ class SiteCrawler:
                 self.last_failure = "non-html"
                 return None
             return resp
+        except _RobotsRefused as e:
+            LOG.info("%s (redirected from %s)", e, url)
+            self.last_failure = "robots"
+            return None
         except httpx.HTTPError as e:
             LOG.debug("fetch failed %s: %s", url, type(e).__name__)
             self.last_failure = f"transport:{type(e).__name__}"
