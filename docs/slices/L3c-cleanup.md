@@ -1,4 +1,4 @@
-# L3c cleanup   (BUILT, review pending)
+# L3c cleanup   (REVIEWED: verdict FIX, see Review; do not merge before L2)
 Type: product   Stacks: python   Version: 0.7.0 (not changed here; a patch version comes later, not from this slice)   Base: 4bb9e30 (tip of `slice/L2` when this branch was cut)
 Guardrail: no   Owner: no
 ## Spec        (LEADFORGE-ADOPTION.md v1.1, section 9, row L3c; "mostly deletions")
@@ -323,3 +323,107 @@ bash proof.sh <clone>                 # sections 1-3 (copy in this run's folder:
 uv build --wheel --out-dir dist       # then list the wheel; delete dist/ and build/
 git diff --shortstat origin/slice/L2...HEAD
 ```
+
+## Review      (reviewer: Opus 5.5, run l3c-review, 2026-11-11 16:54-17:35; did not see the build run or its report)
+
+### Rebase
+`origin/master` is still 0.6.15 (L2 not merged), so `slice/L3c` was rebased onto the newest `origin/slice/L2` (`50e3b38`, L2's Review commit; the
+build was cut from `4bb9e30`). No conflict. The builder's short SHAs above are the pre-rebase ones; after the rebase they are `476b4dc` (dead modules),
+`b5af170` (fallback_rest), `5e3cbd5` (old build plan), `10f7e28` (bench), `419136a` (business names), `b8f0f53` (skill references), `fb09db0` (docs),
+`e9fdc62` and `11a9a00` (this file). Pushed with `--force-with-lease`.
+
+### Fix
+- `1143640` one comment in `config.py` (`PolitenessCfg.workers`): removing `(scripts/bench_enrich.py) —` had left two sentences run together
+  ("... measured against" / "# Per-host pacing ..."). Comment text only; no code.
+Nothing was put back: no deletion was found wrong (below).
+
+### Attacks on each deletion
+- `enrich/policy.py`, `enrich/adapters.py`, `paid_enrichment`: no import anywhere (also no dynamic one: the only `import_module` calls are
+  `providers/base.py::_import_builtins`, which names `gosom dvsa companies_house maps_list`, and `outreach/cli.py`'s lazy `leadforge.outreach.*` modules;
+  `doctor.py`'s `__import__` loops over third-party names). The one entry point is `leadforge = "leadforge.cli:main"`. `policy.py` called itself a
+  guardrail, but nothing called it; section 3 item 6 lists the guardrails that exist (robots, pacing, caps, suppression, no mailbox probe, no LinkedIn,
+  dry-run sending) and none of them lived there. `Config` has no `extra="forbid"`, so an old `leadforge.yaml` with `paid_enrichment:` or
+  `discovery.fallback_rest:` still loads.
+- `fallback_rest`: gone from `_import_builtins`, config, example config, tests; no golden mentions it.
+- `icm/` (all but `SCOPE.md`), `docs/05`, `/finalize`, the AGENTS.md trigger: nothing outside history and old plans points at them.
+  `scripts/code_index.py` indexes `icm/*.md` by glob, so it simply sees fewer files.
+- bench scripts: no CI job, check step, test or doc outside history and old plans runs them.
+- `send-outreach/references/*`: the four files were byte-identical to `generate-leads/references/*` at L2's tip too (same git blob each:
+  cli `ccb78bf`, drafting `fd87102`, outreach `5bd5b96`, troubleshooting `df17c04`), so L2's late edit to `troubleshooting.md` is not lost.
+  `install.py` copies every `skills/*` folder side by side into one skills directory and both plugin manifests ship the whole `skills/` tree, so
+  `../generate-leads/references/` resolves in those installs. One skill installed alone would not have them (UNPROVEN, below).
+- Nothing other than deletions slipped in: every added line is a one-line rewording of a removed line (comments, docstrings, doc pointers), the
+  test fake provider name, or this file. Section 3 items 1 to 11: nothing deleted that they name; all 26 goldens pass inside the check below.
+- Business names: in product paths only the example ICPs, the example sender in `drafting.md`, and the opt-in `gainlev_leadgen` skeleton (not the
+  default: `auto_purpose` defaults to `client_campaign`) remain. Renaming that skeleton changes a purpose id pinned by the draft hand-off golden
+  (section 3 item 3), so it is a contract change, not a deletion: left as the builder's NOT DONE says. Other owner names (`omnikom`, `omniskip`,
+  `revenue driven`, `aleef`) have no hit outside history.
+
+### Check (this laptop, below-normal priority, `PYTEST_ADDOPTS=--timeout=300` as in Build, `uv sync --extra dev --frozen`)
+```
+826 passed, 6 skipped in 228.28s (0:03:48)
+ok  tests  229.8
+leadforge --json version: 1 LF_DIGEST line(s)
+leadforge --json status: 1 LF_DIGEST line(s)
+ok  cli digest  1.6
+CHECK PASS sha=1143640 tree=clean steps=5 skipped=0 secs=232
+```
+`gitleaks git --log-opts="origin/slice/L2..HEAD"` (gitleaks 8.30.1, before the fix commit): `9 commits scanned.` `no leaks found`.
+
+### Proof re-run (`pwsh D:\homelab-work\l3c-review\proof.ps1 <clone>`, at `1143640`)
+```
+--- enrich.policy / enrich.adapters / paid_enrichment : ... hits: 0
+--- fallback_rest : ... hits: 0
+--- icm build plan, /finalize : ... hits: 0
+--- bench scripts : ... hits: 0
+--- send-outreach/references (deleted copies) : ... hits: 0
+--- GAINLEV_ICP_SIC : ... hits: 0
+--- the same searches inside the excluded old plans (history, listed, not edited)
+docs/09-v0.3-build-plan.md:1
+docs/08-decisions.md:2
+docs/UPGRADE-PLAN.md:3
+docs/specs/laya-integration.md:1
+--- business names, product paths: git grep -n -i -E 'gainlev|we ?score|omnikom|omniskip|revenue.?driven|aleef' -- src skills config bin pyproject.toml .claude-plugin .codex-plugin install.py README.md AGENTS.md CLAUDE.md
+config/icp.company.example.yaml:1:# Company-mode ICP (docs/09 Wave 2 H): GainLev's own client pipeline on Companies House, not Google Maps.
+config/icp.company.example.yaml:6:campaign: gainlev-own-pipeline
+config/icp.company.example.yaml:10:  sender: "GainLev"
+config/icp.company.example.yaml:45:notes: "GainLev's own client-acquisition pipeline, ..."
+config/icp.wescore.example.yaml:1:# WE SCORE-style prospecting ICP (account_fit profile) — MENA, six target industries.
+config/icp.wescore.example.yaml:6:campaign: wescore-mena-prospects
+config/icp.wescore.example.yaml:10:  sender: "WE SCORE"
+skills/generate-leads/references/drafting.md:17: ... "sender": {"from_name": "GainLev tech"},
+skills/generate-leads/references/icp-guide.md:115:Full worked example: `config/icp.wescore.example.yaml` (MENA, six target industries).
+src/leadforge/config.py:199:                                             # "gainlev_leadgen" is GainLev's own branded skeleton, not
+src/leadforge/data/skeletons/client_campaign.yaml:2:# contract as gainlev_leadgen.yaml (see that file's header comment).
+src/leadforge/data/skeletons/gainlev_leadgen.yaml:7:purpose: gainlev_leadgen
+src/leadforge/data/skeletons/gainlev_leadgen.yaml:10:  - GainLev
+src/leadforge/draft/skeletons.py:18:PURPOSES = ("gainlev_leadgen", "client_campaign", "follow_up", "re_engagement", "referral")
+--- diff size vs origin/slice/L2
+ 61 files changed, 367 insertions(+), 2282 deletions(-)
+--- files added (status A)
+docs/slices/L3c-cleanup.md
+```
+(lines shortened with `...` only where marked; the full output is `D:\homelab-work\l3c-review\proof.out`.)
+
+Wheel (`uv build --wheel`, then `python -I wheel_list.py`; `build/`, `dist/` and `src/leadforge.egg-info` deleted afterwards):
+```
+leadforge-0.7.0-py3-none-any.whl: 76 files
+data files: ['leadforge/data/category_aliases.yaml', 'leadforge/data/scoring.default.yaml', 'leadforge/data/skeletons/client_campaign.yaml', 'leadforge/data/skeletons/follow_up.yaml', 'leadforge/data/skeletons/gainlev_leadgen.yaml', 'leadforge/data/skeletons/re_engagement.yaml', 'leadforge/data/skeletons/referral.yaml']
+scoring.default.yaml in wheel: 3148 bytes, sha256 57ca6009501c66c5cc3df98c62ef936661a17995d605d2b375fc06ce2ff0e8f2
+scoring.default.yaml in git  : 3148 bytes, sha256 57ca6009501c66c5cc3df98c62ef936661a17995d605d2b375fc06ce2ff0e8f2
+leadforge/providers/fallback_rest.py in wheel: False
+leadforge/enrich/policy.py in wheel: False
+leadforge/enrich/adapters.py in wheel: False
+leadforge/providers/gosom.py in wheel: True
+leadforge/providers/maps_list.py in wheel: True
+leadforge/draft/gate.py in wheel: True
+```
+Matches the Build proof (76 files, same scoring hash).
+
+### Still NOT DONE / UNPROVEN after review
+- NOT DONE (as in Build): unused `tenacity` and `rich` declarations; the `gainlev_leadgen` skeleton name; the old plan pages under `docs/`.
+- UNPROVEN: `send-outreach` installed alone (for example one skill picked in `npx skills add`) cannot open its references. Settle it by installing
+  only that skill into a scratch skills directory and opening `../generate-leads/references/outreach.md` from it.
+- CI on GitHub: read for the final commit and written in the run report (`D:\homelab-work\runs\l3c-review.REPORT.md`), not here.
+
+Verdict: FIX 1143640
