@@ -117,3 +117,16 @@ PASS - result equals tests/fixtures/e2e/expected.json (21 refused outside attemp
 - G-d: the guard is Python-level (as the Build says).
 
 Verdict: PROOF HOLDS WITH GAPS dc21602 (G-a to G-d above)
+
+## Merge (0.7.2)   (run l4-proof-merge, 2026-11-11 19:30-; the lead said yes to the merge after two fixes)
+Written BEFORE the changes and before any run. Nothing under `src/` changes except `__version__`; no behaviour of the tool changes.
+
+| Change | What it should do | Saved-result (`expected.json`) cells it may move |
+|---|---|---|
+| Fixture phone, DVSA row V9000004 (Bath): `01225 496 001` -> `01632 960001` | The phone is only data on a row the DVSA provider drops by Town (`dvsa.py` filters by locality = the plan's first area, Bristol; the area code plays no part), so the row stays outside the campaign. `01632 960 xxx` is Ofcom's no-area drama range. | None expected: `01225` appears nowhere in `expected.json` today and `01632` must not appear after. Any moved cell means the row now reaches the output: stop and read. |
+| `leadforge --version` -> `leadforge version` | The CLI has the command `version`, not the option. A search finds the wrong form only in this slice file's Build note (line "Seen in both versions"), which says the option does not exist and that G1 of the lead's plan file writes it wrongly: that is a statement about the wrong form, not a use of it, so it stays; the lead's plan file is the lead's to fix. No `--version` option is added. | None (documentation only). |
+| Version 0.7.2 in pyproject, `__init__`, both plugin manifests, both skills; CHANGELOG entry (3 lines) | `check_versions.py` reads exactly those six; they must agree. The e2e result holds no version string (`0.7.1` is not in `expected.json`). | None expected. |
+| CI job `e2e-fake-campaign` in `ci.yml`, windows-latest + ubuntu-latest, Python 3.12 | Installs the way the lock says (`requirements.lock` with hashes, then `--no-deps --no-build-isolation -e .`), runs `python scripts/e2e_fake_campaign.py`, fails when the script exits non-zero (it prints FAIL and returns 1 then) and when a `FAIL` line is printed. | None (the golden is not changed by the CI job). |
+| New `docs/slices/L5-install-proven-and-the-fake-campaign.md` | Starting list only. | None. |
+
+Order of proof: one run to make the new saved result next to the old one (`--update-golden` into the file, old copy kept for the side-by-side), only the predicted cells (none) may differ; then one run: PASS.
