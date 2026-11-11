@@ -216,25 +216,36 @@ def collect(py: str, label: str, out: Path) -> dict:
 _NORMS = [
     (re.compile(r"\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:?\d\d)?"), "<TS>"),
     (re.compile(r"\d{4}-\d\d-\d\d"), "<DATE>"),
-    (re.compile(r"\b(?:run[-_]?)?[0-9a-f]{8,}\b"), "<ID>"),
+    (re.compile(r"run_\d{8}_\d+_[0-9a-f]+"), "<RUN>"),
 ]
 
 
-def norm_text(s: str, ws: str) -> str:
-    s = s.replace(ws, "<WS>").replace(ws.replace("\\", "/"), "<WS>").replace(ws.replace("\\", "\\\\"), "<WS>")
+def norm_str(s: str, ws: str) -> str:
+    for w in (ws, ws.replace("\\", "/")):
+        s = s.replace(w, "<WS>")
     for rx, rep in _NORMS:
         s = rx.sub(rep, s)
     return s
 
 
+def _walk(o, ws: str):
+    if isinstance(o, str):
+        return norm_str(o, ws)
+    if isinstance(o, list):
+        return [_walk(x, ws) for x in o]
+    if isinstance(o, dict):
+        return {norm_str(k, ws): _walk(v, ws) for k, v in o.items()}
+    return o
+
+
 def normalized(data: dict, ws: str) -> dict:
     """Drop what must differ between runs (clock, run id, paths, timings, process ids)."""
-    d = json.loads(norm_text(json.dumps({k: v for k, v in data.items() if k not in ("label", "files")}, ensure_ascii=False), ws))
+    d = _walk({k: v for k, v in data.items() if k not in ("label", "files")}, ws)
     for s in d["steps"]:
         s.pop("seconds", None)
-    d["refused"] = sorted([r["kind"], r["host"], r["port"] or 0, r["caller"]] for r in d["refused"])
+    d["refused"] = sorted([r["kind"], r["host"], r["port"] or 0, r["caller"]] for r in data["refused"])
     # request log: order depends on thread timing -> compare as a sorted multiset without the user agent
-    d["requests"] = sorted([f'{r["host"]} {r["path"]} {r["status"]}' for r in d["requests"]])
+    d["requests"] = sorted(f'{r["host"]} {r["path"]} {r["status"]}' for r in data["requests"])
     return d
 
 

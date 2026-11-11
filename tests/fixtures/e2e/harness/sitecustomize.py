@@ -139,7 +139,8 @@ def _install_fake_maps(path: str) -> None:
             return True, "fixture-fed stand-in (no binary)"
 
         def fetch(self, query, limit=None):
-            area = (query.area or "").casefold()
+            # the pipeline rebuilds the query from its stored text, so the area is read from "<category> in <area>, <country>"
+            area = (query.area or query.text.rpartition(" in ")[2].split(",")[0]).strip().casefold()
             rows = [r for r in self._parse(Path(path))
                     if area and area in str(r.data.get("address", "")).casefold()]
             return rows[:limit] if limit else rows
