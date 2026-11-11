@@ -86,6 +86,7 @@ class HostThrottle:
         self._lock = threading.Lock()
 
     def wait(self, host: str) -> None:
+        host = host.lower()  # one site, however its name is written (the HTTP client lower-cases it)
         while True:
             with self._lock:
                 # perf_counter, not monotonic: on Windows with Python <= 3.12 monotonic moves in 15.625 ms

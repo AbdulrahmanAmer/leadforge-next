@@ -556,3 +556,18 @@ def test_a_redirect_into_a_disallowed_path_is_not_followed(tmp_path, monkeypatch
         crawler.close()
     assert handler.requests == ["/robots.txt", "/old"], handler.requests
     assert resp is None and failure == "robots"
+
+
+def test_throttle_treats_a_site_name_in_any_case_as_one_site(monkeypatch):
+    """Site names are case-blind: the address as written and the one the HTTP client sends share a pause."""
+    import types
+
+    from leadforge import util
+
+    now = [0.0]
+    monkeypatch.setattr(util, "time", types.SimpleNamespace(
+        perf_counter=lambda: now[0], sleep=lambda s: now.__setitem__(0, now[0] + s)))
+    throttle = util.HostThrottle(0.2, jitter=0.0)
+    throttle.wait("Shop.Example")
+    throttle.wait("shop.example")
+    assert now[0] >= 0.2, f"the second request left {now[0]} s after the first"

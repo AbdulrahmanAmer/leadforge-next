@@ -221,7 +221,7 @@ class SiteCrawler:
 
     # --- robots ------------------------------------------------------------------
     def _robots_for(self, base: str) -> urllib.robotparser.RobotFileParser:
-        host = urlsplit(base).netloc
+        host = urlsplit(base).netloc.lower()
         rp = self._robots.get(host)
         if rp is not None:
             return rp
@@ -263,7 +263,7 @@ class SiteCrawler:
         """timeout overrides the client's default (home-page) timeout — pass cfg.crawl.page_timeout_s
         for secondary/candidate pages so a dead or slow non-home page costs less than the home fetch."""
         self.last_failure: str | None = None
-        host = urlsplit(url).netloc
+        host = urlsplit(url).netloc.lower()
         dead = self._host_dead_reason(host)
         if dead is not None:
             self.last_failure = dead
