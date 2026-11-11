@@ -82,7 +82,7 @@ latest run for the same ICP hash; every stage is idempotent (upserts, per-tile /
 - Query plan = tiles × category variants. Estimate shown in digest (`tiles`, `queries`, `est_max_results` = queries × 120).
 
 ### 3.2 discover
-- Provider order from config (`providers.discovery: [gosom, fallback_rest]`). Per query: provider `fetch()` with retry/backoff
+- Provider order from config (`providers.discovery: [gosom]`). Per query: provider `fetch()` with retry/backoff
   (tenacity: 3 tries, expo 2–30 s).
 - gosom invocation (subprocess mode): input file of queries (one per line, gosom `-input`), flags:
   `-json -results <out.ndjson> -depth <cfg> -c <cfg,default 2> -lang <cfg> [-proxies <cfg>] -exit-on-inactivity 3m`; grid runs use
