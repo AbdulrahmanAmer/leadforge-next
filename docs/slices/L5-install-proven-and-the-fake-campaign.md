@@ -65,3 +65,44 @@ address again, 10 of the new tests failed (refusal ×8, env override, configured
 New dev packages for local test runs only (nothing added to the project): `pytest 9.2.0` (uploaded 2026-10-27), `pytest-timeout 2.4.0`
 (2025-05-05), `iniconfig 2.3.1` (2026-10-06), `pluggy 1.7.0` (2026-10-15), exactly the versions in the repo's own `uv.lock`,
 all older than 7 days, published on PyPI by pytest-dev; `osv-scanner` on `uv.lock`: no issues.
+
+## Item 2 — the fake for it (written before the change and before the run)
+
+**Must do.** `tests/fixtures/e2e/companies_house.json` holds four invented companies (numbers `ZZ0000nn`: no register issues that
+prefix; people made up). `scripts/e2e_fake_campaign.py` serves them on its own loopback server under `/ch/` (`search/companies`,
+`company/<n>`, `company/<n>/officers`, basic auth with the fixture key or 401) and the campaign's `leadforge.yaml` gets
+`registry.companies_house_key: fixture-key` and `registry.companies_house_url: http://127.0.0.1:<port>/ch`. The source in use
+is the officer/registry lookup (`CompaniesHouseRegistry`); the company-mode *discovery* provider is not switched on (it needs a
+second, company-mode ICP): carried over. What the four invented companies exercise: HARBOUR MOTORS LTD (active, one active
+individual + one resigned → matched, one registry DM auto-picked); NORTHGATE TYRES LIMITED (active, two individuals → matched, no
+auto-pick); PENNINE MOTORS LIMITED (dissolved → rejected, `active_only`); HARBOUR MOTORS BATH LTD (same name, other town → listed
+first in the search answer for Harbour Motors, rejected by the locality gate).
+
+**Cells that may move in `expected.json`, and why** (every business in `GB` is now looked up, `registry_checked` becomes true):
+1. `steps[intake].digest.warnings`: the "a free Companies House key adds registry-verified directors" line goes (the key is set).
+2. Leads tab and CSV, ALL ten rows: `Company No`, `Registry Name` change from `not looked up` to either the company (matched rows) or
+   `not matched in registry`; `Registry Match` from `n/a` to the similarity for matched rows. Matched rows (Harbour Motors,
+   Northgate Tyres): also `Incorporated`, `Company Status`, `SIC Codes`.
+3. Harbour Motors only: `DM Name`/`DM Title`/`DM Conf` (registry director `Tamsin Verrill`, `Director`, 0.9) and what follows from a
+   named DM: `Call Readiness`, `Next Action`, `Score`/`Why This Score`/`Tier` if the rubric reads a DM, the Drafts row (`DM Name`,
+   greeting), Summary counts (`With decision maker`, Tier line, Next Action breakdown), `report.json` (`with_dm`, `tiers`).
+   Northgate Tyres keeps "not identified": two individuals are never auto-picked. Pennine Motors and the other seven: DM cells unchanged.
+4. `steps[run-resume|status|export].digest.counts`: registry/DM counters (`dm_labeled`, `dm_unlabeled`, tier counts) follow 3.
+5. `requests`: new entries `127.0.0.1 /ch/... <status>` (the loopback server logs them): search, profile and officers calls for
+   each business that reaches that point.
+6. NOT moving: `refused` (all CH traffic is loopback and not port 53), every other business's DM/score/draft cells, `files`.
+Anything outside this list that moves: stop and write the cause first.
+
+**First run (saved nowhere; compared with `expected.json`) — what moved beyond the list above, and the cause (written before the second run).**
+- `Entity Type` moves in all ten rows (`unchecked` → `unmatched` / `corporate_active`) and `Score`, `Tier`, `Fit`, `Why This Score`
+  also in the second matched row (Northgate Tyres): a registry match adds the rubric's "registry-corroborated" factor; I had tied the
+  score move to the DM only. Same family as items 2 and 3, so it is added to the list, not a surprise.
+- Pennine Motors was matched to HARBOUR MOTORS LTD (similarity 0.46, same city), got its director and a draft saying "trading since
+  2011". Cause: my fake search answered every company sharing ONE word of the query, and the tool's lookup then `continue`s past
+  the dissolved PENNINE MOTORS LIMITED to the next hit, which clears `min_name_similarity` 0.45 on a 0.46 character-ratio score.
+  The second half is a real property of the tool (a wrong-company match the code's own comment calls worse than none): NOT
+  changed here ("no other behaviour changes"), written under carried over. The fixture's search now answers only companies whose title
+  holds every word of the query (as a name search does for an exact name), so Pennine meets only its dissolved company.
+- Second-run expectation, replacing the list above where it differs: Pennine Motors moves only `Company No`, `Registry Name`,
+  `Entity Type` (`not matched in registry`/`unmatched`); Harbour Motors and Northgate Tyres move the registry, score and (Harbour
+  only) DM/contact/draft cells; the other seven move `Company No`, `Registry Name`, `Entity Type` only.

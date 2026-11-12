@@ -5,8 +5,8 @@
     python scripts/e2e_fake_campaign.py --python <py> --label old --out <dir> --no-golden   # run another install, keep its output
     python scripts/e2e_fake_campaign.py --probe         # only prove the guard refuses an outside address
 
-What it does: starts a loopback web server that plays invented business sites and an invented DVSA register
-(fixtures under tests/fixtures/e2e), writes a fresh workspace, and runs the same CLI commands as a user would
+What it does: starts a loopback web server that plays invented business sites, an invented DVSA register and an invented
+Companies House (the registry lookup, keyed with a fixture key; fixtures under tests/fixtures/e2e), writes a fresh workspace, and runs the same CLI commands as a user would
 (intake, plan, run, discover, byol import, run --resume, status, export) in child processes whose PYTHONPATH carries
 tests/fixtures/e2e/harness/sitecustomize.py: every non-loopback connection or lookup is refused and logged, the
 Maps scraper binary is replaced by a fixture-fed stand-in, the agent call is switched off, provider keys are removed.
@@ -15,6 +15,7 @@ Result: PASS when the normalized result equals expected.json AND no refused atte
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import io
 import json
@@ -26,6 +27,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -35,6 +37,7 @@ HARNESS = FIX / "harness"
 GOLDEN = FIX / "expected.json"
 WORLD = json.loads((FIX / "world.json").read_text(encoding="utf-8"))
 HOSTS = [s["host"] for s in WORLD["sites"]]
+CH = json.loads((FIX / "companies_house.json").read_text(encoding="utf-8"))
 SECRETISH = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH|ANTHROPIC|OPENAI|GITHUB|^GH_|PROXY", re.I)
 PUBLIC_RESOLVERS = {"8.8.8.8", "1.1.1.1"}
 KEEP_ENV = ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP", "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "OS")
@@ -43,6 +46,9 @@ CONFIG_YAML = f"""discovery:
   providers: [gosom, dvsa]
   dvsa:
     url: http://127.0.0.1:{WORLD['port']}/dvsa/active-mot-stations.csv
+registry:
+  companies_house_key: {CH['key']}
+  companies_house_url: http://127.0.0.1:{WORLD['port']}/ch
 politeness:
   delay_s: 0.2
   workers: 4
@@ -76,6 +82,28 @@ class World(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
+    def _companies_house(self, path: str) -> tuple[int, bytes]:
+        """The three Companies House calls the registry lookup makes, answered from companies_house.json."""
+        want = "Basic " + base64.b64encode(f"{CH['key']}:".encode()).decode()
+        if self.headers.get("Authorization") != want:
+            return 401, b"{}"
+        if path == "/search/companies":
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("q", [""])[0].casefold().split()
+            hits = [c for c in CH["companies"] if q and all(w in c["title"].casefold() for w in q)][:3]  # every word of the query
+            return 200, json.dumps({"items": [
+                {"company_number": c["number"], "title": c["title"], "company_status": c["status"],
+                 "date_of_creation": c["created"], "address": {"locality": c["locality"], "postal_code": c["postal_code"]}}
+                for c in hits]}).encode()
+        m = re.fullmatch(r"/company/([A-Z0-9]+)(/officers)?", path)
+        c = next((c for c in CH["companies"] if m and c["number"] == m.group(1)), None)
+        if c is None:
+            return 404, b"{}"
+        if m.group(2):
+            return 200, json.dumps({"items": [
+                {"name": o["name"], "officer_role": o["role"], "appointed_on": o["appointed_on"],
+                 **({"resigned_on": o["resigned_on"]} if o.get("resigned_on") else {})} for o in c["officers"]]}).encode()
+        return 200, json.dumps({"sic_codes": c["sic_codes"], "date_of_creation": c["created"], "company_status": c["status"]}).encode()
+
     def do_GET(self):  # noqa: N802
         host = (self.headers.get("Host") or "").split(":")[0].lower()
         path = self.path.split("?")[0]
@@ -85,6 +113,9 @@ class World(BaseHTTPRequestHandler):
             if path == "/dvsa/active-mot-stations.csv":
                 status = 200
                 return self._send(200, (FIX / "dvsa_register.csv").read_bytes(), "text/csv")
+            if path.startswith("/ch/"):
+                status, body = self._companies_house(path[len("/ch"):])
+                return self._send(status, body, "application/json")
             if mode is None or mode == "not_found":
                 return self._send(404, b"not found")
             if mode == "slow" and path != "/robots.txt":
