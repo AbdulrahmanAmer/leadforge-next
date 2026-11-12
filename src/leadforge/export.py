@@ -89,6 +89,23 @@ def _safe_cell(v):
     return v
 
 
+def _masker(conn: sqlite3.Connection):
+    """C7, the last net: a function that replaces any suppressed email address inside a string (whatever the case) by
+    '[suppressed]'. `db.contacts_for` already leaves such contacts out; this catches an address quoted in a draft."""
+    addresses = [r[0] for r in conn.execute("SELECT value FROM suppression WHERE kind='email'")]
+    if not addresses:
+        return lambda v: v
+    rx = re.compile("|".join(re.escape(a) for a in sorted(addresses, key=len, reverse=True)), re.IGNORECASE)
+    return lambda v: rx.sub("[suppressed]", v) if isinstance(v, str) else v
+
+
+def _addressed_to_suppressed(conn: sqlite3.Connection, target_id: int) -> bool:
+    """True when the outreach target's own contact is a suppressed address: its draft is not exported."""
+    row = conn.execute("SELECT c.value FROM outreach_targets t JOIN contacts c ON c.id=t.contact_id WHERE t.id=?",
+                       (target_id,)).fetchone()
+    return bool(row) and db.is_suppressed(conn, row["value"])
+
+
 def _display_phone(e164: str | None) -> str:
     """"+44 1483 456363", not "+441483456363": Excel coerces a leading-+ digit run to a number
     (4.41483E+11); the spaced international format survives as text in both XLSX and CSV."""
@@ -348,6 +365,8 @@ def _row_for(conn: sqlite3.Connection, s, staleness_days: int = 90, *,
         "WHERE t.business_id=? AND t.campaign=? AND m.state!='rejected' ORDER BY m.id DESC LIMIT 1",
         (s["business_id"], icp.campaign if icp else ""),
     ).fetchone() if icp is not None else None
+    if msg is not None and _addressed_to_suppressed(conn, msg["target_id"]):
+        msg = None   # C7: no draft for an address that objected
     row["_has_draft"] = msg is not None
     if msg is not None:
         row["_draft_author"] = msg["author"] or "no draft"
@@ -372,6 +391,8 @@ def export_run(conn: sqlite3.Connection, icp: ICP, run_id: str, out_dir: Path, f
     rows_raw = db.scores_for_run(conn, run_id)
     chain = db.chain_map(conn) if profile != "account_fit" else {}
     rows = [_row_for(conn, s, staleness_days, icp=icp, cfg=cfg, chain=chain) for s in rows_raw]
+    mask = _masker(conn)
+    rows = [{k: mask(v) for k, v in r.items()} for r in rows]
     rows.sort(key=lambda r: (-r["Score"], r["Tier"]))
     columns = ACCOUNT_COLUMNS if profile == "account_fit" else DEFAULT_COLUMNS
     run_dir = out_dir / run_id
@@ -472,6 +493,7 @@ def _drafts_sheet(wb: Workbook, conn: sqlite3.Connection, rows_raw: list, icp: I
         c.font = _HEADER_FONT
         c.alignment = Alignment(vertical="center")
     wrap = Alignment(wrap_text=True, vertical="top")
+    mask = _masker(conn)
     for s in rows_raw:
         bid = s["business_id"]
         b = conn.execute("SELECT * FROM businesses WHERE id=?", (bid,)).fetchone()
@@ -488,12 +510,13 @@ def _drafts_sheet(wb: Workbook, conn: sqlite3.Connection, rows_raw: list, icp: I
         dm = next((p for p in people if p["is_dm"] == 1), None)
         dm_name = dm["name"] if dm else "not identified - ask for owner/manager"
         for m in msgs:
+            if _addressed_to_suppressed(conn, m["target_id"]):
+                continue   # C7: a draft to an address that objected is not on the sheet
             to_addr = _draft_to_address(conn, b, m["target_id"])
             author = m["author"] or "agent"
-            ws.append([_safe_cell(b["name"]), _safe_cell(dm_name), _safe_cell(to_addr or "-"),
-                      _safe_cell(m["subject"] or "-"), _safe_cell(m["body_text"] or "-"),
-                      _safe_cell(m["grade"] or "-"), _safe_cell(m["used_fact"] or "-"),
-                      _safe_cell(author), _safe_cell(m["state"]), _safe_cell(m["created_at"] or "-")])
+            ws.append([_safe_cell(mask(v)) for v in (
+                b["name"], dm_name, to_addr or "-", m["subject"] or "-", m["body_text"] or "-", m["grade"] or "-",
+                m["used_fact"] or "-", author, m["state"], m["created_at"] or "-")])
             ws.cell(row=ws.max_row, column=5).alignment = wrap
     for col, width in (("A", 24), ("B", 20), ("C", 28), ("D", 32), ("E", 80), ("F", 8),
                        ("G", 16), ("H", 10), ("I", 12), ("J", 20)):
