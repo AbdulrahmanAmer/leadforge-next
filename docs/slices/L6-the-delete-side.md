@@ -257,3 +257,37 @@ Causes, written before any change:
    as "no sendable email" instead. The mail was still not sent, but the reason and the counter those guardrail tests pin had changed, and the send-time re-check
    must keep seeing the address. The wrong side was the code: the filter moved from `contacts_for` (default off) to the export's two calls (`hide_suppressed=True`).
    The tests were not touched.
+
+## Item 7 — the mutation trial: result
+
+Tool: `scripts/mutation_trial.py` (in-house; changes one thing at a time in a temp copy of the package, never in `src/`; see its docstring). Targets: all of `retention.py`, the new part of
+`db.py` (lines 152-250) and `add_contact`/`add_person` (604-645), `export.py` 92-108 (the masker), `providers/gosom.py` 43-54 (the raw-file wrapper), each against the tests meant to cover it.
+
+| Round | Changes | Killed | Survived | Minutes (this laptop, below-normal priority) |
+|---|---|---|---|---|
+| 1, before the extra tests | 223 | 145 | 78 | 12.2 |
+| 2, after them | 223 | 172 | 51 | 11.4 |
+| 3, lines 55-70 of `retention.py` only | 13 | 12 | 1 | 0.7 |
+
+**Real gaps it found (each now has a test, round 2 and 3 show them killed):** the day of expiry and the 30-day edge were not pinned (`<=` against `<`); "exactly half may go, more
+than half may not" was not pinned; a workspace with no run (no age) was untested; January plus 12 months (the year carry) was untested; the kind of a value (`Cher` is a name, not a domain)
+and the recorded suppression kind were untested; an accented name in its JSON spelling (`ë`) was untested; a look-alike address after a dot was untested; remaining lines of a line
+file lost their line ends unnoticed (`keepends`); the reported file lists were unchecked; `--everything` did not check empty folders or its count; an empty file with no table (not zero bytes)
+was untested; `missing_ok=False` in the raw-file clean-up would have hidden the scraper's own error behind a `FileNotFoundError`.
+
+**The 51 that remain, read one by one:** equivalent or outside this slice's code. The two disk-rewrite steps (`secure_delete` and the checkpoint + `VACUUM`) back each other, so removing either alone
+changes nothing observable (removing both fails the test, shown earlier); chunk sizes 500 against 501 and `1 -> 2` in counters; `close()` of a log handler (needed on Windows for a file this
+process holds open: UNPROVEN, no test holds a log file open in the same process); dedupe guards in `candidate_files` (a directory or a duplicate is caught by the `OSError` handler);
+`rollback` on an error path; `text.lower()` (the pattern is case-insensitive and `suppress` lower-cases); the `frozen=True` of a dataclass; lines of `db.py` 604-645 and 247 that predate this slice
+(`PRAGMA foreign_keys`, `p.origin or p.labeled_by`, `else 0`); the hash length in the raw file's name.
+
+**Keep or cut (SPEC 3.4: it stays only if it finds a real gap and runs under 20 minutes in CI).** Found real gaps: yes (the list above). Run time: 11 to 12 minutes here for these modules; the Linux CI
+time is NOT MEASURED. Verdict: KEEP the script as a trial that is run by hand on the delete-side modules; NOT added to CI. The vendor tool (mutmut) was not run (it needs Linux): UNPROVEN.
+
+## Last gates, on commit 0005d4f
+
+- `node check.mjs`: `880 passed, 7 skipped in 183.28s` and `CHECK PASS sha=0005d4f tree=clean steps=6 skipped=0 secs=187`. The 7 skipped are the suite's own skips (the first run had the same 7).
+- `python scripts/e2e_fake_campaign.py`: `PASS - result equals tests/fixtures/e2e/expected.json (21 refused-call entries, as saved)`.
+- `ruff check src tests scripts/mutation_trial.py`: `All checks passed!`. `python .github/scripts/check_versions.py`: all six copies `0.8.0`.
+- `gitleaks detect --log-opts "origin/master..HEAD"` (on the 13 commits before the last two): `no leaks found`.
+- Not run on STRIKERFORCE: a test that needs a real browser (none touched by this slice); Linux; hosted CI is read below.
