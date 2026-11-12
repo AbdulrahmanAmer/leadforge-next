@@ -106,3 +106,18 @@ Anything outside this list that moves: stop and write the cause first.
 - Second-run expectation, replacing the list above where it differs: Pennine Motors moves only `Company No`, `Registry Name`,
   `Entity Type` (`not matched in registry`/`unmatched`); Harbour Motors and Northgate Tyres move the registry, score and (Harbour
   only) DM/contact/draft cells; the other seven move `Company No`, `Registry Name`, `Entity Type` only.
+
+**Second run, diffed per business and per section against the old `expected.json` (script: leaf diff of the normalized results).**
+Moved, all inside the list above: Company No / Registry Name / Entity Type in all ten rows; Harbour Motors (registry DM Tamsin Verrill,
+Director, 0.9, `READY - named contact`, score 72→80, Tier B→A); Northgate Tyres (registry fields, score 72→80, Tier B→A, no DM: two
+individuals); Pennine Motors only `not matched in registry` (dissolved company rejected); `steps[intake]` loses the key-hint warning;
+`dm_candidates` 5→8 (Tamsin, Fenn, Larkin; the resigned director is not counted), `dm_auto_picked` 1 (new key), `dm_unlabeled` 2→1,
+tiers A/B/C 0/5/5 → 2/3/5; Summary with-DM 3→4 and the tier / next-action lines; the Drafts tab: Harbour's row names the DM and the
+rows reorder because Northgate is now tier A; `requests` gains 10 `/ch/search/companies` and the profile and officers calls for the
+two matched companies, all 200. NOT moved: `refused` (same 21), `About`, every other DM/score/draft cell. Saved result rewritten from
+that run; a third run compared against it: `PASS - result equals tests/fixtures/e2e/expected.json (21 refused-call entries, as saved)`.
+The old saved result already fails on the new campaign (the diff above is that failure), so the saved result does see the source.
+
+**Check by reading, after.** Server: 401 without the fixture key's basic-auth header (the key goes only to this loopback address, in line
+with item 1), search answers only companies holding every word of the query, profile/officers by number, unknown number 404; all
+CH traffic is logged in `requests`. Config: key and `http://127.0.0.1:<port>/ch` set through the same settings a user has.
