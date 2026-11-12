@@ -476,7 +476,7 @@ disagree" 1 and "Open" above) and in the CHANGELOG entry of 0.8.0; no code for i
 
 ## Gates and hosted CI of Build 2 (commit c5c5963, the last code commit)
 
-- `node check.mjs` on that tree, once at the end (below-normal priority): `901 passed, 7 skipped in 225.80s (0:03:45)` and `CHECK PASS sha=c5c5963 tree=clean steps=6 skipped=0 secs=230` (the 7 skipped are the suite's own; the reader's run had 884 passed: this run adds 17 tests).
+- `node check.mjs` on that tree, once at the end (below-normal priority): `901 passed, 7 skipped in 225.80s (0:03:45)` and `CHECK PASS sha=c5c5963 tree=clean steps=6 skipped=0 secs=230` (the 7 skipped are the suite's own: the builder's runs had 7, the reader's 6, so one existing test skips in some runs, not found which: UNPROVEN). Tests collected: 889 at eb79a28, 907 now (`pytest --collect-only -o addopts=""`): this run adds 18 (4 + 12 + 2), none of them skipped.
 - `python scripts/e2e_fake_campaign.py` (G2) on f07f5b8 (the later commits changed only a test, the slice file and a clean-up in `_scrub_file`, which the campaign does not reach): `PASS - result equals tests/fixtures/e2e/expected.json (3 refused-call entries, as saved)`; the raw guard log of an earlier run on this laptop had 32 entries
   (1.1.1.1 x10, 8.8.8.8 x10, four own resolvers x3), which is now the same three. No digest cell moved (the file numbers appear in the run digest only above 0).
 - `ruff check src tests`: `All checks passed!`. `python .github/scripts/check_versions.py`: all six copies `0.8.0` (not touched). `gitleaks detect --log-opts "origin/master..HEAD"`: `no leaks found` (22 commits at f07f5b8; again clean at c5c5963).
