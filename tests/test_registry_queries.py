@@ -14,7 +14,6 @@ from leadforge.providers import base as pbase
 # import the real providers first so their @register has already run — otherwise get_chain(only=...)
 # imports them lazily during the test and overwrites the monkeypatched fakes
 from leadforge.providers import dvsa as _real_dvsa  # noqa: F401
-from leadforge.providers import gosom as _real_gosom  # noqa: F401
 from leadforge.util import now_iso
 
 
@@ -24,7 +23,7 @@ def _icp(sample_icp):
 
 
 def test_build_plan_adds_one_register_query_per_area_first(cfg, sample_icp):
-    cfg.discovery.providers = ["gosom", "dvsa"]
+    cfg.discovery.providers = ["fakelist", "dvsa"]
     cfg.discovery.grid_mode = "off"
     qs = build_plan(_icp(sample_icp), cfg)
     reg = [q for q in qs if q.provider]
@@ -38,7 +37,7 @@ def test_build_plan_adds_one_register_query_per_area_first(cfg, sample_icp):
 
 
 def test_no_register_queries_when_provider_not_configured(cfg, sample_icp):
-    cfg.discovery.providers = ["gosom"]
+    cfg.discovery.providers = ["fakelist"]
     cfg.discovery.grid_mode = "off"
     assert all(q.provider is None for q in build_plan(_icp(sample_icp), cfg))
 
@@ -60,18 +59,18 @@ class _Fake(pbase.DiscoveryProvider):
 
 
 def test_register_query_is_routed_to_its_provider_only(cfg, sample_icp, monkeypatch, tmp_path):
-    class FakeGosom(_Fake):
-        name = "gosom"
+    class FakeEngine(_Fake):
+        name = "fakelist"
         calls = []
 
     class FakeDvsa(_Fake):
         name = "dvsa"
         calls = []
 
-    monkeypatch.setitem(pbase.PROVIDERS, "gosom", FakeGosom)
+    monkeypatch.setitem(pbase.PROVIDERS, "fakelist", FakeEngine)
     monkeypatch.setitem(pbase.PROVIDERS, "dvsa", FakeDvsa)
     monkeypatch.setattr("leadforge.pipeline.ensure_ready", lambda cfg: None)
-    cfg.discovery.providers = ["gosom", "dvsa"]
+    cfg.discovery.providers = ["fakelist", "dvsa"]
     cfg.discovery.grid_mode = "off"
     icp = _icp(sample_icp)
     conn = db.connect(cfg.db_path)
@@ -81,8 +80,8 @@ def test_register_query_is_routed_to_its_provider_only(cfg, sample_icp, monkeypa
     assert markers == [{"provider": "dvsa"}, {"provider": "dvsa"}]
     run_discover(cfg, icp, tmp_path / "icp.yaml", run_id=run_id)
     assert len(FakeDvsa.calls) == 2, FakeDvsa.calls           # one register call per area
-    assert all("dvsa" not in c for c in FakeGosom.calls)      # gosom never saw the register queries
-    assert len(FakeGosom.calls) == 2                           # and ran its own (1 category x 2 areas)
+    assert all("dvsa" not in c for c in FakeEngine.calls)      # the text engine never saw the register queries
+    assert len(FakeEngine.calls) == 2                           # and ran its own (1 category x 2 areas)
     statuses = [r["status"] for r in conn.execute("SELECT status FROM queries ORDER BY id")]
     assert statuses == ["done"] * 4
 
@@ -90,8 +89,8 @@ def test_register_query_is_routed_to_its_provider_only(cfg, sample_icp, monkeypa
 def test_register_provider_is_never_a_fallback_for_a_maps_query(cfg, sample_icp, monkeypatch, tmp_path):
     from leadforge.util import ProviderDegraded
 
-    class DegradedGosom(_Fake):
-        name = "gosom"
+    class DegradedEngine(_Fake):
+        name = "fakelist"
         calls = []
 
         def fetch(self, query, limit=None):
@@ -102,10 +101,10 @@ def test_register_provider_is_never_a_fallback_for_a_maps_query(cfg, sample_icp,
         name = "dvsa"
         calls = []
 
-    monkeypatch.setitem(pbase.PROVIDERS, "gosom", DegradedGosom)
+    monkeypatch.setitem(pbase.PROVIDERS, "fakelist", DegradedEngine)
     monkeypatch.setitem(pbase.PROVIDERS, "dvsa", FakeDvsa)
     monkeypatch.setattr("leadforge.pipeline.ensure_ready", lambda cfg: None)
-    cfg.discovery.providers = ["gosom", "dvsa"]
+    cfg.discovery.providers = ["fakelist", "dvsa"]
     cfg.discovery.grid_mode = "off"
     icp = _icp(sample_icp)
     conn = db.connect(cfg.db_path)

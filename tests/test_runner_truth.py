@@ -13,7 +13,7 @@ from leadforge.models import Business, Person
 def _biz_row(conn, biz_id, name, domain=None, website=None, phone_e164=None, address_country=None):
     db.upsert_business(conn, Business(id=biz_id, name=name, name_norm=name.casefold(), domain=domain,
                                       website=website, phone_e164=phone_e164, address_country=address_country,
-                                      source="gosom", dedupe_key=f"dk:{biz_id}"))
+                                      source="fakelist", dedupe_key=f"dk:{biz_id}"))
     return conn.execute("SELECT * FROM businesses WHERE id=?", (biz_id,)).fetchone()
 
 
@@ -424,7 +424,7 @@ def test_dm_export_origin_falls_back_to_labeled_by_when_blank(cfg, conn, sample_
 
 
 def test_registry_gate_accepts_country_names_not_only_iso_codes():
-    """DVSA and maps_list rows carry 'United Kingdom'; the gate must treat that as GB (2026-09-03 bug)."""
+    """DVSA and list-view rows carry 'United Kingdom'; the gate must treat that as GB (2026-09-03 bug)."""
     from leadforge.enrich.runner import _jurisdiction
 
     assert _jurisdiction("United Kingdom") == "GB"

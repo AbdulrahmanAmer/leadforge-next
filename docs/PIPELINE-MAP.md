@@ -1,5 +1,7 @@
 # LeadForge pipeline map: logic, wiring and cleanup plan
 
+> **Slice L8 note:** Google Maps and the social provider left this repository (they live in a private add-on). Where this page names them it describes the earlier design; slice L12 rewrites these pages.
+
 Snapshot of `src/leadforge` (~15.1k lines) as of 2026-09-25. Every `file:line` is relative to
 `src/leadforge/`. Tests are in `tests/`. **UNVERIFIED** marks a claim taken from reading the code
 that has not been reproduced by running it.

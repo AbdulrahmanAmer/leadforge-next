@@ -6,7 +6,7 @@ from leadforge.models import Business, Contact, Person
 
 def _biz(**kw):
     base = dict(id="biz_1", name="Joe's Auto", name_norm="joes auto", dedupe_key="pid:ABC",
-                place_id="ABC", source="gosom")
+                place_id="ABC", source="fakelist")
     base.update(kw)
     return Business(**base)
 

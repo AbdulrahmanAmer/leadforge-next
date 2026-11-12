@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+Google Maps and the social presence provider are out of the public tool. Extra discovery providers now come through a
+seam: any installed package that declares an entry point in the group `leadforge.providers` is loaded; asking for a provider
+nobody provides prints "provider '<name>' is not available" and starts nothing. The two Maps providers, their settings, the
+helper download and their tests moved to a private add-on repository. The default provider is now the DVSA register; the
+plan holds register queries alone when no text-search provider is configured. `leadforge doctor` no longer downloads or checks a
+helper binary, the social provider and its `[social]` extra and `social:` settings are gone, and unknown keys under `discovery:`
+are kept (an add-on reads its own settings from them).
+
 ## [0.8.0] — 2026-11-12
 
 The delete side. New command `leadforge forget <email | domain | name>` removes a person from the workspace: every table, the cache, the logs,

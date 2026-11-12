@@ -1,5 +1,7 @@
 # Architecture
 
+> **Slice L8 note:** Google Maps and the social provider left this repository (they live in a private add-on). Where this page names them it describes the earlier design; slice L12 rewrites these pages.
+
 > 🖼️ **Rendered image:** [`diagrams/02-architecture.png`](diagrams/02-architecture.png) — read that first if you
 > just want to see the shape of the system. All images: [`diagrams/`](diagrams/).
 

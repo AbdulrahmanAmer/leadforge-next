@@ -1,5 +1,7 @@
 # Pipeline Behavior — end to end
 
+> **Slice L8 note:** Google Maps and the social provider left this repository (they live in a private add-on). Where this page names them it describes the earlier design; slice L12 rewrites these pages.
+
 > 🖼️ **Rendered images:** [`diagrams/03-pipeline-sequence.png`](diagrams/03-pipeline-sequence.png) (the timeline)
 > and [`diagrams/04-run-states.png`](diagrams/04-run-states.png) (the state machine).
 

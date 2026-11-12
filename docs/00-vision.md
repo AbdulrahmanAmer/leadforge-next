@@ -1,5 +1,7 @@
 # LeadForge — Vision & Scope
 
+> **Slice L8 note:** Google Maps and the social provider left this repository (they live in a private add-on). Where this page names them it describes the earlier design; slice L12 rewrites these pages.
+
 > **Status:** Approved · **Owner:** AbdulrahmanAmer · **Type:** Internal tool (not a product) · **Doc set:** `docs/00`–`08`
 
 ## 1. Problem

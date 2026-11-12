@@ -40,7 +40,7 @@ def test_map_category_prefers_icp(sample_icp):
 
 
 def test_to_business_full_row(sample_icp):
-    raw = RawListing(provider="gosom", fetched_at=now_iso(), data={
+    raw = RawListing(provider="fakelist", fetched_at=now_iso(), data={
         "title": "Joe's Transmission LLC",
         "category": "Auto repair shop",
         "categories": ["Auto repair shop", "Transmission shop"],
@@ -66,7 +66,7 @@ def test_to_business_full_row(sample_icp):
 
 
 def test_to_business_dedupe_without_place_id(sample_icp):
-    raw = RawListing(provider="gosom", fetched_at=now_iso(), data={
+    raw = RawListing(provider="fakelist", fetched_at=now_iso(), data={
         "title": "No PlaceID Shop", "address": "9 Oak Ave, Houston, TX", "phone": "713-555-0199",
     })
     b = to_business(raw, "r", sample_icp, "US")

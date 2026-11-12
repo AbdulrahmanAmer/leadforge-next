@@ -7,8 +7,8 @@ Loaded by Python at start-up because this folder is on PYTHONPATH of every campa
     so a DNS question is never "local".
   * Names listed in LF_GUARD_HOSTS (comma list, the invented *.example sites) resolve to 127.0.0.1 inside this
     process only - the guard is the resolver for the fixture world; no real lookup happens.
-  * The pinned Maps scraper binary is never used: if LF_FAKE_MAPS names a gosom-shaped JSON file, the `gosom`
-    provider is replaced by a subclass that reads that file through the real GosomProvider._parse.
+  * If LF_FAKE_LISTINGS names a JSON list of invented listings, a provider named `fixture_list` that serves it is
+    registered (the public tool ships no text-search provider; a real one only comes from an add-on).
 Nothing here ships; it is test scaffolding and is only found when a harness puts it on PYTHONPATH.
 """
 from __future__ import annotations
@@ -136,27 +136,35 @@ socket.socket.connect_ex = _guard_addr_call(_real_connect_ex, "connect_ex")
 socket.socket.sendto = _guard_sendto
 
 
-def _install_fake_maps(path: str) -> None:
+def _install_fake_listings(path: str) -> None:
+    """Register a provider named `fixture_list` that answers every text query from one invented JSON list
+    (the public tool ships no text-search provider; this stands in for one)."""
     try:
+        from leadforge.models import RawListing
         from leadforge.providers import base as _base
-        from leadforge.providers import gosom as _gosom
-    except Exception:  # noqa: BLE001 - leadforge not importable in this process (pip etc.): nothing to replace
+        from leadforge.util import now_iso
+    except Exception:  # noqa: BLE001 - leadforge not importable in this process (pip etc.): nothing to register
         return
+    import json as _json
     from pathlib import Path
 
-    class FixtureGosom(_gosom.GosomProvider):
+    class FixtureList(_base.DiscoveryProvider):
+        name = "fixture_list"
+        supports_tiles = False
+
         def available(self):
-            return True, "fixture-fed stand-in (no binary)"
+            return True, "invented list (no network)"
 
         def fetch(self, query, limit=None):
             # the pipeline rebuilds the query from its stored text, so the area is read from "<category> in <area>, <country>"
             area = (query.area or query.text.rpartition(" in ")[2].split(",")[0]).strip().casefold()
-            rows = [r for r in self._parse(Path(path))
-                    if area and area in str(r.data.get("address", "")).casefold()]
+            rows = [RawListing(provider=self.name, fetched_at=now_iso(), data=r)
+                    for r in _json.loads(Path(path).read_text(encoding="utf-8"))
+                    if isinstance(r, dict) and area and area in str(r.get("address", "")).casefold()]
             return rows[:limit] if limit else rows
 
-    _base.PROVIDERS["gosom"] = FixtureGosom
+    _base.register(FixtureList)
 
 
-if os.environ.get("LF_FAKE_MAPS"):
-    _install_fake_maps(os.environ["LF_FAKE_MAPS"])
+if os.environ.get("LF_FAKE_LISTINGS"):
+    _install_fake_listings(os.environ["LF_FAKE_LISTINGS"])
