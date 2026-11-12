@@ -214,3 +214,13 @@ All on the final tree, under the `heavy` lock, one at a time:
 - Dev venv for this worktree made the CI install job's way (hashed lock, then `--no-deps --no-build-isolation -e .`).
 - Windows on the owner's screen (2026-11-12, about 09:56 to 10:07): the debug self-test about 40 s, the instance check about 5 s,
   the planted-CSP self-test about 40 s, the release self-test twice about 40 s each. Every process stopped after each.
+
+## The install, run with the owner's normal token (2026-11-12, 10:45 to 10:46)
+
+Run by the orchestrator through `packaging\install-proof.ps1` on `LeadForge_0.8.0_x64-setup.exe` (sha256 beginning `63b23e3b`), started with the normal (not elevated) token. Result: PASS.
+
+- Silent per-user install into `D:\Temp\lf-install\LeadForge`: exit 0, no administrator prompt.
+- The INSTALLED app's self-test walked the screens on the bundled engine entry (the stand-in): `shots taken: 10 of 10; probe clean: True`, `SELFTEST PASS`; every command line in the core's log reads `origin=bundled ... ok`; the content-security probe reported no violation and no error; `exit: every engine stopped`.
+- Uninstall: 0 processes, 0 files or folders left, no uninstall key. Checked separately: no `leadforge-window` process, no Start menu entry, no Defender detection that day.
+
+Not shown by this run: an interactive (double-click) install, the default per-user install folder, and the real `window` commands (the stand-in answered).
