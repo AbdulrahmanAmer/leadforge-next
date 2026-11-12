@@ -348,3 +348,21 @@ Verdict: PARTIAL dc02236 - holds as far as it goes: C4 (forget, after the reader
 - The owner's decision on a literal "finds nothing" (hashed suppression list).
 - The Linux CI mutation trial: NOT DONE.
 - Not merged: PARTIAL.
+
+# Build 2 (0.8.0)
+
+Run `l6-finish`, 2026-11-12, one builder, no helpers, on top of the reader's dc02236. Per item: what the change must do, written before the code; the check of the code against that
+text by reading, after it. Spec, Build and Review above are not rewritten.
+
+## Item 0 — the fake campaign's refused-call compare must not depend on DNS retries
+
+**Cells of the saved result that move (written before the change).** In `tests/fixtures/e2e/expected.json` only `refused`. Today it holds 21 entries: `["sendto","1.1.1.1",53,"dns"]` x10,
+`["sendto","8.8.8.8",53,"dns"]` x10 (leadforge's two fixed fallback resolvers; the email-validity step retries them as long as its time limit lets it), and one
+`["sendto","<system resolver>",53,"dns"]`. After: the same three entries, once each (the distinct outside calls refused). `steps`, `tabs`, `csv`, `report`, `requests` do not move.
+
+**Must do.** `normalized()` in `scripts/e2e_fake_campaign.py` records `refused` as the sorted set of distinct `[kind, host, port, caller]` entries (the machine's own resolvers still folded into
+`<system resolver>`). So the compare is over WHICH outside calls were refused. A refused call of a kind, host or port not in the saved set still fails the compare (a new host, a new kind, a
+connect where there was a sendto), and a saved one that no longer happens still fails it. The number of retries of one of them does not matter.
+**Test (`tests/test_e2e_refused_compare.py`).** Fed raw guard entries: one extra retry of a known call gives the same normalized `refused` (red on the old code: 21 against 20 entries); a new
+host, a new port and a new kind each give a different one (these must stay red-able: they prove the compare is not blind); the real `expected.json` `refused` equals the normalized form of a
+guard log with 10, 1 and 15 retries.
