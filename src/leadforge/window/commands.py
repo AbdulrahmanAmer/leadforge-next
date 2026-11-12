@@ -310,10 +310,12 @@ def people_list(args: dict) -> dict:
         if conn is None:
             return {"people": [], "total": 0, "matching": 0}
         found: dict[tuple[str, str], dict[str, str]] = {}   # (business, person name) -> field -> newest value
-        for r in conn.execute("SELECT business_id, person_name, field, value_json FROM enrichment_observations "
+        for r in conn.execute("SELECT business_id, person_name, field, value_json, observed_at FROM enrichment_observations "
                               "WHERE person_name<>'' AND field IN ('email','phone') ORDER BY observed_at"):
             try:
-                found.setdefault((r["business_id"], r["person_name"]), {})[r["field"]] = str(json.loads(r["value_json"]))
+                seen_now = found.setdefault((r["business_id"], r["person_name"]), {})
+                seen_now[r["field"]] = str(json.loads(r["value_json"]))
+                seen_now[r["field"] + "_at"] = r["observed_at"] or ""
             except ValueError:
                 continue
         campaigns: dict[str, str | None] = {}
@@ -331,7 +333,8 @@ def people_list(args: dict) -> dict:
                 "id": str(r["id"]), "name": r["name"], "role": r["title"] or "", "business": r["bname"], "domain": r["domain"] or "",
                 "email": email, "phone": phone,
                 "source": r["source_url"] or None,   # the page the name was read on, when the engine kept it
-                "foundAt": None,                     # gap: the engine keeps no date per person (L7, C12)
+                # the day the engine saw the shown email (else phone); null when it holds neither for this person
+                "foundAt": (seen.get("email_at") if email else seen.get("phone_at") if phone else None) or None,
                 "campaign": campaigns[run_id],
                 "suppressed": db.is_suppressed(conn, email, r["domain"]),
             })

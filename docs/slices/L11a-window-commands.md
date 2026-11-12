@@ -444,6 +444,7 @@ own. Fixed in this build (below). The key commands read the right keys but answe
 - `RunStatus.done`/`total` after a run: `run_start` records its last progress line (`window_progress_stage`, `window_done`,
   `window_total` in the run's stats) and `status_doc` answers them when that stage is the run's stage. Before, a finished or
   stopped run always answered null (`engine.ts` says `done: number`, as the stand-in does).
+- `Person.foundAt` is the time the engine recorded the shown email (else phone) for that person (`enrichment_observations.observed_at`); null when it holds neither. This narrows Build 1's gap ("always null") and seam change 7 to people with no email or phone of their own. Golden re-recorded because of it: `tests/golden/window/people_list.json` (Priya's `foundAt`, nothing else).
 - `scripts/e2e_window_run.py` prints the time from `run_stop`'s answer to the run's end and the longest wait between two
   stream lines.
 
@@ -541,7 +542,7 @@ businesses, each with a contact, a named person, a person-linked email and a sco
 | about | `{}` | 0 | 309,587 B | 8,388,608 B | 3.17 s | 30 s |  |
 
 Every one inside its limits. `people_list` cannot pass 8 MiB: `limit` is at most 500. Its search took 13 s on 10,000 people
-(ten times the plain page): linear, so near 100,000 people it would meet the 120 s timeout (seam change 12). The core gives
+(the plain page 1 s; the cause was not looked into). Both read every person first, so the time grows with the workspace; how fast is UNPROVEN beyond 10,000 (seam change 12). The core gives
 `purge_report` 120 s (`engine.rs` `timeout()`), not the 600 s of "purges" in the brief; `person_forget` gets 600 s there.
 
 ### Shape against the stand-in
@@ -558,7 +559,7 @@ keys and kinds compared at every depth (a list by its first element):
 | sheet_export | equal |
 | campaigns_list | equal |
 | sheet_open | equal |
-| people_list | $.people[0].foundAt: engine "null", stand-in "string"; $.people[0].phone: engine "null", stand-in "string" |
+| people_list | $.people[0].phone: engine "null", stand-in "string" |
 | address_suppress | equal |
 | person_forget | equal |
 | purge_report | equal |
@@ -576,18 +577,17 @@ keys and kinds compared at every depth (a list by its first element):
 equal for 15 of 21
 ```
 
-Two earlier runs of the compare are part of the record: the first had 13 of 21 (`done` null after every run: fixed in the
+Three earlier runs of the compare are part of the record (the third, before `foundAt` below, also 15 of 21 with `people_list` differing on `foundAt` too): the first had 13 of 21 (`done` null after every run: fixed in the
 engine, above; `purge_everything` exit 1 on a `PermissionError` on `db.sqlite3-wal`: the compare's own process still held the
 in-process `run_start`'s connections, which a real engine process closes by ending; the compare now collects them first).
 The second had 14 of 21 (its stand-in pipeline left the run at stage `planned`; the real pipeline leaves `exported`).
 
-The six that remain, each a null where the stand-in has a value:
+The six that remain, each a null where the stand-in has a value (`people_list` counts once):
 
 | Command | Field | `engine.ts` | Why the engine has null | Where |
 |---|---|---|---|---|
 | run_start | progress `etaSeconds` | `number \| null` | the engine's progress line carries no estimate | allowed by the type |
 | run_stop | `done`, `total` | `done: number`, `total: number \| null` | the compare marks a run `running` without a live progress feed; the real run in the e2e proof answered `"done":1,"total":8` | the compare's set-up, not the engine |
-| people_list | `foundAt` | `string` | the engine keeps no date per person (L7, C12) | seam change 7 (Build 1) |
 | people_list | `phone` | `string \| null` | the invented person has no phone of their own | data, allowed by the type |
 | keys_list, key_save | `savedAt` | `string \| null` | the keyring keeps no date | allowed by the type |
 | about | `windowVersion` | `string` | the window's own version; the engine does not know it | seam change 9 (Build 1): the core fills it |
@@ -613,8 +613,32 @@ of a running run whose progress feed is of another stage. Seam change 5 (Build 1
     than 10 s (bounded by `crawl.site_budget_s` 45 s plus render and NER time). Either the core gives the run longer than 10 s
     after `run_stop` (the stop is clean and resumable, the kill is not), or a later engine slice checks the flag between page
     fetches (needs `RunStopped` re-raised before the `except Exception` of `enrich/runner.py` lines 414 and 590).
-12. **`people_list` search on a large workspace.** 13 s on 10,000 people; near 100,000 it meets the 120 s timeout. Proposed:
+12. **`people_list` search on a large workspace.** 13 s on 10,000 people; larger workspaces were not measured. Proposed:
     an index on the searched fields in a later engine slice, or the core's timeout for `people_list` raised; no type change.
 13. **A refused start in the core.** `lib.rs` `run_start`: when line 1 is an error object (`is_error_object`) and the engine
     exits non-zero, reject with it instead of relaying it as the handle. The engine already writes exactly that document.
 14. **`RunStatus.done: number | null`** (extends seam change 5): a finished run's last progress line may be of an earlier stage.
+
+## Rebase on master `1d741bc` (L7, 0.9.0), during this run
+
+`origin/master` moved while this build ran (L7 merged, 0.9.0). The branch was rebased on it; the one conflict, CHANGELOG, kept
+both sides (L11a's lines under `[Unreleased]`, master's `[0.9.0]` entry below them). Goldens re-recorded because of master, not
+this work: `tests/golden/window/about.json` (`engineVersion` 0.9.0) and `tests/golden/window/sheet_export.json` (the sheet's
+About tab has 27 rows, one more since L7). `make_licence_notices.py --check`: "licence notices match the lock" (L7 changed no
+lock). The full gate was run before the rebase (on `11f83f6`, below); after it, `tests/test_window.py` and hosted CI.
+
+`node check.mjs` once, at below-normal priority, on `11f83f6` (before the rebase; the venv's Scripts first on PATH, ruff 0.15.13):
+
+```
+ok  versions agree  0.2
+ok — 2 skill(s) have portable frontmatter
+ok  skill frontmatter  0.2
+ok: 2 skills open every file they name when installed alone; shared reference copies are identical
+ok  skill references  0.2
+All checks passed!
+ok  lint  0.9
+932 passed, 3 skipped in 240.24s (0:04:00)
+ok  tests  241.6
+ok  cli digest  2.2
+CHECK PASS sha=11f83f6 tree=clean steps=6 skipped=0 secs=246
+```
