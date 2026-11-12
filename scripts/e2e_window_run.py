@@ -2,7 +2,7 @@
 
     python scripts/e2e_window_run.py --out <folder>
 
-Uses scripts/e2e_fake_campaign.py's world (invented sites, registers and Maps listings on 127.0.0.1) and its child
+Uses scripts/e2e_fake_campaign.py's world (invented sites, registers and listings on 127.0.0.1) and its child
 harness (every non-loopback connection or lookup refused and logged). In child processes, as the window's shell would:
 `window run_start` (fresh), `window run_stop` while it runs, `window run_status`, `window run_start` with resume until
 it finishes, then `window campaigns_list`, `window sheet_export`, `window people_list`. PASS when every stdout line is

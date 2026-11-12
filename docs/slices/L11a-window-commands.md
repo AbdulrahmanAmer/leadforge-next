@@ -1197,3 +1197,51 @@ Open items of the window commands, as agreed with the lead on 2026-11-12:
 - A register campaign's plan is not estimated (the three estimates are null); estimating register queries is for a later slice.
 - The window does not offer the registry.keyring switch in this release.
 - campaign_create never ran against the real geocoder; the real keyring of a machine was never touched by a test.
+
+## Review of Build 4 (run `l11a-follow-read`, the independent reader, 2026-11-12, STRIKERFORCE)
+
+Read: the diff of `4cb675a` against `origin/master` `8ea0ec0` (master is in the branch), against rulings 15 and 16 and Build 4's
+"What must hold". Python 3.12 venv from `requirements.lock`; pytest 9.2.0, pytest-timeout 2.4.0, pytest-xdist 3.8.0 from
+`uv.lock`'s hashes; ruff 0.17.3 (the lock's 0.17.4 is under 7 days old, so the reader took the release before it).
+
+- 15, from a real process: `python -m leadforge window campaign_create` in a made-up workspace (keyring switch off, a box for the
+  area, so no geocoder), the reader's own probe:
+
+  ```
+  dvsa: exit 0 searches=1 {"estimatedBusinesses": null, "estimatedSites": null, "estimatedMinutes": null}
+  companies_house: exit 0 searches=1 {"estimatedBusinesses": null, "estimatedSites": null, "estimatedMinutes": null}
+  dvsa+fakelist (text search): exit 0 searches=2 {"estimatedBusinesses": 120, "estimatedSites": 77, "estimatedMinutes": 5}
+  ```
+
+  Present and null for both registers, never 0 and never absent; numbers for a plan with text searches. Holds.
+- 16, by reading and by the tests with the fake backend: `inUse = saved and reads_keyring`, present in every KeyStatus (also
+  `false` for a key not saved; `TYPES["KeyStatus"]` holds it as a present boolean); switch on `(True, True)`, switch off
+  `(True, False)`; `key_save` with the switch off answers `input`, a detail `registry.keyring: off in this workspace`, a `next`
+  with `leadforge config set registry.keyring true`, and the fake store equals what it was before; `key_remove` with the switch
+  off removes (store empty). The switch is read through `load_config`, so the environment variable counts as for a run. Holds.
+- Nothing else moved: files changed are `commands.py`, `keys.py`, `test_window.py`, four goldens under `tests/golden/window/`
+  (`campaign_create`, `keys_list`, `key_save`, `key_remove`), `CHANGELOG.md` (under `## [Unreleased]`), this file. No command-line
+  golden, no plugin contract file, nothing under `app/`, no name changed (`make_keys` and `Keys` gain an argument); versions
+  agree at 0.9.0, unchanged.
+- Seen red by the reader: `keys.py` `"inUse": saved` (the switch ignored) turns
+  `test_in_use_follows_the_keyring_switch_and_key_save_is_refused_while_it_is_off` red at
+  `At index 0 diff: (True, True) != (True, False)`; restored, green.
+- `tests/test_window.py`: 77 passed, 1 deselected (56.58 s, below-normal priority). The deselected one,
+  `test_run_stop_from_a_second_process_ends_the_run_within_10_s_and_status_answers_beside_it` (not touched by Build 4), hit the
+  60 s pytest timeout in the whole-file run with 12 `python` and 8 `node` processes on the laptop; alone at normal priority:
+  `1 passed in 15.36s`.
+- `ruff check` on the touched files: `All checks passed!`. `gitleaks git` over `origin/master..HEAD`: `no leaks found`.
+- Observation, not a defect against the rulings: the key commands now read `leadforge.yaml` (`load_cfg`) to learn the switch, so a
+  workspace whose settings file cannot be read answers `usage` for `keys_list` and `key_remove` too, as every other command does.
+
+Fixed by the reader (the two leftovers the reader of pull request 14 named):
+- `scripts/e2e_window_run.py`: the docstring said "registers and Maps listings"; now "registers and listings". L8's search
+  (`git grep -n -i -E "gosom|maps_list|maps-list|google[_-]maps[_-]scraper|proxies" -- . ':!docs' ':!icm' ':!CHANGELOG.md'
+  ':!.claude/POSITION-HISTORY.md'`): no output, exit 1, 0 hits.
+- `About.licence`: `_own_licence()` returns `str | None` (None when the installed package has no metadata or no licence field),
+  so the code guarantees no string. Correction to the final-keys table above (left as its builder wrote it): row 21 `About.licence`
+  is N (present, may be null); and, after Build 4, rows 1 and 16 to 18 read as Build 4's own table says (the three estimates N,
+  `inUse` P). `engine.ts` under `app/` is the window's and is not touched here.
+
+Verdict: PASS 4cb675a (the builder's code), with the reader's two wording fixes in the commit that adds this review. The local gate
+and hosted CI of that commit are in the reader's run report, outside the repository.
