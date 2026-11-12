@@ -233,6 +233,32 @@ def test_forgotten_value_is_not_collected_again(tmp_path):
     conn.close()
 
 
+def test_a_business_forgotten_by_name_is_not_collected_again(cfg, sample_icp, monkeypatch, tmp_path):
+    """Review 2026-11-12: forget adds the name to the suppression list "so a new run does not collect it again"; discovery
+    checked only the domain and the place id, so a register row (no website) came straight back."""
+    import yaml
+
+    from leadforge.models import RawListing
+    from leadforge.pipeline import run_discover
+    from leadforge.util import now_iso
+    monkeypatch.setattr("leadforge.pipeline.ensure_ready", lambda c: None)
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.available", lambda self: (True, "mock"))
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.fetch", lambda self, q, limit=None: [
+        RawListing(provider="fakelist", fetched_at=now_iso(), data={
+            "title": name, "address": f"{i} A St, Houston, TX 77001", "phone": f"713-555-0{i:03d}", "place_id": f"PID_{i}"})
+        for i, name in enumerate(["Quillfeather Garage", "Other Garage"])])
+    conn = db.connect(cfg.db_path)
+    db.suppress(conn, "name", "Quillfeather Garage", source="forget")   # what forget writes for a name
+    conn.close()
+    icp_path = tmp_path / "icp.yaml"
+    icp_path.write_text(yaml.safe_dump(sample_icp.model_dump(mode="json")), encoding="utf-8")
+    run_discover(cfg, sample_icp, icp_path)
+    conn = db.connect(cfg.db_path)
+    names = {r["name"] for r in conn.execute("SELECT name FROM businesses")}
+    conn.close()
+    assert names == {"Other Garage"}
+
+
 @pytest.mark.parametrize("value,kind", [("Cher", "name"), ("J. Smith", "name"), ("a@b.example", "email"),
                                         ("b.example", "domain"), ("  Zora   Quillfeather ", "name")])
 def test_the_kind_of_a_value_is_told_from_its_shape(value, kind):

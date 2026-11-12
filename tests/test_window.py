@@ -393,6 +393,17 @@ def test_sheet_open_refuses_what_is_not_in_exports(ws, monkeypatch, case):
     assert opened == []
 
 
+@pytest.mark.parametrize("name", ["run-me.cmd", "run-me.exe", "page.html", "shortcut.lnk", "sheet.xlsx.bat"])
+def test_sheet_open_refuses_a_file_in_exports_that_is_not_a_sheet(ws, monkeypatch, name):
+    # the OS opens what it is given with its default program: a planted script in exports must not be started
+    opened = []
+    monkeypatch.setattr(commands, "_default_opener", opened.append)
+    (ws / "leadforge_data" / "exports" / RID / name).write_bytes(b"@echo planted\r\n")
+    code, out = call("sheet_open", {"path": f"leadforge_data/exports/{RID}/{name}"})
+    assert code == 2 and one_doc(out)["kind"] == "usage"
+    assert opened == []
+
+
 def test_a_planted_key_appears_in_no_output_and_no_log(ws, monkeypatch, capsys, keyring_fake):
     planted = "".join(["lf", "PLANTED", "k3y", str(31337 * 7)])   # built at run time, never written in the source
     store = keyring_fake

@@ -8,6 +8,7 @@ for whatever `resolve_command`/`agent.command` would otherwise point at.
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import threading
 import time
@@ -17,6 +18,8 @@ import pytest
 
 from leadforge import agent_runner
 from leadforge.util import LeadForgeError
+
+_REAL_WHICH = shutil.which   # taken at import, before conftest's autouse fixture replaces it for every test
 
 # A fake "claude -p" that captures stdin to a file (relative to its cwd) and prints canned NDJSON
 # with the exact kind of MCP noise line seen in the 2026-09-03 live proof.
@@ -127,6 +130,22 @@ def test_resolve_command_none_when_claude_not_on_path(cfg, monkeypatch):
     monkeypatch.setattr(agent_runner.shutil, "which", lambda name: None)
     assert agent_runner.resolve_command(cfg) is None
     assert agent_runner.is_available(cfg) is False
+
+
+def test_resolve_command_never_takes_a_claude_from_the_current_folder_or_a_missing_path(cfg, tmp_path, monkeypatch):
+    # Windows' which() searches the current folder (the workspace) before PATH, and with no PATH at all (the window
+    # starts the engine with none) it falls back to `.;C:\bin`. A program planted there must not be run as the agent.
+    monkeypatch.setattr(agent_runner.shutil, "which", _REAL_WHICH)
+    for name in ("claude.cmd", "claude"):
+        planted = tmp_path / name
+        planted.write_text("echo planted\n", encoding="utf-8")
+        planted.chmod(0o755)
+    (tmp_path / "empty").mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    assert agent_runner.resolve_command(cfg) is None
+    monkeypatch.delenv("PATH")
+    assert agent_runner.resolve_command(cfg) is None
 
 
 def test_resolve_command_auto_detect_honours_configured_model(cfg, monkeypatch):

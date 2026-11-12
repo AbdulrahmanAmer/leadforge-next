@@ -272,7 +272,7 @@ compliance: { region_profile: us }   # us|uk|eu → outreach reminder text in ex
 | Business | businesses.name | |
 | Category | businesses.category | ICP-mapped |
 | DM Name / DM Title / DM Conf | people where is_dm=1 | natural "First Last" order; Conf 0–1. Never blank: unlabeled → "not identified - ask for owner/manager" |
-| Phone | phone_e164 | spaced international format ("+44 1483 456363" — survives Excel as text); raw Maps string as fallback |
+| Phone | phone_e164 | spaced international format ("+44 117 496 0101" — survives Excel as text); raw Maps string as fallback |
 | Email / Email Tier | best PUBLISHED contact (tier order: valid>role>risky>catch_all>unknown) | never export `invalid`; `inferred` is excluded here by design (own column); absent → "none published" / "site not crawled" / "no website to crawl", tier `-` |
 | Email (Inferred) | v0.2.0, opt-in `validation.infer_emails`: the address this domain's own naming convention implies for the named DM, derived from a real email already found on that domain + MX. Never SMTP-probed | rendered as `addr (likely, N% — pattern X from <anchor>)`; excluded from `with_email` coverage (counted as `with_inferred_email`); absent → "not inferred" |
 | Website | businesses.website | hyperlink; absent → "NONE - no web presence (pitch opportunity)" |

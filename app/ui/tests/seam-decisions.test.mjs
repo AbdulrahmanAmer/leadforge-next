@@ -4,6 +4,15 @@ import { test } from "node:test";
 import { EngineError } from "../src/engine.ts";
 import { createMockEngine, UNNAMED_RUN } from "../src/engine.mock.ts";
 import { NOT_RECORDED, cleanUpLine, formatDateOrNot, runTitle, textOrNot } from "../src/lib.ts";
+import { keysHeadline } from "../src/follow.ts";
+
+/* review 2026-11-12: the bundled engine has no keyring package (kind `environment`); the title line must not promise one */
+test("the Keys screen promises the keyring only when the engine reached one", () => {
+  const noKeyring = new EngineError("listKeys", "environment", "Keys cannot be kept in the keyring on this computer.");
+  assert.doesNotMatch(keysHeadline(noKeyring), /Kept in the Windows keyring/);
+  assert.match(keysHeadline(noKeyring), /cannot/);
+  assert.match(keysHeadline(null), /Kept in the Windows keyring/);
+});
 
 const draft = { kinds: ["MOT garage"], places: ["Bristol"], country: "GB", source: "dvsa", offer: "Online booking for MOT tests", sicCodes: [], maxLeads: 50 };
 const refused = (engine, d) => engine.createCampaign(d).then(() => assert.fail("was not refused"), (e) => { assert.ok(e instanceof EngineError); return e; });

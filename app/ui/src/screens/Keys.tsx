@@ -4,7 +4,7 @@ import { EngineError } from "../engine.ts";
 import { Badge, Button, Card, ErrorBanner, Skeleton, StatusBanner, cx } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { formatDate, useAction, useLoad } from "../lib";
-import { keyBadge, keyFieldProblem } from "../follow.ts";
+import { keyBadge, keyFieldProblem, keysHeadline } from "../follow.ts";
 
 const KEYS: Record<KeyName, [title: string, detail: string]> = {
   companies_house_key: ["Companies House API key", "Needed to search Companies House. Free from the Companies House developer hub."],
@@ -20,10 +20,8 @@ export function Keys({ engine }: { engine: Engine }) {
       <header className="lf-screen__head">
         <div>
           <h1>Keys</h1>
-          {/* the engine cannot do the key commands yet (kind `missing`): the page does not promise a keyring it cannot reach */}
-          <p>{keys.error instanceof EngineError && keys.error.kind === "missing"
-            ? "Saving a key needs a command this version of the engine does not have yet. Nothing is stored."
-            : "Kept in the Windows keyring of your account. Once saved, a key is never shown again."}</p>
+          {/* the page does not promise a keyring the engine cannot reach (kinds `missing` and `environment`) */}
+          <p>{keysHeadline(keys.error instanceof EngineError ? keys.error : null)}</p>
         </div>
       </header>
       {keys.state === "loading" && <Card><Skeleton lines={4} label="Asking the keyring" /></Card>}
