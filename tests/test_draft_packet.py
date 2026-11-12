@@ -27,7 +27,7 @@ _IDENTITY = {"from_name": "GainLev", "label": "gainlev-main"}
 
 def _biz(conn, **over):
     base = dict(id="b1", name="Acme Garage", category="Car repair", address_city="Leeds",
-               source="gosom", dedupe_key="dk-b1")
+               source="fakelist", dedupe_key="dk-b1")
     base.update(over)
     db.upsert_business(conn, Business(**base))
     return conn.execute("SELECT * FROM businesses WHERE id=?", (base["id"],)).fetchone()

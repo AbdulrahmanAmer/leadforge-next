@@ -69,7 +69,7 @@ def _setup(cfg, tmp_path: Path, monkeypatch, mode: str):
     monkeypatch.setattr(agent_runner.subprocess, "Popen", _popen)
     conn = db.connect(cfg.db_path)
     db.upsert_business(conn, Business(id="biz_p", name="Example Plumbing", name_norm="example plumbing",
-                                      dedupe_key="dk:p", source="gosom"))
+                                      dedupe_key="dk:p", source="fakelist"))
     db.add_person(conn, Person(business_id="biz_p", name="Jane Example", title="Owner", snippet=PLANTED_PAGE))
     return conn, log
 

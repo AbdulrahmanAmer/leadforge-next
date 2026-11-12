@@ -9,7 +9,7 @@ What it does: starts a loopback web server that plays invented business sites, a
 Companies House (the registry lookup, keyed with a fixture key; fixtures under tests/fixtures/e2e), writes a fresh workspace, and runs the same CLI commands as a user would
 (intake, plan, run, discover, byol import, run --resume, status, export) in child processes whose PYTHONPATH carries
 tests/fixtures/e2e/harness/sitecustomize.py: every non-loopback connection or lookup is refused and logged, the
-Maps scraper binary is replaced by a fixture-fed stand-in, the agent call is switched off, provider keys are removed.
+text-search provider is a fixture-fed stand-in (the public tool ships none), the agent call is switched off, provider keys are removed.
 Result: PASS when the normalized result equals expected.json AND no refused attempt other than the known set happened.
 """
 from __future__ import annotations
@@ -38,12 +38,12 @@ GOLDEN = FIX / "expected.json"
 WORLD = json.loads((FIX / "world.json").read_text(encoding="utf-8"))
 HOSTS = [s["host"] for s in WORLD["sites"]]
 CH = json.loads((FIX / "companies_house.json").read_text(encoding="utf-8"))
-SECRETISH = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH|ANTHROPIC|OPENAI|GITHUB|^GH_|PROXY", re.I)
+SECRETISH = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH|ANTHROPIC|OPENAI|GITHUB|^GH_", re.I)
 PUBLIC_RESOLVERS = {"8.8.8.8", "1.1.1.1"}
 KEEP_ENV = ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP", "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "OS")
 
 CONFIG_YAML = f"""discovery:
-  providers: [gosom, dvsa]
+  providers: [fixture_list, dvsa]
   dvsa:
     url: http://127.0.0.1:{WORLD['port']}/dvsa/active-mot-stations.csv
 registry:
@@ -56,8 +56,6 @@ enrich:
   ner: false
 agent:
   command: []
-social:
-  enabled: false
 export:
   auto_open: false
 progress_window: false
@@ -156,7 +154,7 @@ def child_env(ws: Path, guard_log: Path) -> dict:
     env.update({
         "PYTHONPATH": str(HARNESS), "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "COLUMNS": "200", "NO_COLOR": "1",
         "HOME": str(home), "USERPROFILE": str(home), "APPDATA": str(home / "AppData"), "LOCALAPPDATA": str(home / "Local"),
-        "LF_GUARD_LOG": str(guard_log), "LF_GUARD_HOSTS": ",".join(HOSTS), "LF_FAKE_MAPS": str(FIX / "maps_listings.json"),
+        "LF_GUARD_LOG": str(guard_log), "LF_GUARD_HOSTS": ",".join(HOSTS), "LF_FAKE_LISTINGS": str(FIX / "listings.json"),
     })
     return env
 
@@ -197,11 +195,6 @@ def run_campaign(py: str, ws: Path, out: Path) -> dict:
     m = ["-m", "leadforge"]
     step("intake", [*m, "intake", "--answers", "answers.yaml"])
     step("plan", [*m, "plan", "--icp", "icp.yaml"])
-    step("run-unstamped", [*m, "run", "--icp", "icp.yaml"], timeout=300)
-    stamp = ("import json,time;from leadforge import GOSOM_VERSION;from pathlib import Path;"
-             "p=Path('leadforge_data');p.mkdir(exist_ok=True);"
-             "(p/'.doctor_ok.json').write_text(json.dumps({'at':'harness','t':time.time(),'gosom':GOSOM_VERSION}))")
-    step("env-stamp", ["-c", stamp])
     step("discover", [*m, "discover", "--icp", "icp.yaml"])
     step("byol-preview", [*m, "byol", "import", "--in", "user_list.csv"])
     step("byol-apply", [*m, "byol", "import", "--in", "user_list.csv", "--apply"])

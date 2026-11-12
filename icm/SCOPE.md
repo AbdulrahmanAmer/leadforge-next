@@ -1,5 +1,7 @@
 # Scope Statement — read before building
 
+> **Slice L8 note:** Google Maps and the social provider left this repository (they live in a private add-on). Where this page names them it describes the earlier design; slice L12 rewrites these pages.
+
 This file exists so any coding agent picking up this repo knows exactly what it is being asked to build,
 and exactly where the edges are. Read it once; it removes almost all judgment calls.
 

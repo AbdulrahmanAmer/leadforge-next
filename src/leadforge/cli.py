@@ -630,7 +630,7 @@ _URL_USERINFO_RE = re.compile(r"^((?:[a-z][a-z0-9+.-]*://)?)[^\s/@:]*:\S*@", re.
 
 def _redacted(name: str, value):
     """`value` with every secret inside it hidden: a section is walked key by key, and the user:password
-    part of an address (a proxy) is cut."""
+    part of any address is cut."""
     if isinstance(value, dict):
         return {k: _redacted(str(k), v) for k, v in value.items()}
     if isinstance(value, list):

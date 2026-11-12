@@ -16,7 +16,7 @@ def main() -> None:
     conn = db.connect(OUT)
     db.upsert_business(conn, Business(id="biz_golden", name="Golden Example Plumbing",
                                       name_norm="golden example plumbing", dedupe_key="dk:golden",
-                                      website="https://plumbing.example", source="gosom"))
+                                      website="https://plumbing.example", source="fakelist"))
     conn.commit()
     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     conn.execute("PRAGMA journal_mode=DELETE")  # one self-contained file

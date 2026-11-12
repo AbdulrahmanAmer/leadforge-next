@@ -4,7 +4,7 @@ Turns ICP geography into a provider-agnostic query plan:
 - text mode (default): one query per (category x area) -> "category in area"
 - grid mode (config discovery.grid_mode=auto, or ICP bbox): bbox split into tiles, one job per
   (category x tile) for engines that support geo-targeted search. Tile math is pure + unit-tested;
-  the gosom grid flags themselves are live-verified in U8.2 before enabling by default.
+  the grid flags of a tiled listing source are live-verified in U8.2 before enabling by default.
 
 Geocoding: Nominatim public API, 1 req/s, permanent JSON cache, identifying UA (docs/04 §3.1).
 """
@@ -69,12 +69,12 @@ class PlannedQuery:
     tile: Tile | None = None
     # v0.3 (ADR-013): a query that belongs to ONE named provider (a public register such as `dvsa`) and
     # never enters the fallback chain. The chain in cfg.discovery.providers is a fallback order for the
-    # Maps engines; registers are ADDITIVE — they must run alongside Maps, once per area, not instead of it.
+    # text-search engines (add-ons); registers are ADDITIVE — they run alongside them, once per area, not instead of one.
     provider: str | None = None
 
 
 # Providers that are registers of record (complete per area, no tiles, no result ceiling): each gets one
-# planned query per area in addition to the Maps plan. The Maps engines stay a fallback chain.
+# planned query per area in addition to the text-search plan. The text-search engines stay a fallback chain.
 ADDITIVE_PROVIDERS = ("dvsa",)
 
 
@@ -346,6 +346,10 @@ def build_plan(icp: ICP, cfg: Config) -> list[PlannedQuery]:
         for area, suffix, _tiles in slots:
             queries.append(PlannedQuery(text=f"{cats[0]}{suffix}", category=cats[0], area=area,
                                         tile=None, provider=prov))
+    # With only registers configured (the public default: no provider add-on installed) there is no engine for a
+    # text search, so the plan holds the register queries alone instead of town-wide questions nobody can answer.
+    if cfg.discovery.providers and all(p in ADDITIVE_PROVIDERS for p in cfg.discovery.providers):
+        return queries
     for ti in range(max_tiles):  # tile-major rotation -> fair to categories AND areas under a cap
         for area, suffix, tiles in slots:
             if tiles is not None and ti >= len(tiles):
@@ -359,7 +363,7 @@ def build_plan(icp: ICP, cfg: Config) -> list[PlannedQuery]:
 
 
 def plan_counts(queries: list[PlannedQuery], cfg: Config | None = None) -> dict:
-    """A4 (docs/09): tiled and untiled queries cost different amounts of gosom time (a tiled query
+    """A4 (docs/09): tiled and untiled queries cost different amounts of source time (a tiled query
     visits a smaller area more thoroughly), so each is estimated with its own configured average
     rather than one blended constant. cfg is optional — defaults to the config's own defaults."""
     if cfg is None:

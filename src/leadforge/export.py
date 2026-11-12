@@ -583,7 +583,7 @@ def _about_sheet(wb: Workbook, icp: ICP) -> None:
     ws.append(["DM Conf", "0–1 confidence the agent assigned when labeling the decision maker from site snippets"])
     ws.append(["Likely Need (Hook)", "auto-suggested outreach angle from detected need signals + your offer"])
     ws.append(["Verified On", "timestamp of the newest evidence for the row; older than your staleness window = re-verify"])
-    ws.append(["Source", "which engine discovered the business (gosom = Google Maps)"])
+    ws.append(["Source", "which engine discovered the business"])
     if not account_fit:
         ws.append([])
         ws.append(["v0.3 columns", "fit/contactability are graded separately on purpose — a hot-but-"
