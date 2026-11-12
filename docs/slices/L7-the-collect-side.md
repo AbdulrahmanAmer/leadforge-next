@@ -235,3 +235,72 @@ What stage B must know about what stage A changed:
 - The DVSA terms finding (attribution) and the OpenCorporates findings (`restricted_for_marketing`, paid key) need a home: the Summary sheet
   line is stage B's (it touches the sheets); the rest is L9 / L12.
 - CI results of stage A are in the pull request and the report, not here.
+
+## Build, stage B (0.9.0)
+
+Stage B (run `l7b-build`) continues the same branch. `origin/master` (0.8.0, L6 merged) was merged in at 0bb5455 (one conflict, `CHANGELOG.md`: both
+sides kept). PRs 7 (debts) and 8 (Maps out) were NOT yet merged into `master` when this stage started; the DVSA sample and the locks are untouched
+here. Stage A's tests (`test_collect_side`, `test_browser_profile`, `test_l6_suppressed_export`, `test_golden_contracts`) on top of L6: 77 passed.
+
+Each item: what must hold (written before the code), then the check by reading after it.
+
+### Item 6 - C12, every exported e-mail and phone carries its source address and date
+
+Must hold:
+1. Eight columns are added, in a new list `SOURCE_COLUMNS`, at the END of `DEFAULT_COLUMNS` and of `ACCOUNT_COLUMNS` (no existing column moves
+   position): `Email Source`, `Email Date`, `Email (Inferred) Source`, `Email (Inferred) Date`, `Phone Source`, `Phone Date`, `DM Phone Page`,
+   `DM Phone Date`. The Drafts tab gets two more at its end: `To Source`, `To Date`. No table changes: the values are read from rows that already exist.
+2. `Email Source` is the page address of the newest `enrichment_observations` row for that address (`field='email'`, `value_json` equal to the address);
+   if none, the `url` of the `email_found` evidence of that contact; if none, the words `source not recorded`. `Email Date` is the date (`YYYY-MM-DD`) of
+   that observation or evidence, else of the contact's `verified_at`, else `date not recorded`. A row without an address has `-` in both.
+3. An inferred address is no published address: `Email (Inferred) Source` says `inferred, not published: <basis>` and the date is the contact's `verified_at`.
+4. `Phone Source` / `Phone Date` describe the number in the `Phone` cell. A number from the business listing: the listing's address (`maps_url` for a
+   Maps row, the configured list address for `dvsa`, else the provider's name) and the date of `last_seen_at`. A number that came from a contact (fallback
+   of the cell): that contact's observation (`source_url`, `observed_at`), else `source not recorded`. No number: `-`.
+5. `DM Phone Page` / `DM Phone Date` come from the very observation `_best_dm_phone` picked; none: `-`.
+6. The Drafts tab's `To` address gets `To Source` / `To Date` by the same rule as item 2.
+7. A suppressed address stays in no cell (the masker runs over the new cells too).
+8. Nothing else in a golden moves: the list of goldens that change is written below, with the reason, before any is regenerated.
+Test (pass line): a fixture workspace with one address found on a page (observation), one with only evidence, one imported without any record, an inferred
+address, a listing phone, a contact phone and a DM phone is exported to CSV; for EVERY non-placeholder e-mail and phone cell the paired source cell and
+date cell are present and well formed (a URL or the stated words; `YYYY-MM-DD` or the stated words); the "not recorded" case is stated, never blank.
+
+Goldens and saved results that change (listed BEFORE regenerating):
+| file | change | reason |
+|---|---|---|
+| `tests/golden/sheet_columns.json` | `DEFAULT_COLUMNS` and `ACCOUNT_COLUMNS` gain the 8 columns at the end; new key `SOURCE_COLUMNS` | C12 changes the sheet contract |
+| `tests/golden/sheet_export.json` | `csv_header` and `xlsx` header gain the 8 columns; `bare_row` gains the 8 keys (`-`) | same; the bare row has no e-mail and no phone |
+| `tests/fixtures/e2e/expected.json` (the fake campaign's saved result) | the Leads tab and the CSV gain the 8 columns; the Drafts tab gains 2; each row's new cells hold the page address and date | same |
+No other golden holds a sheet (`dm_handoff`, `draft_handoff`, `provenance`, `workspace_schema`, `campaign_file`, `agent_contract`... carry no sheet columns; the schema golden is unchanged
+because no table changes).
+
+### Item 7 - C13, send rules by country
+
+Must hold:
+1. New module `leadforge/send_rules.py`, pure functions, no I/O. `country_code(raw)` turns a business's `address_country` into ISO-2 (`GB`, `United Kingdom`,
+   `uk`, `england`... all `GB`; `Germany`, `DE`, `deutschland`?? only the names `normalize.COUNTRY_TO_REGION` knows plus ISO-2 itself), or `""` when empty / not a
+   country the tool can read.
+2. Rules known: `US` (CAN-SPAM: opt-out model, as before), `GB` (PECR: corporate subscribers; a sole trader needs consent), `DE` (UWG section 7: consent
+   before any commercial e-mail). Any other country, and an unknown one, has NO rule: no send.
+3. `compliance.email_eligibility` applies it, so every caller (the sheet's `Lawful Basis` / `Next Action`, the score's contactability, the draft packet,
+   `outreach plan` enrolment, and the live re-check in `outreach send`/`dry_run`) gets it with no change of its own:
+   - unknown or rule-less country: `eligible` False, `basis` `none`, reason `country_unknown` (empty) or `country_no_rule`;
+   - `DE`: `basis` `consent_required`, `eligible` False (reason `consent_required`);
+   - `GB` with entity `unmatched` (the registry looked and found no company: a sole trader or partnership): `basis` `consent_required`, `eligible` False;
+     `GB` with `corporate_active` and an own-domain address: unchanged (`b2b_legitimate_interest`, eligible); `US`: unchanged.
+4. The country rule can only make a lead LESS sendable than before, never more.
+Test (pass line): planted leads (no country, a country with no rule, Germany by name and by code, a UK sole trader, plus the two controls UK company and US) go
+through `email_eligibility`, through `outreach send`'s `_recompute_eligibility`, and one DE lead through `dry_run` ends in `skipped_ineligible` with no file in the outbox;
+the control leads are eligible. The tests' older fixtures that had no country get one (cause: they were built before the country mattered).
+
+### Item 10 - the fake campaign, prediction (before it is run)
+
+`scripts/e2e_fake_campaign.py` against `tests/fixtures/e2e/expected.json`. Predicted differences, and no others:
+- The Leads tab and the CSV: the 8 new columns for all 10 rows. Cells: `Email Source` is the page of the crawl for Harbour Motors (the only row with an address), `-` for the rest;
+  `Email Date` a date (`<DATE>` after normalising) for Harbour Motors, `-` for the rest; `Email (Inferred)` columns `-` for all (no row has an inferred address);
+  `Phone Source` is the provider's address (a `dvsa` row: the fake list's address; a `gosom` row: the row's maps address if it has one, else the name `gosom`), `Phone Date` the date of
+  `last_seen_at` (`<DATE>`); `DM Phone Page` and `DM Phone Date` `-` for all 10 (every row says "none person-owned").
+- The Drafts tab: two new columns `To Source`, `To Date` for each drafted row.
+- C13 moves NO cell: every row is `GB` or `United Kingdom`, and every `Lawful Basis (Email)` is already `none` (the one address, Harbour Motors', has tier `unknown`).
+- C11/C8/C9 (stage A) move no cell either; the requests the fake web server sees are unchanged (no new request is made by an export).
+- The date cells are normalised by one new rule in the script's normaliser (a bare `YYYY-MM-DD` becomes `<DATE>`); the saved result is regenerated only for the cells above.
