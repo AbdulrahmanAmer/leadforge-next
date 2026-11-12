@@ -196,6 +196,26 @@ a script and `%*`) found first on `PATH` is what `resolve_command` picks; `run_a
 recorded arguments equal `tests/golden/autopilot_builtin_command.json`'s `argv[1:]`, including the empty string after `--tools`.
 Skipped elsewhere (no `.cmd` outside Windows).
 
+**Check by reading (after the code).** No product code changed for this item: the test drives the real `resolve_command` (auto-detect,
+`shutil.which` restored to the real one, `PATH` holding only the shim's folder) and the real `run_agent` (`Popen` with a list:
+Python joins it with `list2cmdline`, which writes the empty argument as `""`; cmd.exe passes `%*` as raw text; the interpreter's
+command-line parser reads `""` back as one empty argument). The shim is npm's layout with two swaps: this Python for `node.exe`,
+`record_argv.py` for `cli.js`; the last line (`endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%" ... %*`) is npm's.
+Still UNPROVEN: the real npm `claude.cmd` with `node.exe` reading the line (node's parser, not Python's). Settled by: on a machine
+where `claude` is the npm shim, one call with a `--settings` hook that writes `process.argv`, or the stand-in above with `node.exe`
+and a three-line `record_argv.js`.
+
+**Proof.** `tests/test_l9_tools_through_cmd_shim.py`: `1 passed in 0.31s` (Windows, this laptop). Seen red with the empty argument
+dropped before the start (`cmd = [a for a in cmd if a != ""]` in `run_agent`), restored after:
+```
+### the empty argument dropped on its way to the program (broken: src/leadforge/agent_runner.py)
+E       AssertionError: assert ['-p', '--mod...istence', ...] == ['-p', '--mod...istence', ...]
+E         At index 10 diff: '--disallowedTools' != ''
+E         Right contains one more item: '--restricted'
+1 failed in 0.38s
+restored all
+```
+
 ### Item 5 — `--restricted` with a subscription login, one probe
 
 **Must hold.** One `claude -p --restricted` call with `CLAUDE_CONFIG_DIR=D:\homelab-work\l9\lab-config` (an empty folder; nothing
