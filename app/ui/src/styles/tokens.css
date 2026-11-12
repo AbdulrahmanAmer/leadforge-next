@@ -1,0 +1,218 @@
+/* ==========================================================================
+   LeadForge window · tokens
+   Ported from the design farm, recipe `quiet-porcelain` (light) and its night
+   sibling `quiet-ink` (dark): palette porcelain / ink, depth glass-still,
+   shape capsule, type system. Density is the farm's `comfortable` (x1), not the
+   recipe's `roomy`: the recipe was measured on a phone and this window goes
+   down to 900 x 600. Components read only the --ds-* roles.
+   Paint only: no backdrop-filter, no images, no web font.
+   ========================================================================== */
+
+:root {
+  /* ---- Type scale (farm base) ------------------------------------------- */
+  --ds-text-2xs: 0.6875rem; /* 11 */
+  --ds-text-xs: 0.75rem;    /* 12 */
+  --ds-text-sm: 0.8125rem;  /* 13 */
+  --ds-text-md: 0.875rem;   /* 14 */
+  --ds-text-lg: 1rem;       /* 16 */
+  --ds-text-xl: 1.25rem;    /* 20 */
+  --ds-text-2xl: 1.625rem;  /* 26 */
+  --ds-text-display: 2.5rem;/* 40 */
+
+  --ds-leading-tight: 1.2;
+  --ds-leading-snug: 1.35;
+  --ds-leading-normal: 1.5;
+
+  --ds-weight-light: 300;
+  --ds-weight-regular: 400;
+  --ds-weight-medium: 500;
+  --ds-weight-semibold: 600;
+
+  /* ---- Spacing: 4px grid x density -------------------------------------- */
+  --ds-density: 1;
+  --ds-space-1: calc(4px * var(--ds-density));
+  --ds-space-2: calc(8px * var(--ds-density));
+  --ds-space-3: calc(12px * var(--ds-density));
+  --ds-space-4: calc(16px * var(--ds-density));
+  --ds-space-5: calc(20px * var(--ds-density));
+  --ds-space-6: calc(24px * var(--ds-density));
+  --ds-space-8: calc(32px * var(--ds-density));
+  --ds-space-10: calc(40px * var(--ds-density));
+  --ds-space-12: calc(48px * var(--ds-density));
+
+  --ds-control-sm: calc(28px * var(--ds-density));
+  --ds-control-md: calc(36px * var(--ds-density));
+  --ds-control-lg: calc(40px * var(--ds-density));
+  --ds-radius-pill: 999px;
+
+  /* ---- Shape · capsule: controls are capsules, containers rounded rects --- */
+  --ds-radius-xs: 8px;
+  --ds-radius-sm: 14px;
+  --ds-radius-md: 26px;
+  --ds-radius-lg: 16px;
+  --ds-radius-xl: 24px;
+  --ds-radius-2xl: 32px;
+
+  /* ---- Type · system ----------------------------------------------------- */
+  --ds-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ds-font-display: var(--ds-font-sans);
+  --ds-font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  /* ---- Motion ------------------------------------------------------------ */
+  --ds-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ds-duration-fast: 120ms;
+  --ds-duration-base: 200ms;
+
+  /* ---- Roles derived from the accent ------------------------------------ */
+  --ds-bg-accent: var(--lf-accent);
+  --ds-bg-accent-hover: var(--lf-accent-hover);
+  --ds-text-on-accent: var(--lf-on-accent);
+  --ds-text-accent: var(--lf-accent-text);
+  --ds-border-focus: var(--lf-accent-text);
+  --ds-border-dashed: color-mix(in srgb, var(--lf-accent) 40%, transparent);
+  --ds-focus-ring: 0 0 0 3px color-mix(in srgb, var(--ds-bg-accent) 35%, transparent);
+}
+
+/* ---- Palette · porcelain (light) ----------------------------------------- */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --ds-bg-canvas: #f3f1ec;
+  --ds-bg-inverse: #131922;
+  --ds-bg-accent-soft: color-mix(in srgb, var(--lf-accent) 10%, transparent);
+  --ds-bg-accent-subtle: color-mix(in srgb, var(--lf-accent) 6%, transparent);
+  --ds-bg-success: #2e9d6c;
+  --ds-bg-success-soft: rgba(23, 113, 75, 0.11);
+  --ds-bg-danger: #a52437;
+  --ds-bg-danger-soft: rgba(173, 42, 59, 0.09);
+  --ds-bg-warn-soft: rgba(190, 128, 20, 0.13);
+
+  --ds-text-primary: #131922;
+  --ds-text-secondary: #434d5a;
+  --ds-text-muted: #636c78;
+  --ds-text-inverse: #f3f1ec;
+  --ds-text-success: #12613f;
+  --ds-text-danger: #a52437;
+  --ds-text-on-danger: #ffffff;
+  --ds-text-warn: #6e4100;
+
+  --ds-border-subtle: rgba(19, 25, 34, 0.1);
+  --ds-border-default: rgba(19, 25, 34, 0.2);
+
+  --ds-status-online: #2e9d6c;
+  --ds-status-attention: #be8014;
+
+  --ds-light: rgba(255, 255, 255, 0.95);
+  --ds-shade: rgba(52, 68, 100, 0.6);
+  --ds-glass: #ffffff;
+
+  --ds-wall:
+    radial-gradient(ellipse 96% 50% at 2% 27%, rgba(30, 72, 190, 0.31) 0%, rgba(84, 124, 214, 0.17) 34%, rgba(160, 184, 230, 0) 76%),
+    linear-gradient(170deg, #f8f6f1 0%, #efede8 50%, #e1e5ec 100%);
+
+  /* the farm's own cobalt */
+  --lf-accent: #1e3f9e;
+  --lf-accent-hover: #1a3686;
+  --lf-on-accent: #ffffff;
+  --lf-accent-text: #1e3f9e;
+}
+
+/* ---- Palette · ink (dark) -------------------------------------------------- */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ds-bg-canvas: #06080c;
+  --ds-bg-inverse: #f2f1ed;
+  --ds-bg-accent-soft: color-mix(in srgb, var(--lf-accent) 14%, transparent);
+  --ds-bg-accent-subtle: color-mix(in srgb, var(--lf-accent) 8%, transparent);
+  --ds-bg-success: #6fd3a0;
+  --ds-bg-success-soft: rgba(111, 211, 160, 0.13);
+  --ds-bg-danger: #f0625b;
+  --ds-bg-danger-soft: rgba(255, 140, 132, 0.13);
+  --ds-bg-warn-soft: rgba(243, 200, 120, 0.08);
+
+  --ds-text-primary: #f2f1ed;
+  --ds-text-secondary: #c5ccd6;
+  --ds-text-muted: #8b95a3;
+  --ds-text-inverse: #06080c;
+  --ds-text-success: #8bdbb2;
+  --ds-text-danger: #ffa39c;
+  --ds-text-on-danger: #230605;
+  --ds-text-warn: #f3c878;
+
+  --ds-border-subtle: rgba(255, 255, 255, 0.09);
+  --ds-border-default: rgba(255, 255, 255, 0.18);
+
+  --ds-status-online: #6fd3a0;
+  --ds-status-attention: #f3c878;
+
+  --ds-light: rgba(255, 255, 255, 0.1);
+  --ds-shade: rgba(0, 0, 0, 0.95);
+  --ds-glass: #0d131c;
+
+  --ds-wall:
+    radial-gradient(ellipse 118% 66% at 90% 6%, rgba(98, 202, 212, 0.4) 0%, rgba(44, 132, 158, 0.3) 22%, rgba(22, 74, 102, 0.19) 46%, rgba(10, 28, 42, 0) 78%),
+    linear-gradient(168deg, #05070b 0%, #08101a 48%, #0c1b27 100%);
+
+  /* cobalt by night: derived for this window (the farm's ink palette is brass) */
+  --lf-accent: #a9c1f6;
+  --lf-accent-hover: #bccffa;
+  --lf-on-accent: #0a1430;
+  --lf-accent-text: #bccffa;
+}
+
+/* ---- The accent setting: one name, a light and a dark value ---------------
+   Farm values: cobalt (porcelain) and celadon by day, brass (ink) and ember
+   (ember-quiet) by night. The other four are derived for this window. */
+[data-theme="light"][data-accent="brass"]   { --lf-accent: #74500d; --lf-accent-hover: #5f4109; --lf-on-accent: #ffffff; --lf-accent-text: #74500d; }
+[data-theme="light"][data-accent="celadon"] { --lf-accent: #125a45; --lf-accent-hover: #0f4d3b; --lf-on-accent: #ffffff; --lf-accent-text: #125a45; }
+[data-theme="light"][data-accent="ember"]   { --lf-accent: #9a3b17; --lf-accent-hover: #833112; --lf-on-accent: #ffffff; --lf-accent-text: #9a3b17; }
+[data-theme="dark"][data-accent="brass"]    { --lf-accent: #e6c48a; --lf-accent-hover: #ecd09d; --lf-on-accent: #1b1407; --lf-accent-text: #ecd09d; }
+[data-theme="dark"][data-accent="celadon"]  { --lf-accent: #8fd6b9; --lf-accent-hover: #a8e0c9; --lf-on-accent: #06231a; --lf-accent-text: #a8e0c9; }
+[data-theme="dark"][data-accent="ember"]    { --lf-accent: #f2b190; --lf-accent-hover: #f8cbb2; --lf-on-accent: #24100a; --lf-accent-text: #f8cbb2; }
+
+/* ---- Depth · glass-still ----------------------------------------------------
+   A pane is the palette's --ds-glass at 76% inside a hairline rim and casts
+   nothing; only a raised surface gets a shadow. The selected thing is an accent
+   tint inside an accent hairline. */
+:root {
+  --ds-bg-surface: color-mix(in srgb, var(--ds-glass) 76%, transparent);
+  --ds-bg-sunken: color-mix(in srgb, var(--ds-text-primary) 5%, transparent);
+  --ds-bg-hover: color-mix(in srgb, var(--ds-text-primary) 8%, transparent);
+  --ds-chart-track: color-mix(in srgb, var(--ds-text-primary) 9%, transparent);
+
+  --still-hair: 1px;
+  --still-rim: inset 0 0 0 var(--still-hair) var(--ds-light);
+  --still-pane: var(--still-rim),
+    inset 0 1px 0 color-mix(in srgb, var(--ds-light) 50%, transparent),
+    0 0 0 var(--still-hair) color-mix(in srgb, var(--ds-shade) 22%, transparent);
+  --still-glass: var(--still-rim), var(--still-rim),
+    inset 0 1px 0 var(--ds-light),
+    inset 0 -10px 16px -14px color-mix(in srgb, var(--ds-shade) 44%, transparent);
+  --still-line: inset 0 0 0 var(--still-hair) var(--ds-border-subtle);
+  --still-mark: inset 0 0 0 var(--still-hair) color-mix(in srgb, var(--ds-bg-accent) 30%, transparent);
+
+  --ds-shadow-0: var(--still-pane);
+  --ds-shadow-1: var(--still-pane), 0 1px 2px color-mix(in srgb, var(--ds-shade) 8%, transparent);
+  --ds-shadow-2: var(--still-glass),
+    0 22px 44px -22px color-mix(in srgb, var(--ds-shade) 72%, transparent),
+    0 2px 6px color-mix(in srgb, var(--ds-shade) 28%, transparent);
+  --ds-shadow-3: var(--still-glass),
+    0 24px 60px -18px color-mix(in srgb, var(--ds-shade) 64%, transparent),
+    0 2px 8px color-mix(in srgb, var(--ds-shade) 36%, transparent);
+  --ds-shadow-inset: var(--still-line);
+  --ds-shadow-control: var(--still-line);
+  --ds-shadow-selected: var(--still-mark);
+  --ds-track-size: 4px;
+
+  --ds-rail-fill: var(--ds-glass);
+  --ds-rail-fg: var(--ds-text-secondary);
+  --ds-rail-active-bg: var(--ds-bg-accent-subtle);
+  --ds-rail-active-fg: var(--ds-text-accent);
+  --ds-rail-active-shadow: var(--still-mark);
+  --ds-rail-filter: drop-shadow(0 16px 28px color-mix(in srgb, var(--ds-shade) 50%, transparent));
+}
+@media (min-resolution: 2dppx) {
+  :root { --still-hair: 0.5px; }
+}

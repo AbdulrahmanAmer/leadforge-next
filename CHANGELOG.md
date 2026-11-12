@@ -18,6 +18,34 @@ plan holds register queries alone when no text-search provider is configured. `l
 helper binary, the social provider and its `[social]` extra and `social:` settings are gone, and unknown keys under `discovery:`
 are kept (an add-on reads its own settings from them).
 
+- The window's shell (`app/src-tauri`, Tauri 2, slice L10): its Rust core starts the bundled engine, and only it; the window has one
+  command, `engine_version`, and no permission to start a program, open a file or reach the network (a Rust test reads the permission
+  files and fails on anything outside its list). The engine ships as python.org's embeddable Python with its packages beside it
+  (measured against one PyInstaller file: `docs/slices/L10-shell.md`). Placeholder page only; the screens come with `app/ui`.
+- The screens of the window (`app/ui`, React and TypeScript): new campaign, run with live progress, results, people (forget and
+  suppress), data and retention, keys, settings and about. They talk to the engine only through `app/ui/src/engine.ts`; until the
+  shell exists they run on made-up data. No send or outreach action. The tool's behaviour is unchanged.
+- `docs/window-actions.md`: every action of the window, the engine command behind it, and what the engine does not have yet.
+- One window (slice L11, first half): the screens are the shell's page, and the core answers their 21 commands by starting the
+  engine as `window <name>` with the arguments as one JSON document on stdin and the engine's JSON passed back untouched; a run's
+  progress streams line by line. Until the engine has those commands, a clearly named stand-in answers with made-up data (one-line
+  switch in `docs/slices/L11-window.md`). A second copy of the app brings the first to the front instead of starting. The screens'
+  build tool is pinned to `vite` 8.3.6 (no package younger than 7 days).
+- The window's seam with the engine, ten decisions of 2026-11-12 (window side; `docs/slices/L11-window.md`): the new-campaign form asks
+  what you offer and, for Companies House, the SIC codes, and offers only the registers the workspace is configured for; four run
+  fields, three campaign fields and three person fields may be null and say "not recorded"; the window keeps its theme and accent
+  itself and its version comes from the crate's `Cargo.toml`; the engine's `settings_get` and `about` no longer carry them; the People
+  screen lists named people only. The mock and the stand-in answer in exactly the new shapes. The tool's behaviour is unchanged.
+- The window's run, start to end (slice L11): a start the engine refuses now shows as refused instead of a run that never moves;
+  when a run's engine ends without saying how the run ended, the window says so and asks the engine once; after Stop the window
+  shows "Stopping the run" and gives the engine up to 90 s to finish the business it is on (it was 10 s), so a stopped run can be
+  continued; the purge report gets the 10-minute limit of the other data commands. The contract is in `docs/window-actions.md`.
+- The window runs the real engine (slice L11): the stand-in is gone from the app and the installer (it stays a test resource), and
+  every screen talks to `leadforge window <name>`. A register campaign's plan says "up to <the cap> businesses" instead of an estimate
+  the engine cannot make; a key saved while the workspace is set not to read the keyring says so, and saving one is refused on the
+  field; the About page says when the licence notices were not found. The window's self-test now walks a whole invented campaign
+  on the real engine against loopback fakes and compares it with the same campaign through the command line.
+
 Clean-up of the plan's debts (docs/slices/debts.md). `leadforge --version` prints the package version. Dropped the never-imported `tenacity` and `rich`
 declarations (the hashed locks are regenerated; `uv.lock` names the real project version), the `codeindex` extra, `scripts/code_index*`,
 `scripts/v03_gate.py` (the one gate is `node check.mjs`) and the code-index git hook. The DVSA test fixture holds invented rows. Paid-adapter
@@ -54,6 +82,14 @@ Two last rulings on the window commands. `campaign_create` answers null for `est
 keeps its numbers. Each key status gains `inUse`: the key is saved and this workspace reads the keyring (`registry.keyring`);
 `saved` still says what the keyring holds. `key_save` is refused (`input`, naming `registry.keyring`) while the workspace does not
 read the keyring; `key_remove` works either way.
+
+The window, last batch before its review (slice L11, no engine change). Forget shows what it will delete first: the People screen
+asks the engine for a dry run (`person_forget` with `dry_run: true`, for the "someone asked to be removed" box and a row's Forget
+alike), the confirmation shows the engine's own numbers (rows, files removed, files edited) and its warnings, only the confirm
+control makes the real call, and a dry run that finds nothing says nothing is held and offers no delete. The window no longer reads
+an older engine's answers (a register plan of 0, 0, 0; a key status without `inUse`). Three wordings now say what the code does:
+the Data screen counts retention from the start of the run that first found a business, `docs/window-actions.md` no longer says
+keys sit in `leadforge.yaml`, and `config/leadforge.example.yaml` shows the default `crawl.timeout_s` (10.0).
 
 The existing command line, its digest lines and the plugin are unchanged. No version change yet.
 

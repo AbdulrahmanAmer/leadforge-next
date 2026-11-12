@@ -1,0 +1,29 @@
+[package]
+name = "leadforge-window"
+# Same number as pyproject.toml (tests/version_agrees.rs fails when they drift).
+version = "0.9.0"
+description = "LeadForge window: the Rust core starts the bundled Python engine; the window can start nothing."
+license = "MIT"
+edition = "2021"
+publish = false
+
+[lib]
+name = "leadforge_window"
+crate-type = ["rlib"]
+
+# Exact versions; Cargo.lock is committed and every build runs with --locked.
+# No tauri-plugin-* at all: no shell, no opener, no fs, no http (permission-check/tests/permissions.rs holds the list).
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.5", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.dev]
+debug = 0          # the 8 GB laptop's disk: no debug info in dev builds
+incremental = false
+
+[profile.release]
+strip = "symbols"

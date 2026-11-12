@@ -1,0 +1,12 @@
+[package]
+name = "leadforge-window-permission-check"
+version = "0.0.0"
+description = "Reads the window's permission files and fails on a program-start permission or anything off the list."
+license = "MIT"
+edition = "2021"
+publish = false
+
+# Its own small crate on purpose: it must run, and fail, even when the app itself would not build (tauri-build refuses
+# an unknown permission before any test of the app runs), and CI can run it in seconds without building Tauri.
+[dependencies]
+serde_json = "1"

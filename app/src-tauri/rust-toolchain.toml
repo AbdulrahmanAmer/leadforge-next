@@ -1,0 +1,6 @@
+# The Rust toolchain the window's core is built and tested with (CI job "window · windows-latest" installs it with the
+# runner's own rustup; the laptop built with the same rustc 1.99.1 (58cf8f9c3 2026-10-13)).
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

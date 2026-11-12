@@ -1,0 +1,28 @@
+{
+  "name": "leadforge-ui",
+  "private": true,
+  "version": "0.0.0",
+  "description": "The screens of the LeadForge window. Talks to the engine only through src/engine.ts.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "vite build",
+    "test": "node --test tests/engine.mock.test.mjs tests/window-shape.test.mjs tests/seam-decisions.test.mjs tests/seam-shape.test.mjs tests/prefs.test.mjs tests/window-version.test.mjs tests/run-view.test.mjs tests/forget-flow.test.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.12.4",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.6"
+  }
+}

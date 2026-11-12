@@ -119,8 +119,8 @@ def _addressed_to_suppressed(conn: sqlite3.Connection, target_id: int) -> bool:
 
 
 def _display_phone(e164: str | None) -> str:
-    """"+44 1483 456363", not "+441483456363": Excel coerces a leading-+ digit run to a number
-    (4.41483E+11); the spaced international format survives as text in both XLSX and CSV."""
+    """"+44 117 496 0101", not "+441174960101": Excel coerces a leading-+ digit run to a number
+    (4.41175E+11); the spaced international format survives as text in both XLSX and CSV."""
     if not e164:
         return ""
     try:

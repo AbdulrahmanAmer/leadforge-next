@@ -14,7 +14,7 @@ discovery:
 crawl:
   pages_per_site: 6
   headed_browser: false           # true = browser escalation opens a VISIBLE browser window (debug; renders sites that refuse plain HTTP). No stealth flags ever (icm/SCOPE.md)
-  timeout_s: 15
+  timeout_s: 10.0                 # home page fetch only (the default in config.py)
   max_text_bytes: 400000
   decode_protected_emails: false  # true = decode Cloudflare "[email protected]" spans; off by default (an anti-harvesting measure)
 
