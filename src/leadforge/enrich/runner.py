@@ -38,7 +38,7 @@ from leadforge.enrich.extract import (
 from leadforge.enrich.validate import validate_email, validate_emails_parallel
 from leadforge.models import Contact, EnrichmentObservation, Evidence, Person
 from leadforge.normalize import COUNTRY_TO_REGION, to_e164
-from leadforge.util import LOG, HostThrottle, emit_progress, now_iso
+from leadforge.util import LOG, HostThrottle, emit_progress, now_iso, progress_in_pool
 
 
 def _record_observation(conn: sqlite3.Connection, observation: EnrichmentObservation, *, fresh_days: int) -> None:
@@ -406,7 +406,7 @@ def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: d
                 for fut in as_completed(futures):
                     done_n += 1
                     b = futures[fut]
-                    emit_progress("enrich", done_n, len(futures), b["name"] or "")
+                    progress_in_pool(pool, "enrich", done_n, len(futures), b["name"] or "")
                     try:
                         res = fut.result()
                     except Exception as e:  # noqa: BLE001 — one bad site never kills the batch
@@ -579,7 +579,7 @@ def _crawl_stage(conn: sqlite3.Connection, cfg: Config, limit: int, counts: dict
         done_n = 0
         for fut in as_completed(futures):
             done_n += 1
-            emit_progress("enrich", done_n, len(futures), futures[fut]["name"] or "")
+            progress_in_pool(pool, "enrich", done_n, len(futures), futures[fut]["name"] or "")
             b = futures[fut]
             try:
                 res = fut.result()

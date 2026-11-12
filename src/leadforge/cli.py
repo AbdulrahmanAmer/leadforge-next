@@ -138,6 +138,14 @@ def plan(ctx: typer.Context, icp: str = typer.Option("icp.yaml", "--icp")):
               f"est_max_results={counts['est_max_results']} est_runtime~{hours:.1f}h "
               f"est_enrich_sites={counts['est_enrich_sites']} est_enrich~{counts['est_enrich_min'] / 60:.1f}h "
               f"est_total~{total_hours:.1f}h")
+    emit_digest(True, "plan", counts=counts, warnings=_plan_warnings(counts, icp_obj, cfg),
+                next_="leadforge run --icp " + icp + " --detach --json")
+
+
+def _plan_warnings(counts: dict, icp_obj, cfg: Config) -> list[str]:
+    """The plan's warnings, shared by `plan` and `window campaign_create`."""
+    hours = counts["est_runtime_min"] / 60
+    total_hours = counts["est_total_min"] / 60
     # a tiled plan can be 60x a text plan; say so in hours before it runs, not after
     warns = []
     if counts["est_total_min"] > 240:
@@ -154,7 +162,7 @@ def plan(ctx: typer.Context, icp: str = typer.Option("icp.yaml", "--icp")):
         warns.append(f"saturated tiles subdivide automatically (discovery.subdivide_at); worst case "
                      f"~{counts['est_runtime_min_max_subdivided'] / 60:.0f}h if every tile splits "
                      f"{cfg.discovery.max_subdivisions}x")
-    emit_digest(True, "plan", counts=counts, warnings=warns, next_="leadforge run --icp " + icp + " --detach --json")
+    return warns
 
 
 # ----------------------------------------------------------------------------- discover
@@ -1069,6 +1077,9 @@ def main() -> None:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
+    if sys.argv[1:2] == ["window"]:   # the window's own command group (slice L11a): JSON in on stdin, JSON out, no digest line
+        from leadforge.window import main as window_main
+        raise SystemExit(window_main(sys.argv[2:]))
     sys.argv[1:] = _hoist_root_flags(sys.argv[1:])
     try:
         app()

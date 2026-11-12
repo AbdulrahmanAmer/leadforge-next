@@ -199,9 +199,14 @@ def _rewrite_in_place(path: Path, data: bytes) -> None:
         fh.truncate()
 
 
+def _edits_lines(p: Path) -> bool:
+    """A line file (log, progress feed, hand-off) loses only its lines that hold the value; anything else is deleted whole."""
+    return bool(LINE_FILES.search(p.name)) and not zipfile.is_zipfile(p)
+
+
 def _scrub_file(p: Path, needle: Needle, raw: bytes) -> str:
     """Take the value out of one file that holds it. Returns "edited" or "removed"; raises OSError if it cannot be done."""
-    if LINE_FILES.search(p.name) and not zipfile.is_zipfile(p):
+    if _edits_lines(p):
         keep = b"".join(ln for ln in raw.splitlines(keepends=True) if not needle.bpattern.search(ln))
         action = "edited"
     else:   # a sheet, a page: deleted whole; emptied in place if it cannot be deleted
@@ -259,6 +264,39 @@ def forget(cfg: Config, value: str) -> dict:
         finally:
             conn.close()
     edited, removed, failed = forget_in_files(cfg, needle)
+    return {"kind": needle.kind, "rows": counts, "files_edited": edited, "files_removed": removed, "files_failed": failed}
+
+
+def forget_report(cfg: Config, value: str) -> dict:
+    """What `forget` would delete, deleting nothing (the window's `person_forget` with `dry_run`): the same database pass run on
+    an in-memory copy, the same test on every file. The database is read through `db.readonly_view`, so not one byte of the
+    workspace changes. A file that `forget` could not delete is counted as removed here; `forget` itself says so if it happens."""
+    needle = make_needle(value)
+    path = _db_path(cfg)
+    counts: dict[str, int] = {}
+    if path.exists():
+        db.check_schema_before_write(path)
+        with db.readonly_view(path) as src:
+            mem = sqlite3.connect(":memory:")
+            mem.row_factory = sqlite3.Row
+            try:
+                src.backup(mem)
+                counts = forget_in_database(mem, needle)
+            finally:
+                mem.close()
+    edited: list[str] = []
+    removed: list[str] = []
+    failed: list[str] = []
+    ws = Path(cfg.workspace)
+    for p in candidate_files(cfg):
+        rel = str(p.relative_to(ws))
+        try:
+            raw = p.read_bytes()
+        except OSError:
+            failed.append(rel)
+            continue
+        if _holds(p, needle, raw):
+            (edited if _edits_lines(p) else removed).append(rel)
     return {"kind": needle.kind, "rows": counts, "files_edited": edited, "files_removed": removed, "files_failed": failed}
 
 

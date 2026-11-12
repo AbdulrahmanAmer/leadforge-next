@@ -357,11 +357,50 @@ def _fmt_secs(sec: float) -> str:
     return f"{sec}s"
 
 
+class RunStopped(Exception):  # noqa: N818 — not an error: the window asked the run to stop
+    """A run started by `leadforge window run_start` was asked to stop (`window run_stop`). It keeps its place: the stage is not
+    advanced, and `run --resume` continues. Not a LeadForgeError, so no stage's error handling turns it into a warning."""
+
+
+_STOP_FILE: str | None = None
+_PROGRESS_LISTENER = None
+
+
+def set_stop_file(path) -> None:
+    """The flag file `window run_stop` writes. Only the window sets this; the command line never stops on it."""
+    global _STOP_FILE
+    _STOP_FILE = None if path is None else str(path)
+
+
+def set_progress_listener(fn) -> None:
+    """`fn(payload)` receives every progress event instead of stdout (the window's run stream owns stdout)."""
+    global _PROGRESS_LISTENER
+    _PROGRESS_LISTENER = fn
+
+
+def check_stop() -> None:
+    """Raise RunStopped when the window asked this run to stop. Called between businesses (every progress event) and between stages."""
+    import os as _os
+    if _STOP_FILE and _os.path.exists(_STOP_FILE):
+        raise RunStopped("the run was asked to stop")
+
+
+def progress_in_pool(pool, stage: str, done: int, total: int | None, msg: str = "") -> None:
+    """emit_progress inside a thread pool's loop: on a stop request the work not yet started is cancelled first, so a stopped
+    run does not go on crawling (leaving the `with` block waits only for what is already running)."""
+    try:
+        emit_progress(stage, done, total, msg)
+    except RunStopped:
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+
+
 def emit_progress(stage: str, done: int, total: int | None, msg: str = "") -> None:
     import json as _json
     import sys as _sys
     import time as _time
 
+    check_stop()
     try:
         human = _sys.stderr.isatty()
     except Exception:  # noqa: BLE001
@@ -376,6 +415,9 @@ def emit_progress(stage: str, done: int, total: int | None, msg: str = "") -> No
         except OSError:
             pass
 
+    if _PROGRESS_LISTENER is not None:
+        _PROGRESS_LISTENER(payload)
+        return
     if not human:
         print("LF_PROGRESS " + _json.dumps(payload, ensure_ascii=False), flush=True)
         return
