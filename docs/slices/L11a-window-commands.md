@@ -657,3 +657,23 @@ Cause (from the log, `subprocess.py:2067`): the tests closed the run process's s
 called `communicate()`; on Linux, Python 3.11 and 3.12 flush stdin there and a closed file raises (Windows and 3.13+ do not,
 so it was green on this laptop). The test side was wrong, not the engine: the closed handle is now dropped from the `Popen`
 (`p.stdin = None`). No assertion changed.
+
+Run 43192533842 on `1acb53f` (after the fix and the rebase on `1d741bc`), read with `gh run view`: 13 jobs, 13 success.
+
+```
+windows-latest · py3.14  success
+ubuntu-latest · py3.11  success
+ubuntu-latest · py3.12  success
+Version strings agree  success
+claude plugin validate  success
+windows-latest · py3.11  success
+ubuntu-latest · py3.14  success
+fake campaign · windows-latest  success
+windows-latest · py3.12  success
+Validate plugin manifests  success
+ubuntu-latest · py3.13  success
+fake campaign · ubuntu-latest  success
+windows-latest · py3.13  success
+```
+
+The commit that adds these lines has its own run; its result is in the pull request comment and the run report.
