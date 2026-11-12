@@ -300,6 +300,42 @@ the line removed (`git diff --stat` of the file empty after):
 FAIL - fake-key scan: a planted key is in 1 place(s): ['ws\\leadforge_data\\logs\\leadforge.log: Companies House key']
 ```
 
+## Gate (run once, below-normal priority, 2026-11-12 09:17-09:21)
+
+`node check.mjs` with this run's venv first on `PATH` (Python 3.12, `requirements.lock` with hashes, the package `-e` without deps,
+pytest 9.2.0 and ruff 0.15.13 pinned on top) at 740433a; the tree was dirty by this slice file only (edited while the gate ran):
+```
+ok  versions agree  0.2
+ok  skill frontmatter  0.2
+ok: 2 skills open every file they name when installed alone; shared reference copies are identical
+ok  skill references  0.3
+ok  lint  0.2
+862 passed, 6 skipped in 259.82s (0:04:19)
+ok  tests  261.3
+ok  cli digest  1.6
+CHECK PASS sha=740433a tree=dirty steps=6 skipped=0 secs=264
+```
+`gitleaks` on every commit of the branch (`gitleaks detect --log-opts="origin/master..HEAD"`): no leaks (after the rewrite noted in
+item 2). `python .github/scripts/check_versions.py`: all six copies `0.7.3` (unchanged, as the correction asks).
+
 ## Plan and code disagree
 
-(none yet)
+None. `registry.py:207` held the token in `params` as the plan says. Two notes that are not disagreements: the plan's pass line "the
+fake endpoint asserts no token in the URL" was written for the header case; with no documented header it holds for the default
+(provider off), and when an operator switches the provider on the token is in the address by the API's own rule (tested: not in any
+log or error). The L2 code comment on `NO_TOOLS_ARGS` says `--restricted` works with a subscription login (real profile, 2026-11-11);
+this slice's lab probe could not log in, so it neither confirms nor contradicts it.
+
+## Not done
+- The plugin launcher's locked install (`requirements.lock`) does not carry the `keyring` extra: plugin users have the environment only.
+  Adding it means regenerating the hashed lock (`scripts/make_plugin_lock.py` from `uv.lock`), which needs a network resolve; not done.
+- `uv.lock` not regenerated for the new extra (nothing checks it).
+- No version (the 08:55 correction): CHANGELOG under `## [Unreleased]`.
+
+## UNPROVEN
+- `--restricted` with a subscription login from a lab folder (item 5): needs one login inside the lab folder, by the owner.
+- The empty `--tools` argument through the REAL npm `claude.cmd` with `node.exe` (item 4 used the same shim with Python reading
+  the line).
+- The real `keyring` package against a real OS backend: never imported in this run by design (the brief: the real keyring is never
+  read or written). Settled by: on a throwaway user account, `pip install -e .[keyring]`, `keyring set leadforge
+  registry.companies_house_key`, `leadforge config get registry.companies_house_key` prints `(from the OS keyring)`.
