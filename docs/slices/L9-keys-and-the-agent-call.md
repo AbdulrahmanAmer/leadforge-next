@@ -517,3 +517,83 @@ not here (a commit cannot hold its own CI result).
 
 Not done here: no merge into `master` (the brief: an independent reader re-judges and merges). The Review part's verdict
 (PASS 3b8acd6) was given before this merge; it needs refreshing on the new head.
+
+## Review 2 (on master 0.9.0)
+
+Run `l9-reread`, 2026-11-12 11:58-, STRIKERFORCE, an independent reader who saw neither the build nor the merge being written. Read
+on 00bd92b (merge 8362c87 = 00cd52d + master 1d741bc, then the slice-file commit). `origin/master` is still 1d741bc, an ancestor of
+the branch.
+
+**The merge, read three ways.** `git merge-tree --write-tree 00cd52d 1d741bc` conflicts in exactly the five files the part above
+lists (CHANGELOG.md, pyproject.toml, scripts/e2e_fake_campaign.py, skills/generate-leads/references/cli.md,
+tests/test_config_secrets.py); `git diff <that tree> 8362c87` touches only those five, so every other file is git's own merge,
+nothing hand-written. Each of the five read against both parents (`git show --cc 8362c87`): master's names kept
+(`LF_FAKE_LISTINGS`, `listings.json`, `discovery.upstreams`, `upstream.example`), master's removals stay removed (`social`,
+`codeindex` extras), L9's lines kept (the `keyring` extra, both planted environment keys, the planted-file check, its CHANGELOG
+paragraph). Auto-merged files where both sides moved (cli.py `_root` and `_redacted`, config.py imports, intake.py, the example
+yaml) read too: both sides' lines present.
+
+**Names master removed** (`git grep -i -F` over src, scripts, tests, skills, config, pyproject, manifests, .github): `LF_FAKE_MAPS`,
+`maps_listings`, `discovery.proxies`, `proxy.example`, `gosom`, `codeindex`, `tenacity`: 0 files. `social`: hits only in code
+master already has (social links, scoring signals). Added lines of `git diff origin/master HEAD` (outside docs and CHANGELOG)
+searched for `maps|gosom|social|codeindex|tenacity|proxies|proxy.example`: 0.
+
+**L9's five behaviours on the merged code** (read first; the gate and the fake campaign below settle what reading could not):
+1. Token in no address, log or error: OpenCorporates is off unless `registry.opencorporates_enabled`; switched on, httpx's
+   request line has `api_token=` cut (`_CutApiToken`), a failed lookup logs the exception's type name only, the evidence address is
+   the response's `opencorporates_url`. Companies House sends its key as basic auth, never in the address. Holds.
+2. No key from `leadforge.yaml`: the only readers of that file in `src` are `load_config` (refuses `registry.<key>` by name before
+   merging) and `config set` (writes to a temporary copy, loads it, writes nothing on `KeyInConfigFile`). Master's delete and collect
+   sides (retention.py, browser_profile.py, send_rules.py, the new export code) take `cfg` from `load_config`; none parses the yaml.
+   Holds.
+3. `AgentFailed`: every raise shows `_shown_command` (program plus a count) and passes stderr / OS error through
+   `_without_arguments`, which also cuts each word of an argument with spaces; `from None` on the two re-raises. Holds.
+4. Empty `--tools`: `tests/golden/autopilot_builtin_command.json` still has `"--tools", ""`; the shim test compares the recorded argv
+   to it. Holds (Windows only; it ran in the gate here).
+5. Fake-key scan: walks every leaf command (39 on the merged CLI, `forget`, `purge`, `suppress`, `export` among them; `dashboard`
+   and `watch` named as not run) twice, then again with a key in the file; the fake campaign scans the exports with master's new
+   source and date columns filled. Holds. Limit, not a defect: in the unit scan `forget` and `suppress` run without an argument
+   (usage message), so their work path is scanned only through the code they share with the rest.
+
+**Locks.** `git diff --stat origin/master HEAD` lists neither `uv.lock` nor `requirements.lock`: master's, byte for byte. pyproject
+moves by one line (the `keyring` extra). No other version moved: `python .github/scripts/check_versions.py`:
+```
+{'pyproject': '0.9.0', '__init__': '0.9.0', 'claude-plugin': '0.9.0', 'codex-plugin': '0.9.0', 'skill generate-leads': '0.9.0', 'skill send-outreach': '0.9.0'}
+```
+
+**Keys in tests.** Every planted key is built at run time from pieces (`"-".join(["FAKE", ...])`); the Companies House key of the
+fake campaign is master's fixture value `fixture-key`. The real keyring is replaced for every test (`tests/conftest.py`
+`_never_the_real_keyring`, autouse). `gitleaks detect --log-opts="origin/master..HEAD"` (8.30.1):
+```
+12:06PM INF 11 commits scanned.
+12:06PM INF scanned ~77156 bytes (77.16 KB) in 378ms
+12:06PM INF no leaks found
+```
+(12 commits in the range; gitleaks' `git log -p` shows no diff for the merge commit, whose lines come from the 11.)
+`ruff check` on the eleven touched Python files: `All checks passed!`
+
+**Gate**, once, this run's venv (`requirements.lock` with hashes, `-e .` without deps, pytest 9.2.0, pytest-timeout 2.4.0, ruff
+0.15.13), below-normal priority, 12:01-12:06:
+```
+967 passed, 3 skipped in 270.63s (0:04:30)
+ok  tests  272.7
+leadforge --json version: 1 LF_DIGEST line(s)
+leadforge --json status: 1 LF_DIGEST line(s)
+ok  cli digest  1.5
+CHECK PASS sha=00bd92b tree=clean steps=6 skipped=0 secs=277
+```
+**Fake campaign** (`scripts/e2e_fake_campaign.py --out D:\homelab-work\l9-reread\e2e`), tail:
+```
+fake-key scan: clean (25 files: step outputs, guard and request logs, workspace logs, database, exports)
+PASS - result equals tests/fixtures/e2e/expected.json (3 refused-call entries, as saved)
+```
+`tests/fixtures/e2e/expected.json` is master's (not in the branch's diff).
+
+**Hosted CI on 00bd92b** (`gh pr checks 11`, run 43195131934, `pull_request`, headSha 00bd92b76a2f…): 13 of 13 pass: Validate
+plugin manifests, Version strings agree, claude plugin validate, fake campaign · ubuntu-latest, fake campaign · windows-latest,
+ubuntu-latest · py3.11, py3.12, py3.13, py3.14, windows-latest · py3.11, py3.12, py3.13, py3.14. 0 failed, 0 pending.
+
+Fixed by the reader: nothing. The commit that adds this part changes this file only; its own CI is read before the merge and stated
+in the run's report and on the pull request.
+
+Verdict: PASS 00bd92b
