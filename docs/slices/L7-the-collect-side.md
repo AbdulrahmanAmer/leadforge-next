@@ -399,3 +399,10 @@ The one failure of that full run: `tests/test_agent_runner.py::test_run_agent_on
 tests/test_agent_runner.py` is empty). Read side by side first: the test gives a fake agent `timeout_s=1`, the agent spawns a grandchild that writes a marker after 3 s, and `taskkill /T` must kill the tree. With
 four cores shared by other builders, Python's start-up of the agent and the grandchild can straddle the 1 s timeout and the tree snapshot of `taskkill /T`, so the grandchild is not yet a child when the kill runs and survives. That is
 a timing race of the test's own design under load, not a change of mine. Re-run alone at normal priority: `31 passed in 11.01s`. Counted as a timing flake, said plainly; not "fixed".
+
+### Hosted CI, read from GitHub (`gh run view 43186348822`), commit ecd2c2a (the last code commit; status completed, conclusion success, 13 jobs, 0 not success)
+
+fake campaign · ubuntu-latest success · fake campaign · windows-latest success · Version strings agree success · claude plugin validate success ·
+windows-latest py3.11 / py3.12 / py3.13 / py3.14 success (4) · ubuntu-latest py3.11 / py3.12 / py3.13 / py3.14 success (4) · Validate plugin manifests success.
+The separate "Mutation trial (Linux)" workflow (a push trigger, not one of the 13) was still running when this was written; its verdict is not read here.
+The commit that adds this section is docs only; its own run is named in the report.
