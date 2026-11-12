@@ -84,7 +84,7 @@ def test_next_action_is_phone_first(tmp_path, monkeypatch):
     _score(conn, rid, "switch")
 
     db.upsert_business(conn, Business(id="mail", name="Mail Garage", source="gosom", dedupe_key="dk-mail",
-                                      domain="mailgarage.example"))
+                                      domain="mailgarage.example", address_country="GB"))
     db.add_contact(conn, Contact(business_id="mail", kind="email", value="info@mailgarage.example",
                                  tier="valid", affinity="own_domain"))
     _score(conn, rid, "mail")
@@ -244,7 +244,7 @@ def test_summary_sheet_funnel_and_next_action_breakdown(tmp_path, monkeypatch):
     _score(conn, rid, "named")
     # 2) email-eligible, own-domain, no phone -> Next Action "EMAIL - eligible"
     db.upsert_business(conn, Business(id="mail", name="Mail Garage", source="gosom", dedupe_key="dk-mail",
-                                      website="https://mailgarage.example", domain="mailgarage.example"))
+                                      website="https://mailgarage.example", domain="mailgarage.example", address_country="GB"))
     db.add_contact(conn, Contact(business_id="mail", kind="email", value="info@mailgarage.example",
                                  tier="valid", affinity="own_domain"))
     _score(conn, rid, "mail")

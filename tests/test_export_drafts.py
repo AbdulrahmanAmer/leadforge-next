@@ -180,7 +180,7 @@ def test_xlsx_has_drafts_sheet_with_one_row_and_wrapped_body(tmp_path, monkeypat
     ws = wb["Drafts"]
     header = [c.value for c in ws[1]]
     assert header == ["Business", "DM Name", "To", "Subject", "Body", "Grade", "Used Fact", "Author",
-                      "State", "Created"]
+                      "State", "Created", "To Source", "To Date"]
     data_row = [c.value for c in ws[2]]
     assert data_row[0] == "Sheet Garage"
     assert data_row[1] == "Jo Owner"

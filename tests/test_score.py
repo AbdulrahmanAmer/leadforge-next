@@ -9,7 +9,7 @@ def _seed_business(conn, **kw):
     base = dict(id="biz_x", name="Indie Auto", name_norm="indie auto", dedupe_key="pid:X", place_id="X",
                 category="auto repair shop", categories=["auto repair shop"], source="gosom",
                 phone_e164="+17135550100", website=None, rating=3.5, review_count=80,
-                address_city="Houston", first_run_id="run_1")
+                address_city="Houston", address_country="US", first_run_id="run_1")
     base.update(kw)
     b = Business(**base)
     db.upsert_business(conn, b)
