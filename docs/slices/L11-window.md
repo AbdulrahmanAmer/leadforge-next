@@ -149,16 +149,20 @@ First build (0.7.3): `exit 0; duration 169 s; peak working set of the build's pr
 run by `beforeBuildCommand`: `dist/assets/index-Dtgfbd67.js 291.63 kB`). After the merge of `master` 0.8.0 and the engine rebuilt
 by `packaging/build-engine-embed.ps1` (`leadforge 0.8.0`), and a fix to the log (two threads could interleave inside one line:
 `... dropped=01794471459 leadforge-core: cmd=run_stop ...`; now one write per line), the last build:
+`master` moved once more (L8, Maps and social out, fd2886e; changelog conflict only) and was merged; the engine was rebuilt again
+from the merged source, and the gates rerun (all exit 0). The last build, the installer to install:
 ```
-exit 0; duration 151 s; peak working set of the build's process tree 814 MB; free RAM before 1930 MB
-        D:\LeadForge\wt\target\release\bundle\nsis\LeadForge_0.8.0_x64-setup.exe (34.78 MiB)
+exit 0; duration 202 s; peak working set of the build's process tree 805 MB; free RAM before 1307 MB
+        D:\LeadForge\wt\target\release\bundle\nsis\LeadForge_0.8.0_x64-setup.exe (34.77 MiB)
 ```
-sha256 `0d9863773390ecfe3d282dac540fe49b3a99982917b6361cf4960777d010807b`. (The release dependencies were already built in the
+sha256 `63b23e3b96b85ffb9e5be8fb13e8752d5d48cd0967c321c6e2fd12fee3ab491b`. Its release app, on a fresh workspace:
+`cmd=campaign_create origin=bundled ... error kind=input`, `cmd=run_stop origin=bundled ... ok`,
+`cmd=run_start origin=bundled in=58B ms=4699 ok out=22B lines=22 dropped=0`, `cmd=key_save origin=bundled in=66B ms=89 ok out=82B`,
+probe clean, `key marker in this run's log: False`, `SELFTEST PASS`. (The release dependencies were already built in the
 shared target folder by L10; the cold build there took 404 s and 2,399 MB.) The release app from `target\release` (resources
 beside it) passed the same self-test on the bundled engine 0.8.0 and the bundled stand-in: every command `origin=bundled`, the
 log lines whole, 10 of 10 pictures in `window-shots\release\`, `selftest: probe "{\"violations\":[],\"errors\":[]}"`,
-`key marker in this run's log: False`, `SELFTEST PASS`. (Its Keys step saved nothing: the workspace kept an earlier run's state,
-both keys already saved; the debug run above saved one.)
+`key marker in this run's log: False`, `SELFTEST PASS`.
 
 **The install: for the coordinator to run** (this session is elevated; the script refuses an elevated shell, seen:
 `REFUSED: this PowerShell is elevated; open an ordinary one`). From an ordinary PowerShell:
