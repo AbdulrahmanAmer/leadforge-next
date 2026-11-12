@@ -642,7 +642,10 @@ Fixed here, each with a test seen red first:
   for `.cmd`, `.exe`, `.html`, `.lnk`, `.xlsx.bat`). It now opens `.xlsx`, `.csv` and `report.json` only.
 - `agent_runner.resolve_command` took `.\claude.CMD` from the current folder (Windows' `which` searches it first), and with no `PATH` (the core
   passes none) Python searched `.;C:\bin`. Probe with the bundled `python.exe` and the core's exact variable list: `which claude: .\claude.CMD`.
-  Now no `PATH` means no search, and a hit in the current folder is refused.
+  Now no `PATH` means no search, and a hit in the current folder is refused. (A first version also refused a bare name; four tests stub `which`
+  with one, so it was narrowed to the current folder only: the first `check.mjs --ci` after it read `4 failed, 1048 passed`.)
+- A business forgotten by name came back on the next run: discovery checked the suppression list for the domain and the place id only
+  (`pipeline.py`), and a register row has no website. Red first: `Extra items in the left set: 'Quillfeather Garage'`.
 - The Keys screen's title line said "Kept in the Windows keyring" while the bundled engine answers `environment` (no keyring package).
 
 Probes, loopback only, not fixed (engine changes larger than a review fix; proposals in `docs/limits.md`):
