@@ -214,3 +214,21 @@ than 7 days (supply-chain rule 1).
 - `cargo fmt --check`: exit 0. `cargo test --locked` (app): 7 + 1 + 1 passed, exit 0; (permission-check): 3 passed, exit 0.
 - Free disk on D: at the start 8.2 GB; other sessions freed space during the run; at the end 45 GB (`df`: 129G size, 85G used).
 - Every build ran through the `heavy` lock, one at a time; it was held by other sessions' jobs for about 10 minutes in total.
+
+## Item 5 settled: the install, run with the owner's normal token (2026-11-12, 09:37 to 09:38)
+
+Run by the orchestrator through `packaging\install-proof.ps1`, started with the normal (not elevated) token. The script refuses an elevated shell, so its output is from a normal one. Result: PASS.
+
+```
+install exit code: 0; app present: True; engine present: True
+installed: 8313 files, 174.8 MB
+window 'LeadForge' 968x667, screenshot True
+app exit code: 0
+leadforge-core: engine_version ok: version=0.7.3 origin=bundled millis=667
+installed app smoke exit: 0
+after uninstall: processes from D:\Temp\lf-install: 0; files or folders left there: 0
+uninstall registry key left: False
+PASS
+```
+
+Checked separately afterwards: no `leadforge-window` process, no Start menu entry, no uninstall key under the current user, no Defender detection that day. No administrator prompt was shown: a silent install that needed one would not have returned 0 under a normal token. Not shown by this run: an install started by double-click (the interactive pages), and an install into the default per-user folder.
