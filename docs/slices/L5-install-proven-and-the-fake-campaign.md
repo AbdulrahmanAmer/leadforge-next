@@ -231,3 +231,77 @@ Each run is one commit; all 13 jobs per run (`claude plugin validate`, `Validate
   "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings."
   Re-run once (attempt 2): the same. Cause is the account's GitHub billing, not the code; nothing I may change. What unblocks it: the owner fixes billing / spending limit, then re-run run 43131901513.
   That commit differs from the green 3a5b120 only by the slice-file text and one YAML comment line (`git diff 3a5b120 e92a63c --stat`: 2 files, 18 insertions).
+
+# Review (0.7.3)
+
+Run `l5-read`, 2026-11-12, independent reader (did not see the build). Read: the brief `l5-build.md`, this file's Build part, the whole diff
+`master...5b0a5bb` (26 files) in a fresh clone. Reading first; run only what reading could not settle, one process at a time.
+
+**0. Linux DNS gap.** `sitecustomize.py`: `_is_local(host, port)` = loopback AND port != 53, used by the `connect`/`connect_ex` wrapper and by
+`sendto`; a refused call is logged by the same `_refuse` as any outside call. The fake world's server is on port 18765, so it stays reachable.
+`probe.py` adds UDP `sendto` and TCP connect to `127.0.0.53:53`; `--probe` now demands both in the guard log. CI read from GitHub, run
+43131232137 (commit 3a5b120, the last commit with code): `fake campaign · ubuntu-latest` and `· windows-latest` both success, each log line
+`PASS - result equals tests/fixtures/e2e/expected.json (21 refused-call entries, as saved)`. Saved `refused` list: 21 entries in 0.7.2 and in
+0.7.3, equal (my leaf diff below). Holds.
+
+**1. Companies House setting.** Default `CH_BASE_DEFAULT = "https://api.company-information.service.gov.uk"`, byte for byte the removed
+`CH_BASE`; no other reader of `CH_BASE` is left (`grep`). The five request sites (registry: search, profile, officers; discovery: advanced
+search twice) read the setting. The validator accepts only the default or `http`/`https` with host `localhost` or a loopback IP, refuses a
+user part, password, query, fragment, bad port; a missing scheme fails (`urlsplit` gives no hostname, or a non-http scheme). `127.0.0.1.evil.example`
+and `user@` forms are refused (tested). Redirects: every call is a plain `httpx.get` without `follow_redirects`, and httpx does not follow by
+default, so a 3xx goes nowhere. The key is sent only with those five requests, as before; it can now go to the default or to this machine,
+nothing else. One remark, not a defect: `localhost` is resolved by the hosts file, so a machine whose hosts file maps `localhost` elsewhere would
+send the key there; a loopback IP has no such step.
+
+**2. The fake.** The fake campaign's `leadforge.yaml` sets the fixture key and `http://127.0.0.1:<port>/ch`; the loopback server answers
+`/ch/...` and 401s without the key. Source ON: the saved result now holds 14 new `/ch/` request lines (search, and profile + officers of ZZ000001
+and ZZ000002). I compared the two saved results myself (`git show master:tests/fixtures/e2e/expected.json` against the branch, leaf diff, rows
+matched by business name):
+```
+Leads/CSV  Harbour Motors: Score, Tier, DM Name, DM Title, DM Conf, Why This Score, Company No, Incorporated, Company Status, SIC Codes,
+           Call Readiness, Fit, Contactability, Status, Next Action, Entity Type, Registry Name, Registry Match
+Leads/CSV  Northgate Tyres: Score, Tier, Why This Score, Company No, Incorporated, Company Status, SIC Codes, Fit, Contactability,
+           Entity Type, Registry Name, Registry Match
+Leads/CSV  the other eight: Company No, Entity Type, Registry Name
+Drafts     Harbour Motors: DM Name (rows reorder: Northgate now tier A)
+Summary    tiers 0/5/5 -> 2/3/5, with DM 3 (30%) -> 4 (40%), next-action counts
+steps      intake warning (key hint) gone; dm_unlabeled 2->1, dm_candidates 5->8, dm_auto_picked new (1), tier_a 0->2, tier_b 5->3
+report     with_dm 3->4, tiers A 0->2, B 5->3
+refused: old 21 entries, new 21, equal=True
+requests: old 31, new 45; only in old 0; only in new 5 (distinct lines, all 127.0.0.1 /ch/... 200)
+```
+All inside the builder's second-run list. One cell named less precisely than the rest: Northgate's `Contactability` 25 -> 30. Cause read in
+`score.py` (lines 353-356): an entity type `corporate_active` (from the registry match) adds the "registry-corroborated (active)"
+contactability points. It follows from the predicted registry match, deterministically; not a surprise move.
+
+**3. Speed test.** The fake `validate_email` counts in-flight calls under a lock and waits at `threading.Barrier(8, timeout=5)`. With 16 rows and
+`max_workers=8`, each group of 8 opens the barrier only if 8 run at once, so the peak is exactly 8 on any machine; the assertion has no clock.
+Serial (or any pool below 8): the barrier times out, `BrokenBarrierError` comes out of `fut.result()` in `validate_emails_parallel`, the test
+is red. A pool above 8: the peak passes 8, `peak == workers` is red. Settled by reading; not run.
+
+**4. `send-outreach` alone.** All five places in its `SKILL.md` now read `references/{outreach,drafting,troubleshooting}.md`; the three
+files are in `skills/send-outreach/references/`, byte-identical to `generate-leads`' (`cmp`). Install routes: plugin (whole repo), `install.py`
+(every skill folder, junction/symlink or `copytree` of the whole folder), a skills tool or hand copy (the folder) - in each the folder carries
+`references/`, so every line resolves. The check, run here, then with one file taken away, then restored:
+```
+ok: 2 skills open every file they name when installed alone; shared reference copies are identical
+exit=0
+skill references broken:
+  send-outreach: SKILL.md names references/troubleshooting.md but it is not in the skill's own folder when installed alone
+exit=1
+```
+
+**5. Version, behaviour, packages, secrets.** `check_versions.py`:
+`{'pyproject': '0.7.3', '__init__': '0.7.3', 'claude-plugin': '0.7.3', 'codex-plugin': '0.7.3', 'skill generate-leads': '0.7.3', 'skill send-outreach': '0.7.3'}`.
+Tool behaviour: only the new setting (default = old address); the rest is harness, tests, skill text and the build pin `setuptools==84.2.1`
+(the version already in `requirements.lock`); `requirements.lock` and runtime dependencies untouched: no new package. `zip(strict=True)` in
+the script only runs on equal lengths. `gitleaks git --log-opts="master..slice/L5-install-proven"`: `11 commits scanned` / `no leaks found`.
+
+**6. CI on the last commit.** 5b0a5bb (run 43132134170): 13/13 jobs failed in 2-4 s without starting; annotation `The job was not started
+because recent account payments have failed or your spending limit needs to be increased.` Same for e92a63c. The last commit whose jobs ran,
+3a5b120, is 13/13 success; 5b0a5bb differs from it only by this file and one comment line in `config/leadforge.example.yaml`. CI on the exact
+commit to be merged is therefore NOT green: BLOCKED by the account's GitHub billing, not by the code.
+
+Fixed by the reader: none.
+
+Verdict: PASS 5b0a5bb
