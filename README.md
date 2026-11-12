@@ -112,7 +112,10 @@ What each one removes and cannot reach: [`docs/data-and-deletion.md`](docs/data-
 
 Two exist, both optional: the Companies House key (free) and an OpenCorporates token (off by default). **They are never read from `leadforge.yaml`**; a file that holds one is refused.
 Set the environment variable `LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY` (or `..__OPENCORPORATES_TOKEN`), or store the key in the OS keyring (`pip install -e .[keyring]`, then
-`keyring set leadforge registry.companies_house_key`). **Today the window cannot save a key**: the bundled engine has no keyring package. Use the environment. The DVSA register needs no key.
+`keyring set leadforge registry.companies_house_key`). **Today the window cannot save or use a key**: the bundled engine has no keyring package, and the window
+passes no `LEADFORGE_*` variable to its engine, so the environment route works on the command line only. A Companies House campaign needs the command line
+today. The DVSA register needs no key. <!-- CHANGE WHEN the keyring lock (pull request 17) is in the bundle. -->
+
 [`docs/configuration.md`](docs/configuration.md).
 
 ## Limits

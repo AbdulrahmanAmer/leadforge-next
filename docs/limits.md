@@ -30,6 +30,18 @@ Read as of version 0.9.0 plus the unreleased work on this branch. When you settl
 - **Expiry covers `exports` and `cache` only.** Other state under the data folder (logs, the progress feed, hand-off files, browser profiles) is
   reached by forget and delete-everything, not by the retention clean-up. (read from `retention.py`: `EXPIRING_DIRS`; see also L7, which names
   the browser-profiles folder as state its first stage did not wire to purge)
+- **`data_dir` is not held inside the workspace.** `leadforge.yaml` or `--data-dir` may name `..\x` or any full path, and `purge --everything` (the window's
+  "Delete everything") deletes every file under it: a probe with `data_dir: '../someone-elses-folder'` removed `thesis.docx` and `deep\photos.zip`. OPEN: refuse
+  a `data_dir` that is absolute or has a `..` part, or let delete-everything delete only a folder that holds LeadForge's database. (review)
+- **Forget on a person's row does not forget the person.** The People screen offers "This address" (the default), "This name" and "The whole domain",
+  one value per call. Forgetting the address leaves the person's name, title and page in `people`; forgetting the name leaves their address in `contacts`
+  (review probe on the window's test workspace, 2026-11-12). Forget both values to remove both. OPEN: the change proposed is one "this person" target
+  that forgets the name and every address tied to it. (review)
+- **The retention clean-up does not reach `outbox\` and `inbox\`** (the `.eml` files of a dry-run `outreach send` hold the recipient's address and the
+  text) nor the browser profile; only forget and delete-everything do. (review, `retention.py` `EXPIRING_DIRS`)
+- **Forget finds a value only in plain bytes and inside `.xlsx` (zip) files.** A compressed file of another kind (a browser profile's cache or
+  LevelDB, a `.gz`) that holds it is neither edited nor deleted, and forget still says it forgot. This matters for `browser-profiles\`, which forget
+  walks (L7's "purge and forget do not touch it" is no longer true for forget; the retention clean-up does not touch it). UNPROVEN on a real profile. (review)
 - **UNPROVEN:** the old rows of a test fixture that looked like real businesses are still in the git history of this public repository. Whether to rewrite
   that history is the owner's call. (L2, L3c, debts)
 
@@ -51,6 +63,12 @@ Read as of version 0.9.0 plus the unreleased work on this branch. When you settl
   received its director. The code's own comment calls a wrong match worse than none. (L5)
 - **Seen in the fake campaign, not traced:** every crawled site's Site Status reads `redirects to <host>:18765` when the fake sites use an explicit port. (L4)
 - **No cross-business robots cache.** The crawler object is made per business, so the 24-hour life of a robots answer shows only inside one business. (L7)
+- **No size limit on a fetched page, and no block on private addresses.** A page is read whole into memory (a gzip body decompressed) before it is
+  cut to `crawl.max_text_bytes`, and a public site's redirect to `127.0.0.1` or a home-network address is followed if that address has no robots
+  rule against it. See the review's loopback probe in [`slices/L11-window.md`](slices/L11-window.md). OPEN: a streamed read with a byte cap, and a
+  refusal of loopback, private and link-local addresses after each redirect. (review)
+- **Hosts contacted by default:** the businesses' sites, the DVSA list's address, Companies House only with a key, DNS for MX look-ups, and
+  Nominatim only with `discovery.grid_mode: auto`. Nothing else was found in the code; no test watches the whole set. (review, by reading)
 - **One business can take up to 338.8 s under the defaults**, before waits for the render gate (which no setting bounds). A stop waits for the step in
   flight: 52.6 s in the worst case, plus the render-gate wait. UNPROVEN as a wall clock; a total deadline per fetch would be needed. (L11a)
 - **The signal names `stale_social`, `no_social_presence`, `no_video_presence` and `active_social` stay in the campaign vocabulary so old files load.**
@@ -62,6 +80,14 @@ Read as of version 0.9.0 plus the unreleased work on this branch. When you settl
 
 - **The window cannot save a key.** `keyring` is an optional extra and is in neither `requirements.lock` nor `uv.lock`, so the bundled engine has none; the
   Keys screen says so. The plugin launcher's locked install has none either. Fix: regenerate the hashed lock with the extra. NOT DONE. (L9, L11)
+  <!-- CHANGE WHEN the keyring lock (pull request 17) is in the bundle. -->
+- **The window cannot use a key from the environment either.** The core passes the engine a fixed list of Windows variables and no `LEADFORGE_*` one, so a
+  Companies House campaign cannot run from the installed window today. (review, `engine.rs` `ENV_KEEP`)
+- **The window's engine has no `PATH`,** so a window run never auto-detects `claude` and uses the built-in rules. Before the review's fix it searched the
+  workspace folder and `C:\bin` (a folder any account on the PC may create). Fixed on `slice/L11-window`; `doctor --fix --full`'s `crawl4ai-setup` look-up
+  still searches the current folder first (Windows). OPEN for that one. (review)
+- **A workspace's `leadforge.yaml` can run any program**: `agent.command` is used as written by every `run` with autopilot on. Run LeadForge only in a folder
+  whose `leadforge.yaml` you wrote. (review, `agent_runner.resolve_command`)
 - **UNPROVEN:** the real `keyring` package against a real Windows backend. Tests replace the backend; the real one was never read or written. (L9, L11)
 - **UNPROVEN:** `--tools ""` through the real npm `claude.cmd` with `node.exe`. The proof used a fake shim with Python reading the argument. (L2, L9)
 - **UNPROVEN:** that `--restricted` works with a subscription login. The probe could not log in; it neither confirms nor contradicts the code's comment. (L9)
@@ -83,8 +109,6 @@ Read as of version 0.9.0 plus the unreleased work on this branch. When you settl
   suppressing was tried once. (L11)
 - **The single-instance guard and the core's engine tests were not each watched failing** (the permission test was). (L10, L11)
 - **The workspace folder cannot be changed from the window.** The core has no folder dialog; the Settings screen shows the folder as text. (L11)
-- **Two lines in `app/ui/src/follow.ts` are marked TIGHTEN LATER** and go when the engine's follow-up (rulings 15 and 16: a register plan says "not estimated";
-  `keys_list` says whether the workspace reads the keyring) is on `master`. OPEN. (L11, L11a)
 - **`About.licence` can be null** when the package metadata has no licence field; the page then says the notices were not found. Not reached in an installed
   build. (L11a)
 - **`KeyStatus.savedAt` is always null** (the keyring keeps no date) and **`Person.foundAt` was null until L7** wired a date; people without one read "not recorded". (L11a)
@@ -128,6 +152,18 @@ Read as of version 0.9.0 plus the unreleased work on this branch. When you settl
 
 - **NOT DONE:** the older design pages (`docs/00` to `docs/04`, `07`, `09`, `PIPELINE-MAP.md`, the plans and `docs/specs/`) still describe code that has left (the
   Maps and social providers, a REST fallback) or earlier versions. They carry a note, not a rewrite. These pages and the code win. (L3c, L8)
+  Statements in them that are false today (review, 22 found, not a complete list): `00-vision` lines 10, 58, 86 (Maps is the source and its cap the
+  constraint); `01-research` 55, 63 (gosom primary); `02-architecture` 20, 24, 59, 84, 87 (a gosom provider, the doctor installs gosom, a REST fallback);
+  `03-data-model` 66, 126, 284 (`source` gosom, schema version 2: it is 7); `04-pipeline-behavior` 20 to 26, 87, 89 (gosom in the pipeline,
+  `providers.discovery: [gosom]`: the key is `discovery.providers`, default `[dvsa]`); `07-compliance` 22 (Maps terms accepted) and 35 (purge on campaign
+  end: it is `retention.months`, checked at each run); `08-decisions` ADR-001 (gosom primary); `09-v0.3-build-plan` 45, 54, 59 (schema 2, `providers/gosom.py`,
+  `GOSOM_FIELD_MAP`).
+- **The public tree still carries the Maps add-on's review path:** `enrich/runner.py` `_apply_gbp` (about lines 816 to 860) and `normalize.gbp_facts` turn a
+  listing's reviews into people ("signed an owner reply on Google", a first name credited in three reviews). No provider in this repository fills
+  `enrich.gbp`; only an add-on returning the old Maps field names (`providers/base.py` `user_reviews_extended`) does. OPEN, the owner's decision: move it
+  into the add-on, or drop the review-name rule. (review)
+- **Names a reader can trace:** the slice files name the build laptop's machine name and the private add-on repository. OPEN, the owner's call. A phone
+  number in the 01483 area (not Ofcom's drama range) in `export.py` and `docs/03` was replaced by a drama-range one in the review; it stays in history. (review)
 - **NOT DONE:** the old sender name is still in 30 files (a draft skeleton, tests, goldens and prose); renaming it moves two goldens and three expected texts. (L3c, debts)
 - **The example campaign files keep their author's own business names.** They were left as examples. (L3c)
 - **OPEN:** an alert from the secret scanner on an earlier public repository of this project (a Google page key inside a saved page, not a key of the owner) was

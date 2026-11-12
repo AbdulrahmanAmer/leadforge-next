@@ -26,18 +26,20 @@ does not decode Cloudflare-protected e-mail addresses unless `crawl.decode_prote
 
 **Text sent to a model.** With `pipeline.autopilot` on (the default) `run` asks the user's own Claude Code in headless mode (`agent.command`, found on
 the PATH when unset) to label decision makers and write draft notes. Short snippets taken from business websites are in that prompt. The call is built
-with no tools. Switch it off with `agent.command: []` or `run --no-autopilot`; the built-in rules then do the work. The window starts the engine with a
-short environment; whether it finds `claude` there was not checked. What leaves LeadForge this way is outside any delete control below.
+with no tools. Switch it off with `agent.command: []` or `run --no-autopilot`; the built-in rules then do the work. A `claude` in the current folder is
+never taken, and without a `PATH` nothing is searched. The window starts the engine with no `PATH`, so a window run does not find `claude` and uses the built-in
+rules, unless the workspace's `leadforge.yaml` names an `agent.command`. What leaves LeadForge this way is outside any delete control below.
 
 ## Where it is kept
 
 The workspace is the folder LeadForge runs in. In the window it is `%LOCALAPPDATA%\app.leadforge.window\workspace`. On the command line it is the current
-folder. State lives under `leadforge_data\` there (`--data-dir` or `data_dir` change the name).
+folder. State lives under `leadforge_data\` there (`--data-dir` or `data_dir` change it). **Keep it a plain name:** the engine also takes `..\x` or a full
+path outside the workspace, and "Delete everything" then deletes every file under that folder, whatever it holds (review probe, 2026-11-12).
 
 | Path under the workspace | Holds |
 |---|---|
 | `leadforge_data\db.sqlite3` (and `-wal`, `-shm`) | the database, schema version 7 |
-| `leadforge_data\cache\` | the register copy, the geocoder's answers, cached pages |
+| `leadforge_data\cache\` | the register copy (`dvsa\`), the geocoder's answers (`geocode.json`); the engine keeps no fetched page here |
 | `leadforge_data\exports\<run>\` | the sheet (`.xlsx`), its CSV copy and `report.json` |
 | `leadforge_data\logs\` | `leadforge.log` (and 3 rotated copies), `agent_runner.log`, `<run>.detach.log` |
 | `leadforge_data\progress.jsonl`, `pace.json` | the live progress feed |
@@ -93,7 +95,11 @@ forgot. The engine's window command `person_forget` has a dry run that changes n
   expired "Brindlewick Motors" and is deleted whole, and a sheet holding one expired business is deleted with the live rows it holds. Their records stay;
   `leadforge export` writes the latest run's sheet again. `leadforge purge` lists the files before anything goes.
 - **The expiry date can be later than 12 months after the first sighting** when a register row was folded into a list row that is younger.
-- **Browser state** is not expired; forget and delete-everything walk it as part of the data folder (not tested for a browser profile).
+- **Browser state** is not expired; forget and delete-everything walk it as part of the data folder (not tested for a browser profile). Forget finds a
+  value only in plain bytes and inside `.xlsx` files, so a compressed browser cache or store that holds it stays.
+- **The outbox and inbox** (`.eml` files) are not expired by the retention clean-up; forget and delete-everything reach them.
+- **One value per forget.** On the People screen a person's row offers "This address" (the default), "This name" and "The whole domain". Forgetting the
+  address leaves the name, title and page in `people`; forgetting the name leaves the address in `contacts`. To remove a person, forget each value.
 
 ## On the collect side: robots and refusals
 

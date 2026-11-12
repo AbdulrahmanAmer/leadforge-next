@@ -63,7 +63,7 @@ what it says, or "The engine stopped without saying why." and "Continue the run"
 |---|---|---|
 | (the list) | `campaigns_list` | every campaign of the workspace, newest first, with its counts, tiers, register and "Kept until" date |
 | Write it again | `sheet_export` | writes the sheet of a run again (`leadforge export`): the `.xlsx`, a `.csv` copy if Settings asks for it, and `report.json`, under `leadforge_data\exports\<run>\` |
-| Open the sheet | `sheet_open` | opens a file in the program Windows uses for it; the engine refuses a path outside `exports` (also through `..` or a link) |
+| Open the sheet | `sheet_open` | opens a file in the program Windows uses for it; the engine refuses a path outside `exports` (also through `..` or a link) and any file there that is not an `.xlsx`, a `.csv` or `report.json` |
 
 A field the engine does not know shows "not recorded", not a guess. "Kept until" is left out when there is no start time.
 
@@ -93,16 +93,21 @@ address, business or domain (up to 500 rows a page). Businesses' general address
 ### 6. Keys
 
 Two keys: the Companies House key and the OpenCorporates token. The screen shows whether each is saved, never the value, and says "Saved, but this workspace is set not to
-read the keyring" when `registry.keyring` is off (the screens have that wording; the engine's side is on the separate branch `slice/L11a-follow`, not merged here, see [`limits.md`](limits.md)).
+read the keyring" when `registry.keyring` is off (engine and screens, on `master` since 2fb6b93).
+
+**Today the installed window cannot keep or use a key.** The `keyring` package is in neither hashed lock, so the bundled engine has none: every Keys action answers
+"Keys cannot be kept in the keyring on this computer" (kind `environment`) and the screen says nothing is stored. An environment variable does not help in the window
+either: the core starts the engine with a short fixed list of Windows variables and no `LEADFORGE_*` one, so a Companies House campaign cannot get its key from the
+window today. Use the command line ([`configuration.md`](configuration.md)). Proven for the keyring by the install run of slice L11; the keyring itself was never exercised.
+<!-- CHANGE WHEN the keyring lock (pull request 17) is in the bundle: the table below then describes the installed window. -->
+
+What the commands do with a keyring package present (development builds with `.[keyring]`):
 
 | Action | Engine command | What it does |
 |---|---|---|
 | (the list) | `keys_list` | which keys are saved in the Windows keyring |
 | Save | `key_save` | stores the value in the keyring under service `leadforge`, entry `registry.<name>` |
 | Remove | `key_remove` | deletes the entry |
-
-**Today the installed window cannot keep a key.** The `keyring` package is in neither hashed lock, so the bundled engine has none, and the screen says "Keys cannot
-be kept in the keyring on this computer". Use an environment variable ([`configuration.md`](configuration.md)). Proven by the install run of slice L11; the keyring itself was never exercised.
 
 ### 7. Settings
 

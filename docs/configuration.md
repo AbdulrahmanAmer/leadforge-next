@@ -42,7 +42,7 @@ keyring set leadforge registry.companies_house_key
 
 | Key | Default | Meaning |
 |---|---|---|
-| `data_dir` | `leadforge_data` | folder under the workspace for all state |
+| `data_dir` | `leadforge_data` | folder for all state, relative to the workspace. Keep it a plain name: a full path or `..` is taken too, and "Delete everything" deletes every file under it ([`limits.md`](limits.md)) |
 | `default_region` | `US` | two-letter fallback for reading phone numbers |
 | `progress_window` | `true` | a headless run opens a console with the live bar (Windows; skipped in CI and when `LEADFORGE_NO_UI=1`) |
 
