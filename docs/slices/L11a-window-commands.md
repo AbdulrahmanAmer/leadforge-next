@@ -189,6 +189,11 @@ L9 (`origin/slice/L9-keys-and-the-agent-call`) puts `KEYRING_SERVICE = "leadforg
 2. The `keyring` package is L9's optional extra and is not in `requirements.lock`; without it the key commands answer `not_available`
    ("the keyring package is not installed"). The window's installer must carry the extra; that changes the lock, so
    `scripts/make_licence_notices.py` must be run again (the test fails until it is).
+   *Corrected by slice keyring-lock (2026-11-12):* until then the installer could not carry the extra (no lock held it).
+   Since c78e63b (`slice/keyring-lock`) it can: the extra has its own hashed lock, `requirements-keyring.lock`, and
+   `requirements.lock` is unchanged (so `licences.json` is not re-made; the second lock's packages are not in it, an open item
+   of `docs/slices/keyring-lock.md`). The window's install line: `python -m pip install --require-hashes --only-binary :all: -r
+   requirements.lock -r requirements-keyring.lock`.
 3. L9's switch `registry.keyring: false` is not read by the adapter. Decide whether `key_save` refuses when it is off.
 4. `tests/test_window.py::test_key_commands_without_l9_answer_not_available` fails by design: replace it with a test that
    `make_keys()` uses `KEYRING_SERVICE` with `keys.default_backend` replaced by the fake backend. The other key tests use their own fake
