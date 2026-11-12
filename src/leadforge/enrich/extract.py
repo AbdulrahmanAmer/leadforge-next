@@ -321,8 +321,9 @@ def decode_cfemail(hexstr: str) -> str | None:
     return out if EMAIL_RE.fullmatch(out) else None
 
 
-def extract_emails(html: str, text: str) -> dict[str, str]:
-    """-> {email: label} with label role|personal."""
+def extract_emails(html: str, text: str, decode_protected: bool = False) -> dict[str, str]:
+    """-> {email: label} with label role|personal. C11: Cloudflare-protected addresses (data-cfemail) are an
+    anti-harvesting measure and are decoded only when `decode_protected` is True (cfg.crawl.decode_protected_emails)."""
     found: dict[str, str] = {}
     trusted: set[str] = set()  # came from mailto/cfemail/text/at-dot — cannot be a markup-split artifact
 
@@ -342,7 +343,7 @@ def extract_emails(html: str, text: str) -> dict[str, str]:
     tree = HTMLParser(html)
     for a in tree.css('a[href^="mailto:"]'):
         _add(html_mod.unescape((a.attributes.get("href") or "")[7:].split("?")[0]))
-    for hexstr in CFEMAIL_RE.findall(html):
+    for hexstr in CFEMAIL_RE.findall(html) if decode_protected else ():
         decoded = decode_cfemail(hexstr)
         if decoded:
             _add(decoded)

@@ -51,7 +51,15 @@
     "Draft Subject",
     "Draft Body",
     "Draft Grade",
-    "Draft Author"
+    "Draft Author",
+    "Email Source",
+    "Email Date",
+    "Email (Inferred) Source",
+    "Email (Inferred) Date",
+    "Phone Source",
+    "Phone Date",
+    "DM Phone Page",
+    "DM Phone Date"
    ],
    [
     "80",
@@ -103,7 +111,15 @@
     "Quick note for Harbour Motors",
     "Hello,\n\nNoticed Harbour Motors shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "B",
-    "template"
+    "template",
+    "byol_csv",
+    "<DATE>",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-01",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "80",
@@ -155,7 +171,15 @@
     "Quick note for Northgate Tyres",
     "Hello,\n\nNoticed Northgate Tyres shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "B",
-    "template"
+    "template",
+    "-",
+    "-",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-04",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "72",
@@ -207,7 +231,15 @@
     "Quick note for Kestrel Garage",
     "Hi Odell,\n\nNoticed Kestrel Garage shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "A",
-    "template"
+    "template",
+    "-",
+    "-",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-02",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "72",
@@ -259,7 +291,15 @@
     "Quick note for Millbrook Autos",
     "Hi Ysolde,\n\nNoticed Millbrook Autos shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "A",
-    "template"
+    "template",
+    "-",
+    "-",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-03",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "72",
@@ -311,7 +351,15 @@
     "Quick note for Riverside Auto",
     "Hi Linnet,\n\nNoticed Riverside Auto shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "A",
-    "template"
+    "template",
+    "-",
+    "-",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-08",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "56",
@@ -363,7 +411,15 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft"
+    "no draft",
+    "-",
+    "-",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-05",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "56",
@@ -415,7 +471,15 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft"
+    "no draft",
+    "-",
+    "-",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-06",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "56",
@@ -467,7 +531,15 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft"
+    "no draft",
+    "-",
+    "-",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-07",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "56",
@@ -519,7 +591,15 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft"
+    "no draft",
+    "-",
+    "-",
+    "-",
+    "-",
+    "http://127.0.0.1:18765/dvsa/active-mot-stations.csv",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "56",
@@ -571,7 +651,15 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft"
+    "no draft",
+    "-",
+    "-",
+    "-",
+    "-",
+    "http://127.0.0.1:18765/dvsa/active-mot-stations.csv",
+    "<DATE>",
+    "-",
+    "-"
    ]
   ]
  },
@@ -990,6 +1078,10 @@
     "which engine discovered the business"
    ],
    [
+    "... Source / ... Date / DM Phone Page",
+    "where each e-mail and phone in the row came from (the page address, or the list's address for the business's own number) and the day it was seen; 'source not recorded' means the workspace holds no record of it, '-' means the row has no such value"
+   ],
+   [
     "",
     ""
    ],
@@ -1069,7 +1161,9 @@
     "Used Fact",
     "Author",
     "State",
-    "Created"
+    "Created",
+    "To Source",
+    "To Date"
    ],
    [
     "Harbour Motors",
@@ -1081,7 +1175,9 @@
     "booking",
     "template",
     "drafted",
-    "<TS>"
+    "<TS>",
+    "byol_csv",
+    "<DATE>"
    ],
    [
     "Northgate Tyres",
@@ -1093,7 +1189,9 @@
     "booking",
     "template",
     "drafted",
-    "<TS>"
+    "<TS>",
+    "-",
+    "-"
    ],
    [
     "Kestrel Garage",
@@ -1105,7 +1203,9 @@
     "booking",
     "template",
     "drafted",
-    "<TS>"
+    "<TS>",
+    "-",
+    "-"
    ],
    [
     "Millbrook Autos",
@@ -1117,7 +1217,9 @@
     "booking",
     "template",
     "drafted",
-    "<TS>"
+    "<TS>",
+    "-",
+    "-"
    ],
    [
     "Riverside Auto",
@@ -1129,7 +1231,9 @@
     "booking",
     "template",
     "drafted",
-    "<TS>"
+    "<TS>",
+    "-",
+    "-"
    ]
   ],
   "Leads": [
@@ -1183,7 +1287,15 @@
     "Draft Subject",
     "Draft Body",
     "Draft Grade",
-    "Draft Author"
+    "Draft Author",
+    "Email Source",
+    "Email Date",
+    "Email (Inferred) Source",
+    "Email (Inferred) Date",
+    "Phone Source",
+    "Phone Date",
+    "DM Phone Page",
+    "DM Phone Date"
    ],
    [
     "80",
@@ -1235,7 +1347,15 @@
     "Quick note for Harbour Motors",
     "Hello,\n\nNoticed Harbour Motors shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "B",
-    "template"
+    "template",
+    "byol_csv",
+    "<DATE>",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-01",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "80",
@@ -1287,7 +1407,15 @@
     "Quick note for Northgate Tyres",
     "Hello,\n\nNoticed Northgate Tyres shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "B",
-    "template"
+    "template",
+    "-",
+    "-",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-04",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "72",
@@ -1339,7 +1467,15 @@
     "Quick note for Kestrel Garage",
     "Hi Odell,\n\nNoticed Kestrel Garage shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "A",
-    "template"
+    "template",
+    "-",
+    "-",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-02",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "72",
@@ -1391,7 +1527,15 @@
     "Quick note for Millbrook Autos",
     "Hi Ysolde,\n\nNoticed Millbrook Autos shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "A",
-    "template"
+    "template",
+    "-",
+    "-",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-03",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "72",
@@ -1443,7 +1587,15 @@
     "Quick note for Riverside Auto",
     "Hi Linnet,\n\nNoticed Riverside Auto shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "A",
-    "template"
+    "template",
+    "-",
+    "-",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-08",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "56",
@@ -1495,7 +1647,15 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft"
+    "no draft",
+    "-",
+    "-",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-05",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "56",
@@ -1547,7 +1707,15 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft"
+    "no draft",
+    "-",
+    "-",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-06",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "56",
@@ -1599,7 +1767,15 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft"
+    "no draft",
+    "-",
+    "-",
+    "-",
+    "-",
+    "https://www.google.com/maps/place/?q=place_id:fixture-place-07",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "56",
@@ -1651,7 +1827,15 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft"
+    "no draft",
+    "-",
+    "-",
+    "-",
+    "-",
+    "http://127.0.0.1:18765/dvsa/active-mot-stations.csv",
+    "<DATE>",
+    "-",
+    "-"
    ],
    [
     "56",
@@ -1703,7 +1887,15 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft"
+    "no draft",
+    "-",
+    "-",
+    "-",
+    "-",
+    "http://127.0.0.1:18765/dvsa/active-mot-stations.csv",
+    "<DATE>",
+    "-",
+    "-"
    ]
   ],
   "Summary": [
@@ -1818,6 +2010,14 @@
    [
     "  1×",
     "CALL - ask for the owner (email draft ready)"
+   ],
+   [
+    "",
+    ""
+   ],
+   [
+    "Source notice",
+    "Contains public sector information licensed under the Open Government Licence v3.0 (DVSA active MOT stations list)."
    ],
    [
     "",

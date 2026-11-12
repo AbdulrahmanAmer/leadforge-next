@@ -101,7 +101,7 @@ latest run for the same ICP hash; every stage is idempotent (upserts, per-tile /
   `LeadForgeBot/<ver> (internal lead research; +contact-in-repo)`; hard per-page timeout 15 s; max `crawl.pages_per_site` (default 6).
 - Page selection: `/` always; then discovered nav links matching (about|team|staff|people|leadership|contact|impress|imprint|legal
   |meet) up to cap; sitemap.xml probe if nav yields < 2 targets.
-- Extraction per page (`extract.py`): mailto + email regex + cfemail decode + at/dot normalization; tel: links + phone regex →
+- Extraction per page (`extract.py`): mailto + email regex + cfemail decode (off unless `crawl.decode_protected_emails`, C11) + at/dot normalization; tel: links + phone regex →
   phonenumbers; social links (allowlist hosts); copyright-year → `stale_site` signal if < current_year − 2; person+title candidates:
   lines/headings where a Title keyword (Owner, CEO, Founder, GM, Manager, Director, Principal, Broker, …) sits within 60 chars of a
   Capitalized-Name pattern → snippet (≤300 chars) + source URL stored on `people`.

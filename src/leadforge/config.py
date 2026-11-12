@@ -13,7 +13,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 CH_BASE_DEFAULT = "https://api.company-information.service.gov.uk"
 
@@ -51,6 +51,17 @@ class DiscoveryCfg(BaseModel):
     est_min_per_tiled_query: float = 4.0   # measured 2026-08-31: 3.5-4.7 min tiled
     dvsa: DvsaCfg = Field(default_factory=DvsaCfg)
     companies_house: CompaniesHouseDiscoveryCfg = Field(default_factory=CompaniesHouseDiscoveryCfg)
+    # C10: the key that once let the helper fetch business sites with no robots.txt check is refused.
+    @model_validator(mode="before")
+    @classmethod
+    def _refuse_email_crawl(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "email_crawl" in data:
+            raise ValueError(
+                "discovery.email_crawl was removed: the helper program's -email switch fetches business sites "
+                "without LeadForge's robots.txt check, so it is never used. Delete the key; LeadForge reads "
+                "e-mail addresses from the sites itself, after the robots.txt check")
+        return data
+
     # speed unit: fan discover queries across N provider-chain instances (each its own browser/subprocess
     # pool); ==1 keeps the original strictly-serial loop. See pipeline.run_discover.
     parallel_queries: int = 1
@@ -71,6 +82,8 @@ class CrawlCfg(BaseModel):
     page_timeout_s: float = 6.0      # secondary/candidate page + sitemap-probe fetch timeout
     site_budget_s: float = 45.0      # per-site wall-clock budget across the whole crawl() call
     max_text_bytes: int = 400_000
+    # C11: Cloudflare's "protected" e-mail addresses are an anti-harvesting measure; they are not decoded unless asked
+    decode_protected_emails: bool = False
 
 
 class PolitenessCfg(BaseModel):
@@ -289,6 +302,10 @@ class Config(BaseModel):
     @property
     def cache_dir(self) -> Path:
         return self._dir("cache")
+
+    @property
+    def browser_profiles_dir(self) -> Path:
+        return self._dir("browser-profiles")
 
     @property
     def exports_dir(self) -> Path:

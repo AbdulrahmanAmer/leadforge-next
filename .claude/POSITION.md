@@ -57,3 +57,9 @@ with bounded NER, then re-labels/scores/drafts/exports); restore draft.auto_max 
 - Built: C4 forget, C5 purge (records and, since run l6-finish, files under exports and cache), C6, C7; reader's fixes in dc02236; l6-finish added the steady refused-call compare (G2), files expiry, forget on a held file (exit 4 + names), a hosted Linux mutation trial (KEEP).
 - Gate: `node check.mjs` (901 passed, 7 skipped) at c5c5963; hosted CI 13 of 13 on c5c5963. Detail: docs/slices/L6-the-delete-side.md, part "Build 2 (0.8.0)".
 - Open for the owner: a hashed suppression list (changes the tables; not built). An independent reader follows l6-finish; nobody merges before that.
+
+## POSITION — 2026-11-12, slice L7 (0.9.0) on branch slice/L7-the-collect-side, pull request 9, NOT merged
+
+- Built: C8 to C13 (stage A: robots, refusal final, switch gone, protected addresses off, one profile function; stage B: C12 source and date on every exported e-mail and phone, C13 send rules by country), 0.9.0 in every copy, `master` (0.8.0, debts, L8) merged in.
+- Sheet contract changed: 8 columns at the end of Leads/CSV, 2 at the end of Drafts; goldens `sheet_columns`, `sheet_export` and the fake campaign's saved result (C12 cells only). Detail and the "Plan and code disagree" list (8): docs/slices/L7-the-collect-side.md.
+- Open for the owner: which countries beyond US, GB, DE get a send rule (`send_rules.RULES`); Companies House terms page (UNPROVEN: none found); OpenCorporates only on the user's own paid key. An independent reader follows; nobody merges before that.

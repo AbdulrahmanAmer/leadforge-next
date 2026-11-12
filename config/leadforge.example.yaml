@@ -16,6 +16,7 @@ crawl:
   headed_browser: false           # true = browser escalation opens a VISIBLE browser window (debug; renders sites that refuse plain HTTP). No stealth flags ever (icm/SCOPE.md)
   timeout_s: 15
   max_text_bytes: 400000
+  decode_protected_emails: false  # true = decode Cloudflare "[email protected]" spans; off by default (an anti-harvesting measure)
 
 enrich:                            # crawl-time enrichment throughput/quality knobs (Layer 3)
   ner: true                        # GLiNER zero-shot people extraction; false = heuristic extractor only

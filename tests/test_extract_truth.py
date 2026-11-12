@@ -60,7 +60,7 @@ def test_cfemail_still_read_despite_noise_stripping():
         "<html><head><script>var x = 1;</script></head>"
         f'<body><span data-cfemail="{enc("real@shop.com")}"></span></body></html>'
     )
-    out = extract_emails(html, "")
+    out = extract_emails(html, "", decode_protected=True)  # C11: off by default
     assert "real@shop.com" in out
 
 
