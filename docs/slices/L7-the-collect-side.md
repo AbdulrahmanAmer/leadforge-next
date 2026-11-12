@@ -406,3 +406,51 @@ fake campaign · ubuntu-latest success · fake campaign · windows-latest succes
 windows-latest py3.11 / py3.12 / py3.13 / py3.14 success (4) · ubuntu-latest py3.11 / py3.12 / py3.13 / py3.14 success (4) · Validate plugin manifests success.
 The separate "Mutation trial (Linux)" workflow (a push trigger, not one of the 13) was still running when this was written; its verdict is not read here.
 The commit that adds this section is docs only; its own run is named in the report.
+
+## Review (0.9.0)
+
+Independent reader (run `l7-read`), 2026-11-12, own clone. Judged the branch at 7a890a0 plus one reader fix (96e1216). `master` was 9dc295c and was already
+merged into the branch (`git merge-base HEAD origin/master` = 9dc295c), so nothing had to be brought in. Read: the plan's paragraph L7, rows C8 to C13 and L3b,
+this file's stage A and stage B, and the whole diff against `master` (38 files).
+
+Verdict: PASS 96e1216
+
+- **C8 holds.** Read in `crawler.py`: 4xx -> `rp.parse([])` (allow), 5xx -> disallow, a transport error or an endless redirect -> disallow; the answer lives
+  `ROBOTS_TTL_S = 86400` on the injected clock; the body is streamed and cut at 512 KiB at a line end. The cross-site hop: the reader took the check out of
+  `_pace` (`if not self._fetching_robots and not self._allowed(url):` -> `if False:`), ran the one test, saw it red, restored:
+  `E AssertionError: assert <Response [200 OK]> is None` / `1 failed in 8.54s`; restored: `1 passed in 6.86s`, `git status` of `src` clean.
+- **C9 holds.** `403`/`429` left `_BLOCK_STATUSES`; `refused` is set only for them; both browser branches of `runner._process_one` and `render-check --force`
+  stop on it. `fetch_rendered` (the product's own function, which takes the slot and calls `prepare_profile`) is the only caller of `_render_with_crawl4ai`;
+  the test replaces only that last function, so the count goes through the real path. The 406/503 control shows the fake is reached. No other call of
+  `fetch_rendered` exists (`git grep`: cli.py:1004, runner.py:130, runner.py:192).
+- **C10 holds.** `git grep -n -E '"-email"|email_crawl' -- src config skills scripts` finds only the refusal in `config.py`; the helper left with L8.
+- **C11 holds.** `CFEMAIL_RE` is iterated only with `decode_protected`; the four callers pass `cfg.crawl.decode_protected_emails` (default False).
+- **One profile function holds as far as the code goes.** One browser start in `src` (`_render_with_crawl4ai`), reached only through `fetch_rendered`, which
+  calls `prepare_profile` first. The scan test is weaker than its own "Must hold" 3: it asks that the MODULE calls `prepare_profile`, not the function
+  that holds the start; a second caller of `_render_with_crawl4ai` with another folder would pass it. Open, not a failure today.
+- **C12 holds.** Three goldens changed, all three in the list made before regenerating. Compared by the reader against `master`: `sheet_columns.json` and
+  `sheet_export.json` gain only the 8 columns at the end (and the bare row only `-` cells); `tests/fixtures/e2e/expected.json`: 0 rows whose old cells
+  changed, Leads/CSV gain the 8 cells, Drafts the 2, `report`/`requests`/`refused`/`steps` equal. Not in the pre-list but written in "The fake campaign":
+  About +1 row, Summary +2 rows (the licence sentence and one blank spacer; that section says one).
+- **C13 holds.** `send_rules.check` is called inside `compliance.email_eligibility`; its four call sites (export, score, `outreach/plan`,
+  `outreach/send._recompute_eligibility`) pass rows selected with `b.*`/`SELECT *`, so `address_country` is there. Unknown -> `no_send`; DE -> consent; GB + `unmatched` -> consent;
+  it can only narrow.
+- **Terms quotes: 2 of 2 pages found today, 8 of 8 sentences.** One plain GET each, text searched, nothing kept:
+  `https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/` (200; the 4 OGL sentences found) and `https://opencorporates.com/terms-of-use-2/`
+  (200; the 4 OpenCorporates sentences found). The conclusions (DVSA stays with the attribution; OpenCorporates only on the user's own paid contract) follow
+  from them.
+- **Version and safety.** `master` was 0.8.0; `check_versions.py`: all six copies 0.9.0. `pyproject.toml` changes only the version: no new package.
+  `gitleaks git --log-opts="origin/master..HEAD"`: `15 commits scanned` / `no leaks found`. Fixtures: `.example` domains and `0117 496 0xxx` numbers.
+
+**Fixed by the reader (1).** L8's search (`git grep -n -i -E "gosom|maps_list|maps-list|google[_-]maps[_-]scraper|proxies" -- . ':!docs' ':!icm'
+':!CHANGELOG.md' ':!.claude/POSITION-HISTORY.md'`), which is empty on `master`, gave two lines on the branch: `tests/test_export_sources.py:29` and `:133`. The cause
+was that the new test used the old provider name as its made-up source. Renamed to `fakelist`, as in the other tests. The search is empty again (exit 1).
+The slice's test files then gave `163 passed, 1 skipped in 53.71s`.
+
+**Hosted CI of 96e1216** (`gh run view 43189760241`): completed, success, 13 of 13 jobs success: claude plugin validate · fake campaign windows-latest ·
+Validate plugin manifests · Version strings agree · fake campaign ubuntu-latest · windows-latest py3.11/py3.12/py3.13/py3.14 · ubuntu-latest
+py3.11/py3.12/py3.13/py3.14.
+
+**Open (none blocks the merge):** the scan's module-level reach (above). `prepare_profile` seeds only an EMPTY folder, so a folder holding a stray file
+but no `Local State` is handed out unseeded. The crawl4ai start itself and the seed's effect: UNPROVEN here (no browser on this laptop). `regex 2026.11.9`
+in `master`'s own `requirements.lock` is younger than 7 days (not this slice's).
