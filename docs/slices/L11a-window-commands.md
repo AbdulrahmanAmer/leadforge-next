@@ -677,3 +677,118 @@ windows-latest · py3.13  success
 ```
 
 The commit that adds these lines has its own run; its result is in the pull request comment and the run report.
+
+# Build 3: the decisions, and after L7 and L9 (run `l11a-final`, 2026-11-12)
+
+Base: the branch rebased on `origin/master` `0f2d3ff` (0.9.0: L7 merged at `1d741bc`, L9 merged at `0f2d3ff`); the rebase had no
+conflict. Both "After L7 is in" and "After L9 is in" apply. The window's types for reference: `app/ui/src/engine.ts` on
+`origin/slice/L11-window` `0256c42` (read with `git show`); they already carry the decisions below (`CampaignDraft.offer`,
+`CampaignDraft.sicCodes`, `Settings.sources`, no `theme`/`accent` in `Settings`, no `windowVersion` in `About`). Where they and the
+decisions differ, the decisions win; no difference was found.
+
+## What must hold, per decision (written before the code; the diff was read against it after)
+
+1. **run_start** (accepted as built): line 1 the `RunHandle`, then RunEvents, the last one `finished`, `stopped` or `failed`. No change.
+   13 (accepted as built): a start refused before a run exists writes the error document as line 1 and exits non-zero, no handle;
+   `test_a_start_refused_before_a_run_exists_is_one_error_document` stays.
+2. **offer**: `draft.offer` is required text. Missing, not text, or blank: refused with `input`, a detail naming `offer`, nothing
+   written. The given text (trimmed) is the campaign's `offer.what`; the constant "not given: the campaign was made in the window"
+   is gone from the code.
+3. **sicCodes and source**: `draft.sicCodes` is read only when `source` is `companies_house`; then a missing, empty or non-text list
+   is refused with `input`, a detail naming `sicCodes`; a code that is not five digits is refused with `input` by the engine's own
+   check (`Target._sic_codes`). A `companies_house` draft compiles to the engine's company mode (`target.mode: company`,
+   `target.sic_codes`). For any other source `sicCodes` is ignored, whatever it holds. Then, before anything is written: a source
+   that is not among the providers the workspace's `leadforge.yaml` enables (`discovery.providers`) is refused with `input`, a
+   detail naming `source`, and `next` saying which ones this workspace is set to. `settings_get` returns `sources`: the entries of
+   `discovery.providers` that are a `SourceId` (`dvsa`, `companies_house`), in the file's order, each once.
+4. **not_available maps to missing**: no window command emits `not_available`, nor `keyring` for "L9 is not there"; after L9 that
+   case is gone (see "After L9 is in" below). `missing` stays among the seven kinds and no command emits it today.
+5. **Nullable** (present, may be null): `RunStatus.campaign`, `RunStatus.done`, `RunCounts.purged`, `RunCounts.expiringIn30Days`.
+   14: `done` may be null for a finished run too. Already so; no change.
+6. **Nullable**: `Campaign.name`, `Campaign.source`, `Campaign.keptUntil`. Already so; no change.
+7. **Nullable**: `Person.source`, `Person.foundAt`, `Person.campaign`; with L7 in, see "After L7 is in" below.
+8. **theme and accent leave the engine**: `settings_get` returns `workspace`, `sheetFormats`, `openSheetWhenDone`, `sources`; the
+   keys `theme` and `accent` are ABSENT. `settings_set` takes `patch` with `sheetFormats` and `openSheetWhenDone` only and has no
+   rule of its own for `theme` or `accent` any more: like any other key that is not an argument they are `usage` ("not an argument
+   of this command"). `leadforge_data/window-settings.json` is neither written nor read.
+9. **about**: `engineVersion`, `licence`, `licences`; the key `windowVersion` is ABSENT.
+10. **people_list** = the engine's named people, an email or phone only where recorded as that person's. Already so; no change.
+- `KeyStatus.savedAt` null: as it is.
+- 11 (stop between page fetches) and 12 (people_list search): below, each with what must hold.
+
+## After L7 is in (master 0.9.0)
+
+L7's C12 keeps where and when a detail was found in `enrichment_observations` (`source_url`, `observed_at`; no table change, L7
+slice file item 6). The person's own find is the observation `field = 'person.name'` that `enrich/runner.py` writes with the
+person's id when it stores a person from a page.
+- `Person.source` and `Person.foundAt` come from ONE record, never mixed: the newest observation of the shown email (else the shown
+  phone) recorded as that person's; when the person has neither, the newest `person.name` observation of that person (by
+  `person_id`, else by name at the business). `source` is that record's page address (`source_url`), else its `source` name, as
+  C12 does in the sheet; `foundAt` is its `observed_at`; an empty value is null.
+- A person with no such record (stored before the engine kept one, or planted) has `source` null and `foundAt` null: the screen says
+  "not recorded". `people.source_url` alone (a page with no date) is no longer used: a source without its date is not C12.
+- Test seen red first: a person stored by the engine's own persist step (`enrich.runner._persist`, the step a run takes after a
+  site's crawl) with no email or phone has both; a planted person with no record has both null.
+
+## After L9 is in (master 0.9.0)
+
+L9 keeps registry keys in the OS keyring under service `config.KEYRING_SERVICE` (`leadforge`), entry `registry.<name>`, and reads
+them with `config._keyring_get(name)`; `tests/conftest.py` replaces that function with a fake for every test.
+- `keys_list`, and the status `key_save`/`key_remove` answer, read through L9's `config._keyring_get`: the window shows exactly what
+  the engine will read. `key_save` writes and `key_remove` deletes through the `keyring` package's `set_password`/`delete_password`
+  under `config.KEYRING_SERVICE`, entry `registry.<name>` (`keys.default_backend()`; tests replace it with a fake).
+- The "L9 is not in this build" answer and `keys.l9_service` are gone; `make_keys()` cannot fail for that reason any more.
+- Without the `keyring` package (L9's optional extra, not in `requirements.lock`): `environment` (exit 3, "something on this
+  computer is missing"), `next` naming the extra. A backend that raises while saving or removing: `keyring`, the details only the
+  exception's type name (never its text: a backend may quote the value).
+- L9's switch `registry.keyring: false` is not read by the key commands: it decides whether the engine READS the keyring; the
+  window's key screen manages the store either way. (Decision of this run.)
+- Tests: a fake backend that writes into conftest's fake store, never the real keyring: key_save stores (and `config._keyring_get`
+  then returns it, so the engine reads what the window saved), keys_list says set, key_remove removes, a planted value appears in
+  no output and no log. All 21 commands are then done.
+
+## 11: a stop between page fetches (CONTAINED: built)
+
+Must hold: `util.check_stop()` is called before every page fetch of one site (`SiteCrawler.crawl`: before the home page and before
+each further page) and before each page's people extraction and each rendered page (`enrich/runner._process_one`), so a stop is
+seen within one fetch, one extraction or one render; `RunStopped` raised in a pool worker is re-raised, not recorded as a failed
+site, at both `except Exception` sites (`_run_overlapped._crawl_driver`, `_crawl_stage`), and the work not started is cancelled
+(`pool.shutdown(cancel_futures=True)`). The command line never sets the stop file, so `run` and the fake campaign behave as
+before (the fake campaign's saved result is the CI job's check). Test: a loopback site whose further pages each take 2 s; the stop
+flag is written when the first further page is asked for; `run_enrich` (both the overlapped `all` path and `site`) raises
+`RunStopped` within 4 s of the stop, and the business is not recorded as failed.
+
+## 12: people_list search (measured first)
+
+Must hold: measure on the generated 10,000-business workspace (the generator of run `l11a-match`, copied to
+`D:\homelab-work\l11a-final\measure\people_measure.py`), each call its own engine process as the core starts it. Change the query
+or add an index only if the 13 s is there; an index only through the existing create-if-missing DDL and only without a schema
+version change.
+
+## The 21 commands, final keys (P = present, never null; N = present, may be null; A = absent)
+
+| # | Command | Arguments (stdin) | Result keys |
+|---|---|---|---|
+| 1 | campaign_create | `draft` {kinds, places, country, source, offer, sicCodes, maxLeads} | CampaignPlan: campaign, searches, estimatedBusinesses, estimatedSites, estimatedMinutes, warnings, retentionMonths (all P) |
+| 2 | run_start | `args` {campaign, resume} | line 1 RunHandle {runId P}; then RunEvent lines; the end event's `status` is a RunStatus (row 4) |
+| 3 | run_stop | `runId` | RunStatus (row 4) |
+| 4 | run_status | `runId` (text or null) | RunStatus or null: runId P, campaign N, state P, stage P, done N, total N, etaSeconds N, counts {businesses P, contacts P, purged N, expiringIn30Days N}, startedAt P, reason N |
+| 5 | campaigns_list | none | Campaign[]: runId P, name N, kinds P, places P, source N, state P, stage P, startedAt P, keptUntil N, businesses P, withEmail P, withPhone P, tiers {a, b, c} P, sheet N |
+| 6 | sheet_export | `runId` | Sheet: runId, writtenAt, leads, tabs [{name, rows}], files [{kind, path}], highlights (all P) |
+| 7 | sheet_open | `path` | null |
+| 8 | people_list | `query` {search, limit} | PeoplePage: people P, total P, matching P; Person: id, name, role, business, domain P; email N, phone N, source N, foundAt N, campaign N; suppressed P |
+| 9 | person_forget | `value`, `dry_run` (optional) | ForgetResult: kind, value, rows, filesRemoved, filesEdited, warnings (all P) |
+| 10 | address_suppress | `value`, `kind` (text or null) | SuppressResult: kind, value, suppressed (all P) |
+| 11 | purge_report | none | PurgeReport: state, months, total, expired, expiringIn30Days, deleted, armed, suppressed (all P) |
+| 12 | purge_apply | none | PurgeReport (as 11) |
+| 13 | purge_everything | `confirm` (true) | PurgeEverythingResult: filesRemoved P |
+| 14 | retention_get | none | Retention: months, min, max (all P) |
+| 15 | retention_set | `months` | Retention (as 14) |
+| 16 | keys_list | none | KeyStatus[]: name P, saved P, savedAt N (always null) |
+| 17 | key_save | `name`, `value` | KeyStatus (as 16) |
+| 18 | key_remove | `name` | KeyStatus (as 16) |
+| 19 | settings_get | none | Settings: workspace, sheetFormats, openSheetWhenDone, sources (all P); theme A, accent A |
+| 20 | settings_set | `patch` {sheetFormats, openSheetWhenDone} (each optional) | Settings (as 19) |
+| 21 | about | none | About: engineVersion, licence, licences [{name, version, licence, notice}] (all P); windowVersion A |
+
+Every error: `{kind, message, details, next}`, `kind` one of the seven of `engine.ts` `ErrorKind`.
