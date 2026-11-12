@@ -207,7 +207,7 @@ process or file is left in `D:\Temp\lf-install`.
 - The self-test walks the seven screens, one error, one run and its stop, and one refused start; not the dialogs, `sheet_open`,
   a failed run.
 - The single-instance guard was not watched failing. (The self-test's run and its stop now are: see "The self-test".)
-- No CI job (same reason as L10); the permission-check crate would be the cheap one to add.
+- (Settled 2026-11-12: CI job `window · windows-latest`; see "CI" at the end.)
 
 ## Results of the local runs
 
@@ -358,3 +358,22 @@ for a wrong check (the page text was cut at 240 characters before the message; a
 now keeps 600 characters. The second: `shots taken: 11 of 11; probe clean: True`, `key marker in this run's log: False`,
 `expectations missed: 0`, `SELFTEST PASS`.
 Not watched: the 20 s and 120 s bounds firing (a walk that hangs on purpose would need a third window).
+
+## `master` 0.9.0 and CI (2026-11-12)
+
+`master` 0f2d3ff (0.9.0, the collect side, and the keys slice) merged without a conflict (7f58146); the crate follows the engine:
+`Cargo.toml` `[package] version` 0.9.0, `Cargo.lock` by `cargo update -p leadforge-window --offline` (6e2bc3b).
+
+**CI.** Job `window · windows-latest` in `.github/workflows/ci.yml`: Python 3.12 and a `.venv` made the fake-campaign job's way
+(the core's tests start the stand-in and the real engine from it), Node 22 (`npm` cache through `actions/setup-node`, the action the
+workflow already used), `npm ci --ignore-scripts`, `tsc --noEmit`, the Vite build (before the tests: `window-version.test.mjs` checks
+the built bundle and skips without one), `npm test`, then the Rust toolchain from `app/src-tauri/rust-toolchain.toml` (rustc 1.99.1,
+rustfmt and clippy, installed by the runner's own `rustup`; no third-party toolchain action, no cargo cache: no action for it is in
+use), `cargo fmt --check`, `cargo clippy --all-targets --locked -- -D warnings`, `cargo test --locked` for the crate and for
+`permission-check`. On the laptop the installed `stable` is the same rustc 1.99.1 (builds set `RUSTUP_TOOLCHAIN=stable`, so rustup
+does not download a second copy).
+**CI does not run** the installer build, the install proof (`packaging/install-proof.ps1`) or the real-window self-test
+(`packaging/selftest-window.ps1`): they need a desktop session and show a window. The builder runs the self-test on the laptop; the
+coordinator runs the install proof with the owner's normal token.
+**Required checks.** The repository lists required checks nowhere else, so here: a pull request that touches `app/` needs
+`window · windows-latest` green, as well as the existing jobs.

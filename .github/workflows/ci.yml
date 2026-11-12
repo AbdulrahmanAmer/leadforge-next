@@ -74,6 +74,77 @@ jobs:
           python scripts/e2e_fake_campaign.py | tee e2e.out
           if grep -E '^FAIL' e2e.out; then exit 1; fi
 
+  # The window (app/): the screens' typecheck, tests and build, then the Rust core's format, lint and tests (the core's
+  # tests start the stand-in and the real engine from .venv, made the way the job above installs). Not the installer and
+  # not the real-window self-test: those need a desktop and are run on the laptop (docs/slices/L11-window.md, "CI").
+  window:
+    name: window · windows-latest
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Engine for the core's tests (.venv; hashed lock, then editable without deps)
+        run: |
+          python -m venv .venv
+          .venv/Scripts/python.exe -m pip install --disable-pip-version-check --require-hashes -r requirements.lock
+          .venv/Scripts/python.exe -m pip install --disable-pip-version-check --no-deps --no-build-isolation -e .
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/ui/package-lock.json
+
+      - name: Screens - npm ci --ignore-scripts
+        working-directory: app/ui
+        run: npm ci --ignore-scripts
+
+      - name: Screens - tsc --noEmit
+        working-directory: app/ui
+        run: npm run typecheck
+
+      # before the tests: window-version.test.mjs checks the built bundle (it skips without dist/); the core embeds dist
+      - name: Screens - vite build
+        working-directory: app/ui
+        run: npm run build
+
+      - name: Screens - npm test
+        working-directory: app/ui
+        env:
+          LEADFORGE_TEST_PYTHON: ${{ github.workspace }}\.venv\Scripts\python.exe
+        run: npm test
+
+      # rust-toolchain.toml beside the crate pins the version and components; the runner's own rustup installs it.
+      - name: Rust toolchain from rust-toolchain.toml
+        working-directory: app/src-tauri
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+
+      - name: Core - cargo fmt --check
+        working-directory: app/src-tauri
+        run: cargo fmt --check
+
+      - name: Core - cargo clippy (warnings are errors)
+        working-directory: app/src-tauri
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Core - cargo test
+        working-directory: app/src-tauri
+        run: cargo test --locked
+
+      - name: Permission check - cargo test
+        working-directory: app/src-tauri/permission-check
+        run: cargo test --locked
+
   versions:
     name: Version strings agree
     runs-on: ubuntu-latest
