@@ -64,6 +64,9 @@ agent:                             # v0.4 headless agent runner (ADR-015): your 
   isolate: true                    # auto-detected command only: add --strict-mcp-config + disable hooks (~3x faster, no operator MCP/hook noise); ignored when `command` is set explicitly
   max_concurrent: 2                # process-level cap on simultaneous `claude` invocations
 
+retention:
+  months: 12                      # a business and everything attached to it expires this many months after the run that first found it (1 to 12: shorten only)
+
 export:
   formats: [xlsx, csv]
   auto_open: true                 # open the finished XLSX automatically (skipped in CI / LEADFORGE_NO_UI)

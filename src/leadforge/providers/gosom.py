@@ -41,9 +41,18 @@ class GosomProvider(DiscoveryProvider):
         return True, f"v{GOSOM_VERSION}"
 
     def fetch(self, query: PlannedQuery, limit: int | None = None) -> list[RawListing]:
-        d = self.cfg.discovery
+        """Raw scraper output holds reviewers' names and review texts; it is deleted as soon as it was parsed, on every
+        way out of this call (C6). A finished query's listings are rows in the database, so resuming does not need it."""
         out_path = self.cfg.cache_dir / f"gosom_{sha1_hex(query.text + str(query.tile), 8)}.json"
         qfile = out_path.with_suffix(".queries.txt")
+        try:
+            return self._fetch(query, limit, out_path, qfile)
+        finally:
+            for raw_file in (out_path, qfile):
+                raw_file.unlink(missing_ok=True)
+
+    def _fetch(self, query: PlannedQuery, limit: int | None, out_path: Path, qfile: Path) -> list[RawListing]:
+        d = self.cfg.discovery
         qfile.write_text(query.text + "\n", encoding="utf-8")
 
         # A small --limit is a smoke test: one results page (~20 listings) is enough; full depth

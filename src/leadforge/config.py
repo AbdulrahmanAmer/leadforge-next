@@ -279,6 +279,12 @@ class ExportCfg(BaseModel):
     auto_open: bool = True  # open the finished XLSX with the OS default app (skipped in CI)
 
 
+class RetentionCfg(BaseModel):
+    """How long a business and everything attached to it is kept (C5): counted from the run that first found it.
+    The user can shorten the period, never lengthen it."""
+    months: int = Field(12, ge=1, le=12)
+
+
 class Config(BaseModel):
     data_dir: str = "leadforge_data"
     default_region: str = "US"
@@ -291,6 +297,7 @@ class Config(BaseModel):
     registry: RegistryCfg = Field(default_factory=RegistryCfg)
     social: SocialCfg = Field(default_factory=SocialCfg)
     export: ExportCfg = Field(default_factory=ExportCfg)
+    retention: RetentionCfg = Field(default_factory=RetentionCfg)
     outreach: OutreachCfg = Field(default_factory=OutreachCfg)
     draft: DraftCfg = Field(default_factory=DraftCfg)
     agent: AgentCfg = Field(default_factory=AgentCfg)
