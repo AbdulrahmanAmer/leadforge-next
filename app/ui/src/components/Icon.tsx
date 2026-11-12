@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 
 /**
  * Single icon registry, as in the design farm: components name an icon, the set lives in one place.
- * Hand-drawn here on a 24 grid (round caps, 1.75 stroke) so the window carries no icon package.
+ * Hand-drawn here on a 24 grid (round caps and joins, 1.75 stroke, quarter-unit coordinates) so the
+ * window carries no icon package.
  */
 const paths = {
   campaign: (
@@ -39,7 +40,7 @@ const paths = {
   key: (
     <>
       <circle cx="8" cy="15.5" r="4.25" />
-      <path d="m11 12.5 8.75-8.75M16.5 7l2.75 2.75M13.75 9.75l2 2" />
+      <path d="M11 12.5 19.75 3.75M16.5 7l2.75 2.75M13.75 9.75l2 2" />
     </>
   ),
   settings: (
@@ -52,10 +53,10 @@ const paths = {
   search: (
     <>
       <circle cx="11" cy="11" r="6.5" />
-      <path d="m16 16 4.25 4.25" />
+      <path d="M16 16l4.25 4.25" />
     </>
   ),
-  check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
+  check: <path d="M5 12.5 9.5 17 19 7.5" />,
   alert: (
     <>
       <path d="M12 4 21 19.5H3z" />
@@ -69,7 +70,7 @@ const paths = {
     </>
   ),
   stop: <rect x="6.5" y="6.5" width="11" height="11" rx="2" />,
-  play: <path d="M8 5.5v13l10.5-6.5z" />,
+  play: <path d="M8 5.5v13L18.5 12z" />,
   clock: (
     <>
       <circle cx="12" cy="12" r="8.5" />
@@ -78,41 +79,41 @@ const paths = {
   ),
   forget: (
     <>
-      <path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.9 12.5h9.2L17.500 7" />
+      <path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.9 12.5h9.2L17.5 7" />
       <path d="M10 11v5M14 11v5" />
     </>
   ),
   suppress: (
     <>
       <circle cx="12" cy="12" r="8.5" />
-      <path d="m6 6 12 12" />
+      <path d="M6 6l12 12" />
     </>
   ),
   sheet: (
     <>
-      <path d="M6.5 3.5H14l4.500 4.500v12.500h-12z" />
-      <path d="M13.500 3.500v5h5M9 12.500h6M9 16h6" />
+      <path d="M6.5 3.5H14L18.5 8v12.5h-12z" />
+      <path d="M13.5 3.5v5h5M9 12.5h6M9 16h6" />
     </>
   ),
   refresh: (
     <>
-      <path d="M19.500 12a7.500 7.500 0 1 1-2.200-5.300" />
-      <path d="M19.750 4.500v4.250H15.500" />
+      <path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" />
+      <path d="M19.75 4.5v4.25H15.5" />
     </>
   ),
   sun: (
     <>
-      <circle cx="12" cy="12" r="3.750" />
-      <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.640 5.640l1.410 1.410M16.950 16.950l1.410 1.410M5.640 18.360l1.410-1.410M16.950 7.050l1.410-1.410" />
+      <circle cx="12" cy="12" r="3.75" />
+      <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.64 5.64l1.41 1.41M16.95 16.95l1.41 1.41M5.64 18.36l1.41-1.41M16.95 7.05l1.41-1.41" />
     </>
   ),
-  moon: <path d="M19.500 14.250A8 8 0 0 1 9.750 4.500a8 8 0 1 0 9.750 9.750z" />,
+  moon: <path d="M19.5 14.25A8 8 0 0 1 9.75 4.5a8 8 0 1 0 9.75 9.75z" />,
   minus: <path d="M6 12h12" />,
   plus: <path d="M12 6v12M6 12h12" />,
   source: (
     <>
-      <path d="M10.250 13.750a3.750 3.750 0 0 0 5.300 0l3.200-3.200a3.750 3.750 0 0 0-5.300-5.300l-1.200 1.200" />
-      <path d="M13.750 10.250a3.750 3.750 0 0 0-5.300 0l-3.200 3.200a3.750 3.750 0 0 0 5.300 5.300l1.200-1.200" />
+      <path d="M10.25 13.75a3.75 3.75 0 0 0 5.3 0l3.2-3.2a3.75 3.75 0 0 0-5.3-5.3l-1.2 1.2" />
+      <path d="M13.75 10.25a3.75 3.75 0 0 0-5.3 0l-3.2 3.2a3.75 3.75 0 0 0 5.3 5.3l1.2-1.2" />
     </>
   ),
 } satisfies Record<string, ReactNode>;

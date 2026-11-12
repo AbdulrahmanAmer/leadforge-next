@@ -39,6 +39,14 @@ Exit codes the shell maps to the window's error kinds: 1 `failed`, 2 `usage`, 3 
 `input` (`InputError`), 5 `source` (`ProviderFailed`) (util.py:25 to 38); a keyring fault is `keyring`; a row marked
 "Missing" answers `missing` until the engine has the command.
 
+Two things `run` does by itself today, which the shell has to settle before row 2 is true:
+- **It pops a console window.** Started without a terminal, `run` opens its own progress console on Windows
+  (`_progress_ui`, pipeline.py:47 to 57, when `progress_window` is true, the default, config.py:285). The window replaces
+  that console (ADOPT 3, "may go"), so until L11 removes it the shell runs with `config set progress_window false`.
+- **It opens the sheet.** At the end of the export stage `run` opens the xlsx in the program Windows uses when
+  `export.auto_open` is true (pipeline.py:550 to 553). That is the "Open the sheet when a run finishes" switch in Settings,
+  so the engine, not the window, does the opening after a run.
+
 ## Tauri commands (for the shell's author)
 
 Types are those of `app/ui/src/engine.ts`. Every command rejects with `{ kind, message, details: string[], next: string | null }`.
