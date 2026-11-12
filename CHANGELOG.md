@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+Collect side, stage A (slice L7). A site's robots.txt answer is used for at most 24 hours and at least 500 KiB of the file is read; a redirect
+to another site is checked against that site's robots.txt (tested against a loopback server). A 403 or 429 is final: no browser is started
+after it, also not with `render-check --force`. The helper program's `-email` switch is gone and the config key `discovery.email_crawl` is
+refused with a message. Protected (Cloudflare) e-mail addresses are no longer decoded unless `crawl.decode_protected_emails` is set. Every
+browser the product starts takes its profile folder from one function, which seeds a new folder before the first start.
+
 ## [0.7.3] — 2026-11-12
 
 The fake-campaign check runs on Linux too (its network guard now refuses any DNS question, even to a loopback stub resolver) and

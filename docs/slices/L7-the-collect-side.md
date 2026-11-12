@@ -5,8 +5,52 @@ exports, the sheets or the send path, and sets no version. Stage B continues the
 
 ## Findings at the top
 
-(Filled in by item 8, the terms of each source. Nothing is removed in this slice; a source whose terms forbid this use
-is written here and leaves the public tool in a later step.)
+The terms of each remaining source, read on 2026-11-12 with a plain GET of each page (saved and stripped to text; every quote below
+is a sentence of that text, not from memory). Nothing is removed in this slice. Summary: **3 may stay (one of them only on a condition),
+0 must leave, 0 pages that could not be read; user lists have no terms page at all.**
+
+1. **Companies House API - may stay (UNPROVEN: no formal terms page was found).**
+   Read: `https://developer.company-information.service.gov.uk/developer-guidelines` (200) and
+   `https://developer-specs.company-information.service.gov.uk/guides/developerGuidelines` (200), also the hub's get-started page and the
+   specs introduction. They carry no condition on what the data is used for. The only conditions: "You can make up to 600 requests within a
+   5 minute period." and "We reserve the right to ban without notice applications that regularly exceed or attempt to bypass the rate limits."
+   (plus key-handling advice). The hub's footer has "Policies" with one link, to cookies; a guessed `/terms-and-conditions` answered 404.
+   The footer's "Crown copyright" link was not followed. Settled by: Companies House (or a lawyer) saying whether a terms page exists that the
+   hub does not link.
+2. **DVSA active MOT stations list - may stay, with two conditions.**
+   Read: `https://www.data.gov.uk/dataset/87de9bf8-b936-44ff-89c4-f69f8f9bb9c1/mot-test-centres` (200: "Publisher Driver and Vehicle Standards
+   Agency ... Licence UK Open Government Licence (OGL)") and the licence, `https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/` (200).
+   Quotes: "You are free to: ... exploit the Information commercially and non-commercially for example, by combining it with other Information,
+   or by including it in your own product or application." / "You must (where you do any of the above): acknowledge the source of the Information
+   in your product or application ..." / "Contains public sector information licensed under the Open Government Licence v3.0." / "This licence
+   does not cover: personal data in the Information;".
+   Condition A (not met today): the attribution. `git grep -i "Open Government Licence"` finds nothing in the repository; the sentence belongs in
+   the README / `docs/COMPLIANCE.md` (L12) and, better, in the export's Summary sheet (stage B touches the sheets). Condition B: the list carries
+   telephone numbers of stations, some of which may be a sole trader's; the licence does not cover personal data, so lawful basis stays the
+   user's (README, L12).
+3. **OpenCorporates - may stay ONLY on the user's own paid key; the head should decide the default.**
+   Read: `https://opencorporates.com/terms-of-use-2/` (200) and `https://opencorporates.com/legal-information/enterprise-api-terms-of-service/` (200).
+   Quotes: "For the avoidance of doubt, financial institutions, corporations, government departments and regulatory authorities are not Permitted Users."
+   / "If you are not a Permitted User, and you wish to use OpenCorporates or access our company data, you must enter into a separate contract with us
+   to purchase the right and permission to use OpenCorporates and access or use company data." / "The OpenCorporates API may be used only with an API
+   key. API keys are available in two ways: free of charge to Permitted Users (share-alike keys) and for a fee under our non-share-alike API terms
+   ... for example for use in commercial or proprietary applications." / "Using any automated system (e.g. scraping) to extract data for any purpose
+   other than search engine indexation;" is prohibited. From the API terms: "No product or service usable by any third party may make use of our API
+   in order to function" (internal-use licence) and "Where the `restricted_for_marketing` field has been set in any API data returned to you ...
+   you ... may not use the restricted data for marketing or advertising purposes in any event."
+   So the terms do not forbid this use, but a lead-generation business needs its own paid contract, and the tool must say so. Two things the code
+   does not do today (both belong to L9, which already holds the OpenCorporates provider): it does not read `restricted_for_marketing`
+   (`git grep restricted_for_marketing` finds nothing), and nothing tells the user a paid key is required. Recommendation: the provider stays off
+   unless the user has set their own key AND confirmed a paid contract in the config; rows carrying `restricted_for_marketing` never reach an
+   outreach list.
+4. **User lists - no terms page exists** (the user's own files). Nothing to read; their lawful basis is theirs (L12's README).
+
+## The one request (item 9)
+
+2026-11-12T09:04:01 (local, UTC+02:00), one GET with the body thrown away, to the address in `discovery.dvsa.url`
+(`https://assets.publishing.service.gov.uk/media/69a0638bc497bac082bc7741/active-mot-stations.csv`): **status 200, 2,391,015 bytes, content type
+`text/csv`, 1 redirect** to a newer file (`.../media/6abcee45943e890cb55e5d00/active-mot-stations.csv`). The address is live and the loader
+(`providers/dvsa.py`, `follow_redirects=True`) follows the redirect, so no change is needed. No other request went to any source.
 
 ## Spec
 
@@ -99,3 +143,95 @@ Must hold:
 4. gosom starts its own browser inside the helper program: LeadForge cannot give it a profile. Written under "Plan and code disagree";
    the helper leaves the public tool in L8.
 
+### Checks by reading, after the code (each item against its "Must hold")
+
+- Item 1: `ROBOTS_TTL_S = 86400` is read in `_robots_for` with the injected clock (`now - self._robots_at[host] < ROBOTS_TTL_S`), also for the
+  dead-host answer. `_robots_lines` reads at most 512 KiB (524,288 bytes, above 500 KiB), cuts at the last line end, decodes with `replace`.
+  4xx -> `rp.parse([])` (allow), 5xx -> disallow, any `httpx.HTTPError` (including too many redirects) -> disallow. The robots request is made with
+  `_fetching_robots` set, so its own redirect hops are exempt from the hop check (they are how the answer is found); every other request, hops
+  included, is checked in `_pace`. 5 holds, with the red below (M1). Not changed, said plainly: the per-business crawler object means the 24 hour
+  life matters little inside one run; it is the contract the row asks for.
+- Item 2: `_BLOCK_STATUSES` lost 403 and 429; `refused` is set for them in `crawl()`; `_process_one` has both browser branches behind
+  `not res.refused` (a second, redundant guard: with only the runner guard removed the zero-start test stays green, with only the crawler
+  change removed `test_c9_the_crawler_marks...` goes red; both removed, the zero-start test goes red: M7 and M8 below); `render-check` has the
+  `elif res.refused` branch before `--force`. `render_check` with the 200 control still starts one (the fake works).
+- Item 3: the `-email` line is deleted; `DiscoveryCfg` refuses the key in a `mode="before"` validator, so file, environment and `config set`
+  all go through it; the message names the key and why. `_allowed` is called in `crawl()`, `_get`, `_crawl_aggregator`, `render-check`, the
+  runner's second browser branch and `_pace` (every hop); `resolve_domain` goes through `crawl()`. No path skips it (read: `git grep "_allowed\|\.crawl("`).
+- Item 4: `extract_emails(..., decode_protected=False)`; `CFEMAIL_RE` is only iterated when True; the four callers (runner x3, render-check) pass
+  `cfg.crawl.decode_protected_emails` (default False). Two older tests that asserted the decoding as a default now pass `decode_protected=True`
+  (cause: they encoded the behaviour C11 removes; the assertions are unchanged).
+- Item 5: `prepare_profile` creates the folder, and when it is empty writes the file to a temp name and `os.replace`s it, so the file exists whole
+  before the path is returned. `browser.fetch_rendered` and `maps_list._ensure_browser` both call it; each live browser takes the lowest free slot
+  (`crawl4ai-0`, `maps-list-0` ...), because a browser keeps its folder locked and the render gate allows `browser_concurrency` renders at once.
+  Maps moved from `launch()` + `new_context()` to `launch_persistent_context()` with the same locale, viewport, user agent and proxy.
+
+### What the tests are, and the red of each (a line of code broken, the test run, the line restored)
+
+Old tests changed, with cause: `test_crawl_of_blocked_home_flags_browser` and `test_home_block_status_never_fetches_secondary_pages` used a 403 to
+stand for "block-shaped, browser-eligible", which C9 removes (they use 406 now); `test_read_timeout_does_not_mark_host_dead` faked a slow server
+by patching `client.get`, and robots.txt is now read through `client.stream`, so the fake missed it and a real DNS question went out for the
+`.invalid` name (ConnectError, host marked dead): the fake now covers `stream` too.
+
+| mutation (one line of code broken, then restored) | test that went red | first failing line |
+|---|---|---|
+| M1 hop check removed from _pace (if not self._fetching_robots and not self._allowed(url): -> if False:) | `test_collect_side.py::test_c8_cross_site_redirect_hop_is_checked_against_the_other_sites_robots` | `AssertionError: assert <Response [200 OK]> is None` |
+| M2 the 24 hour life ignored | `test_collect_side.py::test_c8_a_robots_answer_lives_24_hours` | `AssertionError: assert (<Response [200 OK]> is None)` |
+| M3 5xx no longer forbids | `test_collect_side.py::test_c8_a_5xx_robots_answer_forbids[500]` | `AssertionError: assert <Response [200 OK]> is None` |
+| M4 4xx forbids instead of allowing | `test_collect_side.py::test_c8_a_4xx_robots_answer_allows[404]` | `AssertionError: assert None is not None` |
+| M5 file cut at 300 KiB instead of 512 KiB | `test_collect_side.py::test_c8_a_robots_file_of_600_kib_is_read_to_at_least_500_kib` | `AssertionError: assert (<Response [200 OK]> is None)` |
+| M6 an endless robots redirect allows | `test_collect_side.py::test_c8_a_robots_redirect_without_end_forbids` | `AssertionError: assert (<Response [200 OK]> is None)` |
+| M7 403 and 429 offered the browser again at the crawler (statuses back in _BLOCK_STATUSES) | `test_collect_side.py::test_c9_the_crawler_marks_a_refusal_and_does_not_offer_the_browser[403-False-True]` | `assert (True, True) == (False, True)` |
+| M9 render-check --force goes round a refusal | `test_collect_side.py::test_c9_render_check_force_does_not_go_round_a_refusal[403-0]` | `AssertionError: assert 1 == 0` |
+| M10 the -email argument is put back | `test_collect_side.py::test_c10_the_helper_never_gets_the_email_argument` | `AssertionError: assert (['gosom-fake', '-input', <tmp> '-json', ...] and '-email' not in ['gosom-fake', '-input', <tmp> '-json', ...])` |
+| M11 the email_crawl key is accepted again | `test_collect_side.py::test_c10_the_email_crawl_key_is_refused_with_a_message[true]` | `Failed: DID NOT RAISE ValidationError` |
+| M13 the switch is ignored by the runner (callers do not pass it) | `test_collect_side.py::test_c11_decoding_is_on_request_only` | `AssertionError: assert 'owner@garage.example' in {}` |
+| M8 both layers broken: statuses back in _BLOCK_STATUSES AND the runner's refused guard removed (zero-start test) | `test_collect_side.py::test_c9_a_refusal_starts_zero_browsers[403]` | `AssertionError: assert ['http://127.0.0.1:59037/'] == []` |
+| M12 the extractor decodes by default | `test_collect_side.py::test_c11_the_extractor_does_not_decode_unless_told_to` | `AssertionError: assert {'owner@garag...': 'personal'} == {}` |
+| M12b the config switch defaults to on | `test_collect_side.py::test_c11_a_protected_address_is_not_stored_by_default` | `AssertionError: assert (True is True and {'owner@garag...age.example'}} == {}` |
+| M14 the crawl4ai start no longer sets user_data_dir | `test_browser_profile.py::test_every_browser_start_in_the_product_goes_through_the_profile_function` | `AssertionError: assert ['leadforge/e...ser_data_dir'] == []` |
+| M15 Maps goes back to a throw-away launch() | `test_browser_profile.py::test_every_browser_start_in_the_product_goes_through_the_profile_function` | `AssertionError: assert ['leadforge/p...away profile'] == []` |
+| M16 the profile is not seeded (prepare_profile writes nothing) | `test_browser_profile.py::test_a_new_profile_folder_holds_the_seeded_file_when_it_is_handed_out` | `FileNotFoundError: [Errno 2] No such file or directory: '<tmp>/test_a_new_profile_folder_hold0\\profiles\\tool-0\\Local State'` |
+| M17 render path does not call prepare_profile (profile folder never seeded before the fake start) | `test_collect_side.py::test_c9_other_block_shaped_statuses_still_get_the_browser[406]` | `assert [False] == [True]` |
+
+Not red-tested: the validation of a profile name (six bad names, each raises), the slot numbering, and the second half of the cross-site test
+(its control: the same hop to an allowed path is fetched, which keeps the red above from being a broken server).
+
+### Plan and code disagree (3)
+
+1. Plan: "one profile function for every browser the product starts". Code: `gosom` is a downloaded helper program that starts its own browser
+   inside itself; LeadForge passes it no profile folder and cannot (`providers/gosom.py` builds its argument list; whether the helper has a
+   `-user-data-dir`-like switch is UNKNOWN, and running it to find out is forbidden here). Not built. It leaves the public tool in L8.
+2. Plan: same. Code: `doctor --fix --full` runs the library's own `crawl4ai-setup` (`doctor.py`, the `post` step), which downloads browsers and
+   may start one to check; that start is not ours to give a profile. Not built; UNPROVEN whether it starts one. `dashboard.py` opens the user's own
+   browser on their own profile with `webbrowser.open` (not a new profile; not covered by the scan).
+3. Plan (ADOPT C8): "a clock is injected for the cache". Code: the crawler object is created per business (`runner._process_one`), so a 24 hour
+   life is only visible to a long-lived crawler object; there is no cross-business robots cache. Built as the row says (injected clock, tested);
+   a shared cache would be a design change and is not made.
+
+### UNPROVEN
+
+- The crawl4ai start itself (`BrowserConfig(user_data_dir=..., use_persistent_context=True)`) and the Playwright persistent context of Maps: no
+  browser is installed or started on this laptop, and crawl4ai is not installed in this environment. Settled by: a run of `render-check --force` on
+  a loopback page, and a Maps test, on a machine with a browser (CI's job has no browser either; "not run on STRIKERFORCE: needs a browser").
+  The names `user_data_dir` and `use_persistent_context` are the library's documented ones as far as I know; not checked against the installed version.
+- That the seeded `Local State` stops the failed Windows logon: this laptop has no account password (ADOPT risk 15); proof is the one on the other
+  laptop at the setup's last step.
+- Companies House terms: see finding 1.
+
+## For stage B
+
+Left: C12 (every exported e-mail and phone carries its source address and date; list each golden that changes BEFORE regenerating), C13 (send
+rules by country wired in), item 10 (the fake campaign's saved result; C12 moves cells, predict them first), and the version (0.9.0 in every copy
+and a dated CHANGELOG heading in place of `## [Unreleased]`, if L6 is merged and everything is done).
+What stage B must know about what stage A changed:
+- `extract_emails` has a third argument; nothing in the exports calls it. The fake campaign (`scripts/e2e_fake_campaign.py`) was not run in
+  stage A; `git grep -il cfemail scripts tests/fixtures` finds nothing, so C11 should not move it (UNPROVEN until it is run).
+- A 403 or 429 home page now ends with `needs_browser` False, `refused` True, and `error` `home unreachable (status:403)` as before; nothing
+  in `export.py` / `outreach/plan.py` reads `needs_browser`, so the sheets say what they said.
+- New config key `crawl.decode_protected_emails` (default False); removed key `discovery.email_crawl` (a config that holds it is refused).
+- `Config.browser_profiles_dir` (`leadforge_data/browser-profiles`) is new workspace state; L6's `purge`/`forget` does not touch it (it holds
+  browser state, not lead data) - check that when merging.
+- The DVSA terms finding (attribution) and the OpenCorporates findings (`restricted_for_marketing`, paid key) need a home: the Summary sheet
+  line is stage B's (it touches the sheets); the rest is L9 / L12.
+- CI results of stage A are in the pull request and the report, not here.
