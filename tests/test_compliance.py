@@ -11,7 +11,7 @@ from leadforge import compliance as c
 def _row(**kw) -> sqlite3.Row:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    cols = {"domain": None, "enrich_json": "{}", "phone_e164": None}
+    cols = {"domain": None, "enrich_json": "{}", "phone_e164": None, "address_country": "GB"}
     cols.update(kw)
     keys = ", ".join(cols)
     conn.execute(f"CREATE TABLE t({keys})")

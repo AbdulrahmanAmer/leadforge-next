@@ -268,7 +268,7 @@ date cell are present and well formed (a URL or the stated words; `YYYY-MM-DD` o
 Goldens and saved results that change (listed BEFORE regenerating):
 | file | change | reason |
 |---|---|---|
-| `tests/golden/sheet_columns.json` | `DEFAULT_COLUMNS` and `ACCOUNT_COLUMNS` gain the 8 columns at the end; new key `SOURCE_COLUMNS` | C12 changes the sheet contract |
+| `tests/golden/sheet_columns.json` | `DEFAULT_COLUMNS` and `ACCOUNT_COLUMNS` gain the 8 columns at the end | C12 changes the sheet contract |
 | `tests/golden/sheet_export.json` | `csv_header` and `xlsx` header gain the 8 columns; `bare_row` gains the 8 keys (`-`) | same; the bare row has no e-mail and no phone |
 | `tests/fixtures/e2e/expected.json` (the fake campaign's saved result) | the Leads tab and the CSV gain the 8 columns; the Drafts tab gains 2; each row's new cells hold the page address and date | same |
 No other golden holds a sheet (`dm_handoff`, `draft_handoff`, `provenance`, `workspace_schema`, `campaign_file`, `agent_contract`... carry no sheet columns; the schema golden is unchanged
