@@ -21,7 +21,6 @@ from leadforge.config import Config
 from leadforge.util import InputError
 
 MARKER = "retention_armed_at"   # meta key: the first purge pass has been made on this workspace
-MAX_MONTHS = 12
 REDACTED = "[forgotten]"
 KEEP_IN_DATA_DIR = ("bin", ".doctor_ok.json")   # the pinned helper program and the doctor's stamp are not personal data
 
