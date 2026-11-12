@@ -1,297 +1,147 @@
 # LeadForge
 
-**Internal B2B lead-generation engine.** Scrapes public business listings with open-source engines, deep-crawls
-each business's website for contacts and the likely decision maker, scores every lead against your ICP, and
-exports a clean, explained XLSX/CSV. Ships as one repo that installs into **Claude Code** and **OpenAI Codex**
-as a plugin + Agent Skill.
+> **Internal tool, not a product.** It is not offered to others as a service, and nothing here says it is safe to use on people's data without thought.
+> Whether that label changes is the owner's decision.
 
-> Internal tool, not a product. OSS-only: **no paid APIs, no API keys required** on the default path.
+## What it is, and is not
 
-## How it works
-
-![How LeadForge works, in five steps](docs/diagrams/01-how-it-works.png)
-
-## Why it exists
-
-Doing this by hand is slow; doing it inside an AI chat burns enormous tokens on page dumps. LeadForge moves all
-the heavy lifting into a Python CLI and leaves the agent three jobs: interview you about your ideal customer,
-launch the pipeline, and judge who the decision maker is from tiny pre-extracted snippets. A full campaign costs
-the agent **under ~15k tokens** — the pipeline itself processes hundreds of pages that never touch the model.
-
-![Token economics: LeadForge vs scraping inside a chat](docs/diagrams/07-token-economics.png)
+- LeadForge finds businesses in public registers, reads each business's own public website, scores the businesses against what you offer, and writes a sheet (`.xlsx`, `.csv`, `report.json`).
+- Today the registers it ships are the DVSA list of MOT test stations and Companies House (a free key). Both are UK. No text-search source ships; a provider can be added as a separate package.
+- The engine is Python with a command line (`leadforge`). The desktop window (Rust and Tauri core, React screens) starts that engine and nothing else.
+- It keeps what it found for a set number of months (12 by default, 1 to 12), and can forget a person, suppress an address, purge, and delete everything.
+- The window sends nothing and has no send action.
+- The engine's command line does have an `outreach` group. `outreach send` writes `.eml` files and sends nothing unless `outreach.armed: true`, `--live` and `--i-am <name>` all agree. Nothing in the window calls it, and `run` never sends.
+- It does not log in to anything, probe mailboxes, scrape LinkedIn or evade anti-bot measures. It reads `robots.txt` and leaves a site that answers 403 or 429 alone.
+- It does not decide whether you may contact someone, give anyone a notice, or record consent. Those duties are the user's. [`docs/data-and-deletion.md`](docs/data-and-deletion.md) is not legal advice.
+- Version 0.9.0, with unreleased work on this branch ([`CHANGELOG.md`](CHANGELOG.md)). Not everything is proven: see [Limits](#limits).
 
 ## Install
 
+### The Windows app
 
-| Harness | Commands |
-|---|---|
-| **Claude Code** | `/plugin marketplace add AbdulrahmanAmer/leadforge` then `/plugin install leadforge@leadforge` |
-| **Codex** | `codex plugin marketplace add AbdulrahmanAmer/leadforge` then install "LeadForge" from `/plugins` |
-| **Any Agent-Skills harness** | `npx skills add AbdulrahmanAmer/leadforge` |
-| **Plain CLI / bridge** | `git clone …` then `python install.py` |
+**No installer is published yet.** `gh release list` for this repository printed nothing on 2026-11-12. Build it from source: [`docs/development.md`](docs/development.md).
 
-Then, once, in the folder where you want your lead data to live:
+What the installer is, as built today (Tauri's NSIS, `installMode: currentUser`):
 
-```bash
-leadforge doctor --fix --full  # installs deps AND the quality extras (GLiNER NER + crawl4ai browser)
+- **Per user. No administrator right.** The installer asks for none. A silent install by an ordinary (not elevated) token passed with no administrator prompt (slice L11).
+- **It puts** the app and the bundled engine (python.org's embeddable Python 3.12 and the hashed lock's packages) in `%LOCALAPPDATA%\LeadForge` by default. The proof installed into a folder it chose; the default folder is read from the installer's script and was not seen in a double-click install.
+- **The app's data** is `%LOCALAPPDATA%\app.leadforge.window\`: the workspace (`workspace\`, with `leadforge_data\` inside), and a lock file. The window's own log and web view profile are kept under the user profile too (exact folders not checked).
+- **Not carried:** the quality extras (no name-extraction model, no browser tier) and the `keyring` package, so the window cannot keep a key (see [Keys](#keys)).
+- **It is unsigned.** Windows SmartScreen warns.
+- **Remove it** with `uninstall.exe` in the install folder. The silent uninstall left no process, no file and no uninstall registry key behind. The uninstaller removes the app data folders only if you tick "delete app data"; otherwise your workspace stays. Use Data, "Delete everything" first if you want it gone. The entry in Windows' installed-apps list was not checked.
+
+### From source, with the hashed lock (as CI does)
+
+Python 3.11 or later.
+
+```powershell
+py -3.12 -m venv .venv
+.venv\Scripts\python.exe -m pip install --require-hashes -r requirements.lock
+.venv\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e .
+.venv\Scripts\leadforge.exe --version
 ```
 
-Requires **Python 3.11+**. No compiler needed — every default dependency is a pure-python wheel.
-Windows, macOS and Linux are equal citizens.
+Optional extras: `.[browser]` (rendering for sites that refuse a plain fetch), `.[ner]` (local name and title extraction; fetch the model with
+`leadforge doctor --fix --full`), `.[keyring]`, `.[dev]`. `doctor --fix` installs with pip and no hashes.
 
-### Upgrade an older or customized LeadForge copy
+### As an agent skill
 
-If you already have a LeadForge copy with local changes, do not overwrite it with a fresh checkout. Clone the
-target release into a separate directory, compare it with your current workspace, and merge the upstream changes
-selectively while preserving your configuration, lead data, exports, and intentional customizations. The complete
-copy-paste instructions for Claude Code, Codex, and other coding agents are in the
-[`customized-workspace upgrade prompt`](docs/UPGRADE-MERGE-PROMPT.md). The current stable target is `v0.6.0`.
+The repository is also a Claude Code and Codex plugin: manifests in `.claude-plugin/` and `.codex-plugin/`, skills in `skills/generate-leads` and
+`skills/send-outreach`. `claude plugin validate` runs in CI. Installing it through a marketplace was not exercised for this repository: not checked.
+`python install.py` from a clone installs both skills for the harnesses it finds (`--check` changes nothing). Install both skills together; a single-skill
+install is not a supported route.
 
-The upgrade workflow includes a safety-point check, three-way comparison, schema/config/version review, focused
-tests followed by the full suite, secret/generated-file checks, and an explicit final report. It does not use
-destructive reset/checkout operations or force-pushes.
+## The first campaign
 
-## Use it (the normal way)
+### In the window
 
-Just ask your agent:
+1. **Campaign:** type a kind of business ("car repair"), a place ("Bristol"), the country (`GB`), and what you offer in one or two lines. Choose "Check the plan". Nothing is collected yet.
+2. **Start the run.** The **Run** screen shows six stages. "Stop the run" ends it between two businesses; "Continue the run" resumes it.
+3. **Results:** "Open the sheet", or "Write it again".
 
-> "Find me B2B leads — auto repair shops in Houston that need a website."
+All seven screens: [`docs/window.md`](docs/window.md).
 
-The `generate-leads` skill triggers, interviews you (offer, categories, **country + specific area**, size band,
-disqualifiers, what makes a good fit, decision-maker titles, volume), runs the pipeline, asks nothing else, and
-hands back a sheet.
+### On the command line
 
-### Use it manually
-
-```bash
-leadforge intake --answers answers.yaml   # compile + validate your ICP -> icp.yaml
-leadforge plan   --icp icp.yaml           # see the query plan before spending time
-leadforge run    --icp icp.yaml           # discover -> enrich -> label -> score -> draft -> export (autopilot, v0.4)
-leadforge watch                           # live progress bar for the run in this workspace (second terminal)
-leadforge run    --icp icp.yaml --no-autopilot   # classic mode: pauses at stage=dm_pending instead
-leadforge dm export --max 60              # (only needed with --no-autopilot, or to top up autopilot leftovers)
-leadforge dm apply --in dm_labels.ndjson
-leadforge run    --icp icp.yaml --resume  # score + export
-leadforge status
-leadforge config set agent.model sonnet  # read/write one leadforge.yaml value (set|get); keys: environment or keyring
-leadforge export --icp icp.yaml --format xlsx,csv      # re-export the latest run
-leadforge suppress add someone@example.com   # opt-outs, honored everywhere (--kind domain|email|place_id)
-leadforge render-check https://site.example  # diagnose one site: robots -> plain fetch -> browser -> contacts
-leadforge dashboard --open                   # read-only status page: machine stages with measured pace + ETA, human stages
-```
-
-Everything lands under `./leadforge_data/` (gitignored): SQLite db, cache, logs, and `exports/<run>/` with the
-XLSX, CSV and report.
-
-## What a lead row contains
-
-Score (0–100) and tier (A/B/C/D/DQ) · business name, category · **decision-maker name + title + confidence** ·
-phone (spaced international format) · best **published** email + validity tier · an optional
-**Email (Inferred)** column (opt-in; a likely address derived from the domain's own naming convention,
-always labeled as a guess and never counted as a found email) · website · split address
-(street/city/region/postal/country) · rating and review count · **"Likely Need (Hook)"** — a ready outreach
-angle · **"Why This Score"** — the top factors in plain words · Maps link · source, verified-on date and a
-**Stale?** flag · **Opening Hours** · a registry profile (**Company No, Incorporated, Company Status, SIC
-Codes**) · and **Call Readiness** — whether the row is safe to dial right now. With
-`scoring: {profile: account_fit}` the sheet appends 14 account-intel columns (Employees, Employee Range,
-Revenue, Departments, Microsoft 365, CRM, ERP, Other Systems, Trigger, Trigger Strength, LinkedIn,
-Contactability, Data Confidence, Status). **A cell is never empty** — a would-be blank says why it is blank
-("none published", "not matched in registry", …). v0.3 appends **Fit**, **Contactability**, **Status**
-(READY / CALL_ONLY / RESEARCH / DQ), **Next Action** (phone-first, or the outreach state once a lead is enrolled),
-**Entity Type**, **Lawful Basis (Email)**, **Registry Name / Match**, **Chain**, **Site Status**, **Email
-Confidence** and **All Hooks**. v0.4 appends **Draft Subject / Draft Body / Draft Grade / Draft Author**
-("no draft" until autopilot or `draft apply` writes one) and a separate **Drafts** tab — one row per drafted
-message, never sent.
-
-The workbook also carries a **Summary** tab (counts, tier split, top hooks, compliance reminder for your region)
-and an **About** tab that explains the columns — so whoever reads it can do so without asking you.
-
-## Enrichment coverage and verification
-
-LeadForge keeps a field-level observation for enriched values. Each observation records its source URL, evidence,
-confidence, verification state, provider, cost, jurisdiction, timestamps, freshness/recheck deadline, and (when
-known) the person who owns the value. A business may have multiple people, and each person may have multiple phones
-and emails. Public enrichment includes team/about pages, Schema.org `Person`, vCards, nearby `mailto:` links,
-registry officers, press/speaker pages, and existing lawful Google Business Profile owner-reply evidence. Phones are
-typed as `switchboard`, `main_line`, `direct`, `mobile`, or `unknown`; emails retain their stage: published personal,
-published role, inferred pattern, or licensed-provider verification.
-
-The default path remains OSS and keyless; there is no paid-provider code in the tool (the unused adapter hook was removed
-in 0.7.1). No LinkedIn scraping or SMTP mailbox probing is used. MX validation confirms that a domain can receive
-mail; it does not claim that a particular mailbox exists.
-
-For stricter outreach, require confirmation evidence in `leadforge.yaml`:
+Run in an empty folder; that folder is the workspace. Save this as `answers.yaml`:
 
 ```yaml
-outreach:
-  require_email_confirmation: true
+version: 1
+campaign: bristol-car-repair
+offer:
+  what: "Online booking for independent garages"
+target:
+  categories: ["car repair"]
+  geography: { areas: ["Bristol"], country: GB }
+caps: { max_leads: 50 }
 ```
 
-Strict mode permits only licensed-provider verification, actual delivery evidence, a reply, or explicit operator
-confirmation. MX-only, inferred, risky, unknown, stale, and unconfirmed addresses are blocked before rendering or
-sending.
-
-Useful enrichment and benchmarking commands:
-
-```bash
-leadforge enrich --stage backfill       # project legacy contacts/people/evidence into observations
-leadforge enrich --stage recheck        # report observations due for recheck
-leadforge byol import --in contacts.csv # preview conservative matching (add --apply to write)
-leadforge benchmark outcomes --in called.xlsx
-leadforge benchmark outcomes --in called.xlsx --apply
-leadforge benchmark dm-fields --in called.xlsx       # preview person-owned DM phone/email calibration
-leadforge benchmark dm-fields --in called.xlsx --apply
+```powershell
+leadforge intake --answers answers.yaml
+leadforge plan --icp icp.yaml
+leadforge run --icp icp.yaml
+leadforge status
+leadforge export --icp icp.yaml
 ```
 
-The benchmark importer accepts CSV/TSV and calling workbooks. It understands calling-workbook-style `Dialing List`, `List #2`,
-`List #3`, `Call Log`, and callback tabs, maps human dispositions to canonical outcomes, preserves sheet provenance,
-and uses stable business ID, domain, phone, or existing contact evidence for conservative matching. It is preview-only
-unless `--apply` is supplied. See [`docs/10-enrichment-phase0-baseline.md`](docs/10-enrichment-phase0-baseline.md) for
-the baseline, metrics, risks, and implementation order.
+`run` finds, reads, labels, scores, drafts notes and exports. By default it asks your own Claude Code in headless mode to label decision makers and write draft
+notes (short snippets from business websites are in that prompt); `run --no-autopilot` or `agent.command: []` turns that off. A `run` that is interrupted continues with `leadforge run --icp icp.yaml --resume`.
+Every command and option: [`skills/generate-leads/references/cli.md`](skills/generate-leads/references/cli.md).
 
-`benchmark dm-fields` is the operator-calibration path for workbooks containing `Decision Maker`, `DM Title`,
-`DM Direct Phone / Best Route`, and DM email columns. It records the route as human-called evidence tied to the
-person and workbook sheet; it does not replace public-source observations. See the ongoing accuracy loop in
-[`docs/DM-PHONE-RESEARCH-ITERATIONS.md`](docs/DM-PHONE-RESEARCH-ITERATIONS.md).
+**The sheet** has a Leads tab (score, tier, business, category, decision maker with title and confidence, phone, e-mail with a validity tier, website,
+address, a "why this score" line, company number and status, and for every e-mail and phone the page it came from and the day), a Drafts tab (notes, never sent),
+a Summary tab and an About tab that explains the columns.
 
-## Under the hood
+## Where data lives
 
-```
-interview → ICP → geo-aware query plan → OSS Maps scraper → normalize (clean, sheet-ready fields)
-   → polite website deep-crawl → emails/phones/socials/people candidates → validate (tiers, never booleans)
-   → agent labels the decision maker from snippets → weighted ICP scoring with explanations → XLSX/CSV/SQLite
-```
+In the workspace, under `leadforge_data\` (`db.sqlite3`, `cache\`, `exports\<run>\`, `logs\`, the progress feed, `outbox\`, `inbox\`), plus hand-off and draft
+files in the workspace folder itself. In the window the workspace is `%LOCALAPPDATA%\app.leadforge.window\workspace`. The full list, the tables and the sources:
+[`docs/data-and-deletion.md`](docs/data-and-deletion.md).
 
-![Architecture: operator, agent, CLI, and the public sources it reads](docs/diagrams/02-architecture.png)
+## How to delete
 
-All diagrams as images: [`docs/diagrams/`](docs/diagrams/).
-Architecture, data model, pipeline behavior and every decision are documented in [`docs/`](docs/):
-[vision](docs/00-vision.md) · [research](docs/01-research.md) · [architecture](docs/02-architecture.md) ·
-[data model](docs/03-data-model.md) · [pipeline](docs/04-pipeline-behavior.md) ·
-[token contract](docs/06-token-contract.md) ·
-[compliance](docs/07-compliance.md) · [decisions](docs/08-decisions.md) ·
-[customized-workspace upgrade prompt](docs/UPGRADE-MERGE-PROMPT.md).
+- **Forget** a person or business: `leadforge forget <email, domain or name>`, or People, "Forget". Removes it everywhere the engine writes, then keeps it off new runs.
+- **Suppress** an address or domain: `leadforge suppress add <value>`, or People, "Suppress". Deletes nothing; leaves it out of crawling, scoring and every sheet.
+- **Purge** what is past the limit: `leadforge purge` (report), `leadforge purge --apply`, or Data. The first pass on a workspace only reports.
+- **Retention:** `retention.months`, default 12, 1 to 12, counted from the run that first found a business. The clean-up runs at the start of every run and stops instead of deleting more than half.
+- **Delete everything:** `leadforge purge --everything --yes`, or Data, "Delete everything". Sheets you handed to someone and files you wrote with `--out` cannot be reached.
 
-## Ground rules baked into the code
+What each one removes and cannot reach: [`docs/data-and-deletion.md`](docs/data-and-deletion.md).
 
-- **robots.txt respected** on business sites; one request in flight per host with a delay; identifying user-agent.
-- **Caps** from your ICP are hard stops; a **suppression list** is honored at crawl, score and export time.
-- **No SMTP probing** (email validity is reported as tiers, never a false binary), **no LinkedIn**, **no
-  login-gated scraping**, **no anti-bot evasion**, **no dialer, no SMS**. Public business data only.
-- **Email sending is opt-in and audited (v0.3, ADR-011):** dry-run by default, `--live` only with `outreach.armed: true`
-  and a named approver, approval bound to the message's content hash, suppression / eligibility / caps / warm-up / send
-  window and current email verification/recheck state re-checked before rendering/sending, one-click unsubscribe,
-  bounces and complaints written to the suppression list automatically, a per-mailbox circuit breaker. Strict mode
-  additionally requires licensed-provider verification or delivery/reply/operator confirmation. No paid service is
-  required or bundled (ADR-012): the transport is whatever mailbox you configure.
-- **Country is required** on every campaign and areas must be specific — vague locations are how lead lists fill
-  with garbage, so the tool refuses them and asks instead of guessing.
-- **Autopilot never sends anything (v0.4, ADR-015):** `leadforge run` labels decision makers, scores, drafts and
-  exports on its own by default, through the operator's own Claude Code in headless print mode — no API key, no
-  paid dependency, disable with `agent.command: []` or `--no-autopilot`. It stops at a drafted, unsent sheet;
-  outreach still requires `outreach approve` and `--live` exactly as before.
-- **The model gets no tools (C1):** the prompt carries text taken from websites, so the call LeadForge builds itself
-  runs with `--tools "" --disallowedTools "mcp__*" --permission-mode default --restricted`; if that call fails, the
-  built-in rules label and draft instead, and it is never repeated with tools. An `agent.command` you set yourself
-  is used exactly as written: what it lets the model do is your responsibility.
+## Keys
 
-See [`docs/07-compliance.md`](docs/07-compliance.md) for the practical GDPR/PECR/CAN-SPAM posture. Not legal advice.
+Two exist, both optional: the Companies House key (free) and an OpenCorporates token (off by default). **They are never read from `leadforge.yaml`**; a file that holds one is refused.
+Set the environment variable `LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY` (or `..__OPENCORPORATES_TOKEN`), or store the key in the OS keyring (`pip install -e .[keyring]`, then
+`keyring set leadforge registry.companies_house_key`). **Today the window cannot save a key**: the bundled engine has no keyring package. Use the environment. The DVSA register needs no key.
+[`docs/configuration.md`](docs/configuration.md).
 
-### Deleting data (0.8.0)
+## Limits
 
-- **`leadforge forget <email | domain | name>`** removes a person from every table, the cache, the logs, the progress file, the outbox and
-  inbox, the hand-off and draft files and the sheets in the tool's own `exports` folder, then adds them to the suppression list so a new
-  run does not collect them again. The suppression list holds the identifier itself, in clear: that is how the objection is honoured.
-  A file that could not be cleaned is named and the command exits non-zero. Sheets you already handed to someone, and files you wrote
-  elsewhere with `--out`, cannot be reached from here.
-- **Data expires after 12 months** (`retention.months`, 1 to 12). A business and everything attached to it is deleted when it is 12 months
-  past the run that first found it (a refresh does not renew): its records, and every file under the data folder's own `exports` and `cache`
-  that holds it. A sheet is deleted whole, so the rows it holds of businesses that have **not** expired go with it (also a sheet that
-  only names a business whose name contains an expired one's, such as "Brindlewick Motors Ltd" for "Brindlewick Motors"); their records stay in the
-  workspace, and `leadforge export` writes the latest run's sheet again. `leadforge purge` lists the files before anything goes.
-  Files you wrote **outside** the data folder with `--out` are yours and are never touched.
-- `purge` runs at the start of every `run`, with three protections: the first run after an upgrade only reports (records and files);
-  every run says how many records and files expire in the next 30 days; an automatic purge never deletes when more than half of the
-  businesses, or more than half of the files in `exports` and `cache`, are past the limit (it stops and names `leadforge purge --apply`).
-  `leadforge purge` alone only reports; `purge --apply` deletes; `purge --everything --yes` wipes the data folder without opening the database.
-  If a file cannot be deleted (another program holds it open), no record is deleted either, the file is named, and the next pass tries again.
+Everything the slice files mark unproven, not done or open is in one list: [`docs/limits.md`](docs/limits.md). The ones that matter most:
 
-### The collect side (0.9.0)
+- The installer is unsigned and not published, and its install is proven only as a silent per-user install into a chosen folder.
+- The window cannot keep a key; the real keyring was never exercised.
+- Only UK registers ship. No real service was reached by any test: the proofs use a loopback world of invented sites.
+- The forgotten value stays, in clear, in the suppression list. A hashed list was not built.
+- The Companies House terms, and OpenCorporates' `restricted_for_marketing` flag, are not settled.
+- The older pages `docs/00` to `docs/04`, `07` and `09` describe earlier versions and code that has left; these pages and the code win.
 
-- **A refusal is final.** A site that answers 403 or 429 is left alone: no second try in a browser. robots.txt is read in full rules (4xx allows,
-  5xx forbids, up to 24 hours kept, a redirect to another site is checked against that site's file). The browser profile of every browser the product
-  starts is made by one function.
-- **Every exported e-mail and phone says where it came from and when** (columns `... Source` and `... Date`; "source not recorded" when the workspace
-  holds no record). The DVSA list is under the Open Government Licence v3.0; the Summary sheet carries its sentence.
-- **Send rules by country.** The tool e-mails only into countries it has a rule for: the US (opt-out), the UK (companies; a sole trader needs consent)
-  and Germany (consent). Every other country, and a business with no country, shows "not eligible". The tool does not record consent: for a lead that
-  needs it, get it yourself and write to the person by your own means. Not legal advice; the duties are yours (`docs/07-compliance.md`).
+## Documents
 
-## Outreach and drafting (v0.3)
+| Page | What it is for |
+|---|---|
+| [`docs/window.md`](docs/window.md) | the seven screens and the engine command behind each action |
+| [`docs/data-and-deletion.md`](docs/data-and-deletion.md) | what is collected, kept, deleted, and what cannot be reached |
+| [`skills/generate-leads/references/cli.md`](skills/generate-leads/references/cli.md) | every command and option |
+| [`docs/configuration.md`](docs/configuration.md) | every setting, keys, registers, add-on providers |
+| [`docs/development.md`](docs/development.md) | layout, set-up, gates, how a slice is recorded |
+| [`docs/limits.md`](docs/limits.md) | everything not proven, not done or open |
+| [`docs/slices/`](docs/slices/) | the record of each slice |
+| [`docs/window-actions.md`](docs/window-actions.md) | the seam's contract between screens, core and engine |
+| [`SECURITY.md`](SECURITY.md) | how to report a vulnerability |
 
-The sheet's **Next Action** column is phone-first: call rows with a validated phone and a named contact, email
-is the second touch. `leadforge outreach plan` enrols eligible leads (entity type + lawful basis computed per
-row, chains de-duplicated, suppressed and dead-site rows excluded); `leadforge draft export` hands the agent a
-compact evidence packet per lead (≈160–270 tokens) and `draft apply` accepts only drafts whose every number,
-address, URL and proper noun exists in that packet; `outreach approve` binds a human approval to the content
-hash; `outreach send` is a dry run that writes `.eml` files until the owner arms the workspace and passes
-`--i-am`. `outreach doctor` checks SPF, DKIM, DMARC, MX and mailbox warm-up and fails closed; `outreach sync`
-turns bounces, complaints, unsubscribes and replies into suppression rows and state changes; `outreach outcome
-add` records what happened on the phone so the next scoring pass learns from real outcomes. Full protocol:
-`skills/generate-leads/references/outreach.md` and `drafting.md`.
+## Licence and notices
 
-**Company mode** (an operator's own client pipeline): `target.mode: company` with SIC codes discovers companies
-from Companies House by activity and location, resolves their websites without paid lookups, and scores them
-with a company rubric (incorporation age, new-director trigger, hiring). Example ICP:
-`config/icp.company.example.yaml`.
-
-## Status
-
-**v0.6.14 — DM-route accuracy iteration (2026-10-14).** LeadForge now stores field-level enrichment
-observations with provenance, confidence, verification, ownership, freshness, jurisdiction, and cost; supports
-multiple people and contacts, richer public structured-person/team-card/event extraction, conservative BYOL and
-person-owned calling-workbook
-benchmarks, source/provider/outreach attribution, and opt-in strict email confirmation based on licensed-provider,
-delivery, reply, or operator evidence. The OSS/no-key path remains the default; SMTP mailbox probing and LinkedIn
-scraping remain excluded.
-
-**v0.4.0 — autopilot (2026-09-03).** `leadforge run` now finishes itself: decision-maker labeling, scoring,
-drafting and export happen in one call by default (`pipeline.autopilot`), driven by the operator's own
-headless Claude Code where available and deterministic fallbacks (`heuristic_labels`, `template_draft`)
-everywhere else — see ADR-015 in [`docs/08-decisions.md`](docs/08-decisions.md).
-`--no-autopilot` restores the v0.3 pause-for-the-agent behavior exactly. The sheet gains Draft
-Subject/Body/Grade/Author columns and a Drafts tab; nothing is ever sent by this — outreach is still a
-separate, explicitly-armed step.
-
-**v0.3.0 — truth, coverage, outreach (2026-09-03).** Measured on the live 816-row campaign: the sheet now separates
-**Fit** from **Contactability** and carries **Status / Next Action / Entity Type / Lawful Basis / Registry Match /
-Chain / Site Status / Email Confidence / All Hooks**; hooks fire only on observed evidence (no more "no online
-booking" on sites that were never read); a freemail address never outranks the business's own mailbox; registry
-matches require a name-similarity gate and an active company; Google Business Profile facts (booking links,
-appointment attributes, owner reply signatures) are kept; the DVSA MOT-station register is a discovery provider
-merged into Maps rows by phone; tiled Maps queries subdivide when they saturate and `--resume` finishes a run's
-pending queries; the geocoder resolves bare city names to the city. Release gate: `node check.mjs --ci`.
-
-**v0.1.4 — shipped and live-validated** with a 709-lead UK auto-repair campaign (2026-08-31). Every ICM unit
-is implemented and tested. Since v0.1.1: a **registry stage** that covers site-less businesses and adds a
-Companies House profile (company number, incorporation, status, SIC codes); a **Call Readiness** column;
-`LF_PROGRESS` heartbeat lines + a live progress bar and `leadforge watch`; and a **browser fallback** for sites
-that bot-wall the plain HTTP client (robots.txt is always honored — disallowed sites never escalate).
-Deferred to v0.2: a grid-tiling live run. Previously deferred, shipped in 0.1.4:
-`claude plugin validate` in CI, TSV dm reconciliation, grid bbox flag-format verification.
-
-```bash
-pip install -e .[dev] && pytest -q && ruff check src tests   # suite must be fully green (no xfails)
-```
-
-Optional extras: `.[browser]` (JS-rendered + bot-walled sites), `.[ner]` (local zero-shot name/title
-extraction) are installed automatically by
-`leadforge doctor --fix --full`; `.[addressing]` (better US address splitting) is available but manual —
-`pip install -e .[addressing]`.
-
-Provider add-ons: the engine finds extra discovery providers through the entry-point group `leadforge.providers`.
-None is built in or published; a provider that is asked for and not installed is reported as "not available".
-
-## License
-
-MIT — see [LICENSE](LICENSE). Third-party packages keep their own licenses.
+MIT: see [LICENSE](LICENSE). Third-party packages keep their own licences; the notices of every package in the hashed lock are in
+`src/leadforge/data/licences.json` and shown in the window under Settings, "About and licences". The DVSA list is published under the Open Government Licence v3.0:
+"Contains public sector information licensed under the Open Government Licence v3.0." The Summary tab of a sheet repeats that sentence when a DVSA row is exported.
