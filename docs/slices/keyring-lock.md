@@ -147,3 +147,11 @@ fake store entries: leadforge/registry.companies_house_key
 key_remove exit=0  {"name":"companies_house_key","saved":false,"inUse":false,"savedAt":null}
 keys_list exit=0  [{"name":"companies_house_key","saved":false,"inUse":false,"savedAt":null},{"name":"opencorporates_token","saved":false,"inUse":false,"savedAt":null}]
 ```
+
+### Gate (`node check.mjs`, run once, below-normal priority)
+Not green, NOT DONE. `ok  versions agree  68.6`, `ok  skill frontmatter  5.8`, `ok  skill references  3.9`, `ok  lint  6.2`; in
+`tests`, at about 20% of the suite, `tests/test_draft_cli.py::test_worked_example_no_website_phone_only_garage` hit pytest's 60 s
+timeout (`+++ Timeout +++`, stuck in `process.communicate` of `_run`, test_draft_cli.py line 24), and the run was then stopped at
+the run's 20-minute limit before printing a `CHECK` line. Load: 8 `python` processes of other sessions were running when it
+started; 12 `node` processes when it was stopped. The same test alone afterwards: `1 passed in 9.77s`. It is one of the two tests
+with fixed waits that a loaded laptop misses; this branch does not touch it. Not re-run. The verdict that counts is hosted CI.
