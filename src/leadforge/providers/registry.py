@@ -12,8 +12,10 @@ class RegistryProvider(Protocol):
      Person(name=officer name title-cased, title=officer_role humanized: "director" -> "Director").
    - Throttle: <= 600 req / 5 min (shared token bucket in the module); on 429 back off 60s once, then skip.
    - Evidence per person: fact="registry_officer", url=company profile URL, snippet=officer role + appointed_on.
-2. OpenCorporatesRegistry (cfg.registry.opencorporates_token enables):
+2. OpenCorporatesRegistry (cfg.registry.opencorporates_token AND cfg.registry.opencorporates_enabled enable it):
    - GET https://api.opencorporates.com/v0.4/companies/search?q=<name>&api_token=..&jurisdiction_code=<us_xx|gb>
+   - L9 (C2): the API documents the token only as a query parameter (no header), so the provider is OFF by default;
+     switched on, the token is never written to a log or an error (the httpx request line has it cut).
    - Same matching + Person/Evidence emission; respect free-tier limits (unpublished — treat 403/429 as disable-for-run).
 3. Gate: only called from enrich when cfg has a key AND business country matches the registry's jurisdiction.
    With no keys configured, enrich never imports this module's network paths (silent no-op).
@@ -26,6 +28,8 @@ Effect on scoring: presence of labeled_by="registry" person rows feeds the data_
 
 from __future__ import annotations
 
+import logging
+import re
 import threading
 import time
 
@@ -33,6 +37,20 @@ from leadforge.models import Evidence, Person
 from leadforge.util import LOG, natural_name, now_iso
 
 OC_BASE = "https://api.opencorporates.com/v0.4"
+_API_TOKEN_RE = re.compile(r"(api_token=)[^&\s\"']*", re.IGNORECASE)
+
+
+class _CutApiToken(logging.Filter):
+    """httpx logs every request line with its full address; OpenCorporates' token is in that address (L9, C2)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        if "api_token=" in msg.lower():
+            record.msg, record.args = _API_TOKEN_RE.sub(r"\1<hidden>", msg), ()
+        return True
+
+
+logging.getLogger("httpx").addFilter(_CutApiToken())
 
 
 class _TokenBucket:
@@ -254,7 +272,11 @@ def get_registries(cfg) -> list:
     if cfg.registry.companies_house_key:
         out.append(CompaniesHouseRegistry(cfg))
     if cfg.registry.opencorporates_token:
-        out.append(OpenCorporatesRegistry(cfg))
+        if cfg.registry.opencorporates_enabled:
+            out.append(OpenCorporatesRegistry(cfg))
+        else:
+            LOG.warning("opencorporates is off: its API takes the token only in the web address; "
+                        "set registry.opencorporates_enabled: true to use it anyway")
     return out
 
 

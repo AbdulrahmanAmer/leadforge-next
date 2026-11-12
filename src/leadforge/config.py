@@ -173,6 +173,9 @@ class RegistryCfg(BaseModel):
     # (a local stand-in server) is accepted; DVSA's url takes any host because it sends no secret.
     companies_house_url: str = CH_BASE_DEFAULT
     opencorporates_token: str = ""
+    # L9 (C2): OpenCorporates documents its token only as a query parameter, so it would travel in the web address;
+    # off unless the operator accepts that.
+    opencorporates_enabled: bool = False
     min_name_similarity: float = 0.45  # v0.3: a registry hit must also resemble the business name
     active_only: bool = True           # v0.3: dissolved/liquidated companies are never matched
 
