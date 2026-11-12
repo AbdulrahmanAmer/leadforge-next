@@ -613,6 +613,7 @@ def start_runner(ws: Path, n: int):
     p = engine_process(ws, str(n), script=True)
     p.stdin.write(json.dumps(screen_args(ws)["run_start"]))
     p.stdin.close()
+    p.stdin = None   # communicate() later: on Linux it flushes stdin, and a closed one raises (Python 3.11, 3.12)
     handle = json.loads(p.stdout.readline())
     while json.loads(p.stdout.readline()).get("type") != "progress":
         pass

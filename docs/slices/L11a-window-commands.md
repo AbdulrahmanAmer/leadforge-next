@@ -642,3 +642,18 @@ ok  tests  241.6
 ok  cli digest  2.2
 CHECK PASS sha=11f83f6 tree=clean steps=6 skipped=0 secs=246
 ```
+
+## Hosted CI (Build 2)
+
+Run 43190035018 on `bfc022b` (the first push of this build): 11 of 13 success, `ubuntu-latest · py3.11` and
+`ubuntu-latest · py3.12` failure:
+
+```
+FAILED tests/test_window.py::test_after_the_run_process_is_ended_from_outside_status_is_not_running - ValueError: I/O operation on closed file.
+FAILED tests/test_window.py::test_run_stop_from_a_second_process_ends_the_run_within_10_s_and_status_answers_beside_it - AttributeError: 'Popen' object has no attribute '_fileobj2output'
+```
+
+Cause (from the log, `subprocess.py:2067`): the tests closed the run process's stdin after writing the arguments and later
+called `communicate()`; on Linux, Python 3.11 and 3.12 flush stdin there and a closed file raises (Windows and 3.13+ do not,
+so it was green on this laptop). The test side was wrong, not the engine: the closed handle is now dropped from the `Popen`
+(`p.stdin = None`). No assertion changed.
