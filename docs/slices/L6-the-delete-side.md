@@ -427,3 +427,15 @@ caller of `forget_in_files` is `retention.forget` (grep). A file that holds only
 (exit 0, the value still in the held file: the defect itself). Test (b) failed on the missing `_rewrite_in_place`. Afterwards a probe with a spy on `os.replace` showed what happens with the real held file here: `replace failed: PermissionError`, the in-place
 rewrite took over, `exit 0 ... value still in file: False bystander kept: True`. With the in-place write broken on purpose (test (a), line replaced by `raise PermissionError`) the command exits 4 and names the file and test (a) still holds on its other
 side; restored. On Linux a held file can be replaced, so (a) passes there by the first way; (b) is the platform-independent proof of the failure path.
+
+## Item 3 — the mutation trial on hosted Linux: what it must do (written before the workflow was started)
+
+`.github/workflows/mutation-trial.yml` runs mutmut once on Linux against the delete-side modules; it is never on every push: `workflow_dispatch` (only usable from the Actions tab once the file is on the default branch) and `push` limited to commits
+that change the workflow or `.github/mutation/**` (so the 13 jobs of every other commit stay 13; the one commit that adds the file shows 14). The tool is installed only inside that job, from a hashed file made with
+`uv pip compile --generate-hashes --exclude-newer 2026-11-05` (mutmut 3.8.1, uploaded 2026-10-28 = 15 days old, publisher boxed / Anders Hovmöller; the wheel's SHA-256 downloaded here equals the one in the lock; `osv-scanner` on the file: no issues;
+the 21 resolved packages are all older than 2026-11-05; none is on the never-install list). It reads its settings from `[tool.mutmut]` in `pyproject.toml` (mutmut 3.8.1's own `configuration.py` read for the key names: `source_paths`, `only_mutate`,
+`pytest_add_cli_args_test_selection`; and `utils/file_utils.py` for how it puts `mutants/src` before the editable install). Job limit: 25 minutes (`timeout-minutes`); the unmutated tests run first, so a red suite cannot pass as "all killed".
+Scope asked for: all of `retention.py`, the schema check of `db.py` (`check_schema_before_write`, `peek_schema_version`, `_version_of`, `schema_gaps`) and `export._masker`; NOT in this trial (mutmut names a class method or a nested function differently, and I could not
+test the names on Windows): the raw-file wrapper in `providers/gosom.py` and `db.add_contact` / `add_person`; they stay with the in-house trial. Summary of the log per module and outcome: `.github/mutation/summarize.py` (tried here on a made-up
+results file, including the "nothing matched" exit 1). Keep-or-cut rule (SPEC 3.4): keep only if it found a real gap the in-house trial did not, and ends under 20 minutes in CI.
+If it cannot be started from the branch, or does not end in 25 minutes: NOT DONE, with the reason.

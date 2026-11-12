@@ -72,3 +72,13 @@ timeout = 60
 markers = [
     "gpu: real-GPU smoke test (loads real GLiNER on cuda); skipped unless LF_GPU_TESTS=1 (see tests/test_ner_worker.py)",
 ]
+
+# The Linux mutation trial (.github/workflows/mutation-trial.yml): mutmut changes one thing at a time in the delete-side modules
+# and the tests listed here are what has to notice. Not run by `node check.mjs` and not part of the product.
+[tool.mutmut]
+source_paths = ["src"]
+only_mutate = ["src/leadforge/retention.py", "src/leadforge/db.py", "src/leadforge/export.py"]
+pytest_add_cli_args_test_selection = [
+    "tests/test_l6_forget.py", "tests/test_l6_forget_held.py", "tests/test_l6_purge.py", "tests/test_l6_purge_files.py",
+    "tests/test_l6_schema_first.py", "tests/test_l6_suppressed_export.py",
+]
