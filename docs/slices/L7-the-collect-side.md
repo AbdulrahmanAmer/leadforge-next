@@ -375,3 +375,27 @@ The second run against the saved result of `master`, compared with `scripts/e2e_
 - `uv.lock` still names version 0.6.14 for `leadforge` (stale before this slice; PR 7 regenerates the locks): not touched.
 - Dev tools for this run's own venv (`pytest 9.2.0`, `pytest-timeout 2.4.0`, `ruff 0.17.3`, with `pluggy 1.7.0`, `iniconfig 2.3.1`, `packaging 26.3`) were installed with `pip install --uploaded-prior-to 2026-11-05` (all
   at least 7 days old, from PyPI, not hash-locked: the repo has no dev lock); the project's own pins come from `requirements.lock` with `--require-hashes`.
+
+### Second merge of `master` (PRs 7 and 8 landed while stage B ran)
+
+`origin/master` moved again (debts, PR 7; Maps out, PR 8; still 0.8.0). Merged at d6409af, conflicts settled by taking `master`'s side wherever the other side's text was about code that left:
+- `providers/gosom.py` and `providers/maps_list.py` are deleted on `master` (L8); stage A had edited both. Deleted here too. Consequences, each read and written:
+  - C10's second proof line ("the argument never appears") was `test_c10_the_helper_never_gets_the_email_argument`, which drove `GosomProvider`. The helper is gone from the public tool, so
+    the argument can no longer be built anywhere: the test is removed (its target no longer exists), the config refusal of `discovery.email_crawl` stays and stays tested (both the file and the environment).
+  - Item 5's Maps half moved with the provider. The scan `test_every_browser_start_in_the_product_goes_through_the_profile_function` now finds one start (`enrich/browser.py`) instead of two. The private add-on's
+    Maps start must call `leadforge.browser_profile.prepare_profile`; **that is UNPROVEN and not this repository's to prove** (the add-on is not here).
+  - `DiscoveryCfg` is `extra="allow"` on `master` (the add-on seam); C10's `mode="before"` validator was kept on top of it, so a config that carries `email_crawl` is still refused.
+  - The old `GOSOM_VERSION` constant, the example config's gosom settings and `MapsListCfg` are gone as on `master`.
+- `CHANGELOG.md`: both sides kept; `master`'s `## [Unreleased]` (L8 and debts) on top, this slice's `## [0.9.0]` below it.
+- Never edited here, and identical to `master` after the merge: `tests/fixtures/dvsa_sample.csv`, `requirements.lock`, `uv.lock`, `tests/golden/workspace_current.sqlite3`.
+- `tests/fixtures/e2e/expected.json`: git's textual merge had mixed both sides; it was reset to `master`'s file, the campaign was run again on the merged code (third run, port free before and after,
+  45 request lines), and the file was rewritten from that run. `git diff origin/master -- tests/fixtures/e2e/expected.json` shows 228 lines added and 28 changed only by a trailing comma: the C12 columns and cells, nothing else.
+  The compare against `master`'s saved result: Leads old columns 0 changed cells, report.json identical, refused calls the same 3, requests the same set. (After L8 the rows' `Source` is `fixture_list`/`dvsa`; the new cells
+  are as in the second run above.)
+- Tests after the merge, one process, belownormal: 32 test files (this slice's, the export, golden, L6, score, compliance, outreach send and plan, config, cli, provider, db and draft files) **421 passed** in 179.60 s.
+  The full `node check.mjs` was run once on the tree before this merge (987 tests: 986 passed, 1 failed, see below), not again after it; the hosted CI run of the last commit is the full-suite verdict for the merged tree.
+
+The one failure of that full run: `tests/test_agent_runner.py::test_run_agent_on_timeout_kills_the_whole_process_tree`, a file this slice does not touch (`git diff 1050687 HEAD -- src/leadforge/agent_runner.py
+tests/test_agent_runner.py` is empty). Read side by side first: the test gives a fake agent `timeout_s=1`, the agent spawns a grandchild that writes a marker after 3 s, and `taskkill /T` must kill the tree. With
+four cores shared by other builders, Python's start-up of the agent and the grandchild can straddle the 1 s timeout and the tree snapshot of `taskkill /T`, so the grandchild is not yet a child when the kill runs and survives. That is
+a timing race of the test's own design under load, not a change of mine. Re-run alone at normal priority: `31 passed in 11.01s`. Counted as a timing flake, said plainly; not "fixed".
