@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+Keys and the agent call (slice L9, no version yet). **Registry keys are no longer read from `leadforge.yaml`:** set
+`LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY` / `LEADFORGE_REGISTRY__OPENCORPORATES_TOKEN` in the environment, or store them in the OS
+keyring (the optional `keyring` extra, `pip install -e .[keyring]`; then `keyring set leadforge registry.companies_house_key`; the plugin's locked install does not carry it). A workspace whose
+`leadforge.yaml` still holds a key is refused with a message naming the setting; `leadforge config set registry.companies_house_key ""`
+clears it. `config get` of a key says only whether it is set and where from. OpenCorporates is off by default (new setting
+`registry.opencorporates_enabled`): its API takes the token only in the web address. Agent-call errors and `config get agent` show the
+agent program and its argument count, never the arguments.
+
 ## [0.7.3] — 2026-11-12
 
 The fake-campaign check runs on Linux too (its network guard now refuses any DNS question, even to a loopback stub resolver) and

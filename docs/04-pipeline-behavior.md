@@ -132,7 +132,8 @@ latest run for the same ICP hash; every stage is idempotent (upserts, per-tile /
 - Auto-DM (ADR-010): exactly ONE active individual director (corporate officers filtered out) and no DM already chosen → auto-marked DM
   at confidence 0.9 — official-registry evidence beats agent inference, so big runs don't queue the obvious cases. 0 or 2+ individuals
   stay with the agent.
-- OpenCorporates (token required) is the fallback for its jurisdictions (GB/US). On a 429 a registry backs off 60 s once, then disables
+- OpenCorporates (token required, and off unless `registry.opencorporates_enabled: true`: its API takes the token only in the
+  web address) is the fallback for its jurisdictions (GB/US). On a 429 a registry backs off 60 s once, then disables
   itself and the stage stops rather than hammering the rate limit. Every looked-up business is stamped `registry_checked` so re-runs
   never repeat lookups.
 - Heartbeat: the `LF_PROGRESS` stream carries `registry` and `validate` stages alongside `discover`/`enrich` (docs/06).
