@@ -152,8 +152,9 @@ database. Reviewers' own names and review texts are in that file only; the datab
 credit (business facts the decision-maker step uses).
 
 ## Item 6 — a suppressed address is in no export and no tab (C7): what it must do (written before the code)
-`db.contacts_for` leaves out email contacts that are suppressed, so every reader (the Leads tab and CSV `Email` and `Email (Inferred)` columns, the
-counts, scoring, outreach) behaves as if the address did not exist. A last net in `export_run`: any cell of any tab or CSV, and any Drafts-tab
+`db.contacts_for(..., hide_suppressed=True)` leaves out email contacts that are suppressed; the two readers in `export.py` ask for it, so the Leads tab and CSV
+`Email` and `Email (Inferred)` columns and the Drafts fallback address behave as if the address did not exist. (First version: the filter was always on. See "Findings of the
+one full run".) A last net in `export_run`: any cell of any tab or CSV, and any Drafts-tab
 row, that still holds a suppressed address (a draft body, a `To`) has it replaced by `[suppressed]`, and a Drafts row addressed to it is dropped.
 Domain-suppressed businesses are already out of the sheet (`scores_for_run`); unchanged.
 
@@ -173,7 +174,7 @@ Domain-suppressed businesses are already out of the sheet (`scores_for_run`); un
   `cli._start_of_run_purge` runs before `--detach` and before `run_pipeline`, prints the 30-day line to stderr, and puts `purged` and `expiring_30d` in the digest.
   `purge --everything --yes` never opens the database (the test makes both `db.connect` and `sqlite3.connect` raise).
 - **C6** (`providers/gosom.py`): `fetch` is a wrapper whose `finally` deletes `out_path` and the `.queries.txt` after `_fetch` returned or raised.
-- **C7** (`db.contacts_for`, `export.py`): see the item text; the draft columns and the Drafts tab drop a draft whose target contact is suppressed; `_masker` replaces a
+- **C7** (`db.contacts_for(hide_suppressed=True)`, `export.py`): see the item text; the draft columns and the Drafts tab drop a draft whose target contact is suppressed; `_masker` replaces a
   suppressed address anywhere in any cell, in any case.
 
 ## Tests of this slice (each seen failing for the right reason first)
@@ -238,3 +239,21 @@ Exactly the two cells predicted above, and no other cell: this run's `refused` l
 it is one run at below-normal priority each, so the DNS-retry count is UNPROVEN as stable on this laptop; plan-and-code-disagree entry 3 stands as "the count varies between runs").
 `tests/fixtures/e2e/expected.json` was changed in those two cells only (`steps[7].digest.counts`: `expiring_30d: 0`, `purged: 0`); the script that did it asserted that, with
 those two cells set, the file equals the run's `result.json` everywhere. G2 on the version-bumped commit is written under "Last gates" below.
+
+## Findings of the one full run (`node check.mjs`, e5e9f86 tree, before the fix below)
+
+```
+FAILED tests/test_golden_contracts.py::test_golden_agent_contract
+FAILED tests/test_outreach_plan.py::test_plan_suppressed_and_already_enrolled_excluded
+FAILED tests/test_outreach_send.py::test_suppressed_address_never_sent_even_if_approved
+3 failed, 877 passed, 7 skipped in 172.56s (0:02:52)
+CHECK FAIL sha=ee5e9f86 tree=clean steps=5 skipped=0 secs=175
+```
+Causes, written before any change:
+1. `test_golden_agent_contract` pins the list of commands; this slice adds `forget` and `purge`. Deliberate: the golden was re-recorded (`LF_UPDATE_GOLDEN=1`, this one
+   test) and its diff is exactly those two names.
+2. and 3. The two outreach tests plan and send to a suppressed address and assert that it is *counted as suppressed* (`excluded.suppressed`, `skipped_suppressed`).
+   My first version of C7 made `db.contacts_for` hide suppressed emails for every reader, so the planner and the sender no longer saw the address and counted it
+   as "no sendable email" instead. The mail was still not sent, but the reason and the counter those guardrail tests pin had changed, and the send-time re-check
+   must keep seeing the address. The wrong side was the code: the filter moved from `contacts_for` (default off) to the export's two calls (`hide_suppressed=True`).
+   The tests were not touched.

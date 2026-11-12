@@ -626,9 +626,12 @@ def add_contact(conn: sqlite3.Connection, c: Contact) -> int:
     return int(row["id"]) if row else 0
 
 
-def contacts_for(conn: sqlite3.Connection, business_id: str) -> list[sqlite3.Row]:
-    """The business's contacts, minus email addresses on the suppression list: an objection is absolute (C7), so
-    every reader behaves as if such an address did not exist."""
+def contacts_for(conn: sqlite3.Connection, business_id: str, *, hide_suppressed: bool = False) -> list[sqlite3.Row]:
+    """The business's contacts. `hide_suppressed` leaves out email addresses on the suppression list: the exports ask for it
+    (C7, an objection is absolute). The outreach planner and sender do not: they must still see such an address to count
+    it as suppressed (the send-time re-check is a guardrail with its own tests)."""
+    if not hide_suppressed:
+        return conn.execute("SELECT * FROM contacts WHERE business_id=?", (business_id,)).fetchall()
     return conn.execute(
         """SELECT * FROM contacts WHERE business_id=?
            AND NOT (kind='email' AND lower(value) IN (SELECT value FROM suppression WHERE kind='email'))""",

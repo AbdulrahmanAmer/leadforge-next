@@ -206,7 +206,7 @@ def _row_for(conn: sqlite3.Connection, s, staleness_days: int = 90, *,
     profile = icp.scoring.profile if icp else "default"
     people = db.people_for(conn, s["business_id"])
     dm = next((p for p in people if p["is_dm"] == 1), None)
-    contacts = db.contacts_for(conn, s["business_id"])
+    contacts = db.contacts_for(conn, s["business_id"], hide_suppressed=True)
     dm_phone, dm_phone_type, dm_phone_source = _best_dm_phone(conn, s["business_id"], dm, contacts)
     # Affinity MUST be backfilled BEFORE ranking (docs/09 §D fix): every pre-v0.3 row stores
     # affinity is written at insert time for every email contact (crawl and infer), so ranking and
@@ -473,7 +473,7 @@ def _draft_to_address(conn: sqlite3.Connection, business_row: sqlite3.Row, targe
         crow = conn.execute("SELECT value FROM contacts WHERE id=?", (t["contact_id"],)).fetchone()
         if crow and crow["value"]:
             return crow["value"]
-    contacts = db.contacts_for(conn, business_row["id"])
+    contacts = db.contacts_for(conn, business_row["id"], hide_suppressed=True)
     ranked = rank_email_contacts(contacts)
     sendable = [c for c in ranked if c["tier"] not in ("invalid", "inferred")]
     return sendable[0]["value"] if sendable else ""
