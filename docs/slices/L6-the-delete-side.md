@@ -225,3 +225,16 @@ At the end of items 1 to 7, before `scripts/e2e_fake_campaign.py` is run on the 
   starts with the retention check (`cli._start_of_run_purge`). The first `run` step, which creates the database, gets none.
 - Predicted NOT to move: the request log, the four tabs, the CSV, `report.json`, the digest numbers of every other step. A schema is unchanged (SCHEMA_VERSION stays 7, no
   table or column added), so the workspace golden stays; no `first_run_id` is touched.
+
+## Item 8 — result
+
+`python scripts/e2e_fake_campaign.py` on the finished code (below-normal priority):
+```
+FAIL - differs from expected.json in: steps  (full result: D:\homelab-work\l6\after\run1\result.json)
+.steps[7].digest.counts.expiring_30d: only in got
+.steps[7].digest.counts.purged: only in got
+```
+Exactly the two cells predicted above, and no other cell: this run's `refused` list had the saved 21 entries (the baseline's 20 was therefore timing, not this laptop's resolver:
+it is one run at below-normal priority each, so the DNS-retry count is UNPROVEN as stable on this laptop; plan-and-code-disagree entry 3 stands as "the count varies between runs").
+`tests/fixtures/e2e/expected.json` was changed in those two cells only (`steps[7].digest.counts`: `expiring_30d: 0`, `purged: 0`); the script that did it asserted that, with
+those two cells set, the file equals the run's `result.json` everywhere. G2 on the version-bumped commit is written under "Last gates" below.
