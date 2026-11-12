@@ -406,3 +406,24 @@ condemns no file", passed on the old code (no file was ever touched), so it was 
 failures removed: `assert 'purged' == 'files_locked'`, restored.
 **What the tests keep:** the 11-month, newer and the user's `--out` file all still exist after the purge, and the scan of the whole data folder finds the other businesses' people (`Person B`, `Person N0`) still there.
 **UNPROVEN:** the time it takes to read a very large `exports` folder at the start of every run (it is read only when something is expired or due within 30 days); a sheet in the old binary `.xls` form (the tool writes `.xlsx` and `.csv`).
+
+## Item 2 — `forget` must not report success when a file could not be scrubbed: what the change must do (written before the code)
+
+Today `forget_in_files` ends a file's turn with `except OSError: continue`: a log that a detached run holds open on Windows cannot be replaced, the value stays in it, and the command prints "forgot" and exits 0.
+- For a file that holds the value: first the old way (write the kept lines to a side file, replace). If that fails with `OSError`, rewrite the file in place (open for writing, write the kept lines, cut the rest off): another process that holds
+  the file open for appending does not stop that. A file that is deleted whole (a sheet) that cannot be deleted is emptied in place the same way and listed as edited. Only when the file can neither be replaced nor rewritten, or cannot be read, it is
+  a file that "still holds the value" (or cannot be checked): `forget_in_files` returns it in a third list, and `forget` never says it forgot without it.
+- `leadforge forget`: if that list is not empty the command exits 4 with `ok: false`, the digest names the files by relative path (never the value), says what was done (database rows, files cleaned), and tells the user to close what holds them and run the same
+  command again (it is repeatable: the database part finds nothing more). The human text must not say "forgot".
+- What must stay: a file that holds only a bystander is neither read for write nor changed; `forget` on a workspace where nothing is held behaves exactly as before.
+**Pass lines:** (a) a second process holds a log file open with the value in it; `forget` runs; either the file no longer holds the value (exit 0) or the output names that file and the exit is not 0 (never exit 0 with the value still in it).
+(b) with both ways of writing refused (patched), exit 4, the file named, the value not in the output, `ok: false`, and the rows of the database part are done.
+
+**Check of item 2 by reading, after.** `retention._scrub_file` does one file: a line file is rewritten without the lines that hold the value (side file + `os.replace`; on `OSError` the side file is removed and `_rewrite_in_place` writes the kept
+bytes over the file and cuts it); anything else is unlinked, or emptied in place and counted as edited if it cannot be unlinked. `forget_in_files` now returns `(edited, removed, failed)`; a file that cannot be read or neither replaced nor rewritten
+goes to `failed` (it used to be skipped by `except OSError: continue`). `forget` carries `files_failed`; `cli.forget` with any of them emits `ok: false`, names them by relative path, reports the rows done, exits 4 and never prints "forgot that". The only
+caller of `forget_in_files` is `retention.forget` (grep). A file that holds only a bystander is read, not written (unchanged branch).
+**Seen red first (right reason).** Before the code, test (a) on this laptop with a real second process holding the log open for appending: `AssertionError: INFO a Zora Quillfeather <zora.quillfeather@quillfeather-plumbing.example> ...`
+(exit 0, the value still in the held file: the defect itself). Test (b) failed on the missing `_rewrite_in_place`. Afterwards a probe with a spy on `os.replace` showed what happens with the real held file here: `replace failed: PermissionError`, the in-place
+rewrite took over, `exit 0 ... value still in file: False bystander kept: True`. With the in-place write broken on purpose (test (a), line replaced by `raise PermissionError`) the command exits 4 and names the file and test (a) still holds on its other
+side; restored. On Linux a held file can be replaced, so (a) passes there by the first way; (b) is the platform-independent proof of the failure path.

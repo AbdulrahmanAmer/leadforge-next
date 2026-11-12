@@ -596,6 +596,14 @@ def forget(ctx: typer.Context, value: str = typer.Argument(..., help="an email a
         emit_digest(False, "forget", warnings=[str(e)[:300]], next_="nothing was changed")
         raise typer.Exit(e.exit_code) from e
     rows = sum(res["rows"].values())
+    if res["files_failed"]:   # never "forgot" while a file still holds the value, or could not be checked
+        emit_digest(False, "forget", counts={"kind": res["kind"], "rows": rows, "files_removed": len(res["files_removed"]),
+                                             "files_edited": len(res["files_edited"]), "files_failed": len(res["files_failed"])},
+                    artifacts=res["files_failed"],
+                    warnings=["these files may still hold it, they could not be cleaned or checked: " + ", ".join(res["files_failed"])
+                              + f". The database part is done ({rows} rows). Close whatever holds them open and run the same command again."],
+                    next_="close the program that holds those files, then run `leadforge forget` with the same value")
+        raise typer.Exit(4)
     _say(ctx, f"forgot that {res['kind']}: {rows} database rows, {len(res['files_removed'])} files deleted, "
               f"{len(res['files_edited'])} files with lines taken out. They are on the suppression list, so a new run skips them.",
          "Sheets and files you already handed to someone else, or wrote outside this folder with --out, cannot be reached from here.")

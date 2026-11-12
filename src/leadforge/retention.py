@@ -191,31 +191,57 @@ def _holds(path: Path, needle: Needle, raw: bytes) -> bool:
     return _holds_any(path, [needle.bpattern], raw)
 
 
-def forget_in_files(cfg: Config, needle: Needle) -> tuple[list[str], list[str]]:
-    """(files with lines taken out, files deleted), relative to the workspace. Content is never reported."""
+def _rewrite_in_place(path: Path, data: bytes) -> None:
+    """Write `data` over the file's own bytes. Unlike replacing the file, this works while another process (a detached run's
+    log) has it open for appending."""
+    with open(path, "r+b") as fh:
+        fh.write(data)
+        fh.truncate()
+
+
+def _scrub_file(p: Path, needle: Needle, raw: bytes) -> str:
+    """Take the value out of one file that holds it. Returns "edited" or "removed"; raises OSError if it cannot be done."""
+    if LINE_FILES.search(p.name) and not zipfile.is_zipfile(p):
+        keep = b"".join(ln for ln in raw.splitlines(keepends=True) if not needle.bpattern.search(ln))
+        action = "edited"
+    else:   # a sheet, a page: deleted whole; emptied in place if it cannot be deleted
+        keep, action = b"", "removed"
+    if action == "removed":
+        try:
+            p.unlink()
+            return action
+        except OSError:
+            _rewrite_in_place(p, keep)
+            return "edited"
+    tmp = p.with_name(p.name + ".tmp")
+    try:
+        tmp.write_bytes(keep)
+        os.replace(tmp, p)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        _rewrite_in_place(p, keep)
+    return action
+
+
+def forget_in_files(cfg: Config, needle: Needle) -> tuple[list[str], list[str], list[str]]:
+    """(files with lines taken out, files deleted, files that still hold the value or could not be checked), relative to the
+    workspace. Content is never reported."""
     for h in logging.getLogger("leadforge").handlers:
         h.close()   # Windows will not replace a file this process holds open; the handler reopens on the next record
     edited: list[str] = []
     removed: list[str] = []
+    failed: list[str] = []
     ws = Path(cfg.workspace)
     for p in candidate_files(cfg):
+        rel = str(p.relative_to(ws))
         try:
             raw = p.read_bytes()
             if not _holds(p, needle, raw):
                 continue
-            rel = str(p.relative_to(ws))
-            if LINE_FILES.search(p.name) and not zipfile.is_zipfile(p):
-                keep = [ln for ln in raw.splitlines(keepends=True) if not needle.bpattern.search(ln)]
-                tmp = p.with_name(p.name + ".tmp")
-                tmp.write_bytes(b"".join(keep))
-                os.replace(tmp, p)
-                edited.append(rel)
-            else:
-                p.unlink()
-                removed.append(rel)
+            (edited if _scrub_file(p, needle, raw) == "edited" else removed).append(rel)
         except OSError:
-            continue
-    return edited, removed
+            failed.append(rel)
+    return edited, removed, failed
 
 
 def forget(cfg: Config, value: str) -> dict:
@@ -229,8 +255,8 @@ def forget(cfg: Config, value: str) -> dict:
             counts = forget_in_database(conn, needle)
         finally:
             conn.close()
-    edited, removed = forget_in_files(cfg, needle)
-    return {"kind": needle.kind, "rows": counts, "files_edited": edited, "files_removed": removed}
+    edited, removed, failed = forget_in_files(cfg, needle)
+    return {"kind": needle.kind, "rows": counts, "files_edited": edited, "files_removed": removed, "files_failed": failed}
 
 
 # ------------------------------------------------------------------ expiry
