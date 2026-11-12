@@ -26,7 +26,7 @@ def _icp(profile="default"):
 
 def _biz(conn, rid, bid, name, **kw):
     dom = kw.pop("domain", f"{bid}.example")
-    db.upsert_business(conn, Business(id=bid, name=name, name_norm=name.lower(), dedupe_key=f"k{bid}", source=kw.pop("source", "gosom"),
+    db.upsert_business(conn, Business(id=bid, name=name, name_norm=name.lower(), dedupe_key=f"k{bid}", source=kw.pop("source", "fakelist"),
                                       website=f"https://{dom}", domain=dom, first_run_id=rid, address_country="GB", **kw))
     db.save_score(conn, Score(business_id=bid, run_id=rid, total=70, tier="B",
                               factors=[ScoreFactor(factor="x", group="fit", weight=1, score=1, points=1, why="w")]))
@@ -130,7 +130,7 @@ def test_c12_where_each_value_came_from(export):
     assert (p1["Phone Source"], p1["Phone Date"]) == ("https://maps.example/p1", "2026-10-02")      # the listing: its page, last_seen_at
     assert (p1["DM Phone Page"], p1["DM Phone Date"]) == ("https://p1.example/team", "2026-10-03")
     assert (p2["Email Source"], p2["Email Date"]) == ("https://p2.example/about", "2026-10-05")     # evidence row only
-    assert (p2["Phone Source"], p2["Phone Date"]) == ("gosom", "2026-10-04")                         # no page for a Maps row without a Maps address: the provider
+    assert (p2["Phone Source"], p2["Phone Date"]) == ("fakelist", "2026-10-04")                      # a listing row without a listing address: the provider's name
     assert (p3["Email Source"], p3["Email Date"]) == ("byol_csv", "2026-10-06")                      # a list has a name, no page
     assert (p3["Phone Source"], p3["Phone Date"]) == ("byol_csv", "2026-10-06")                      # contact fallback of the Phone cell
     assert (p4["Email Source"], p4["Email Date"]) == (NOT_RECORDED_SOURCE, NOT_RECORDED_DATE)       # said, never blank
