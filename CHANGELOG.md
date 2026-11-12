@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.3] — 2026-11-12
+
+The fake-campaign check now also runs on Linux (its network guard refuses a DNS question to a loopback stub resolver too).
+Companies House's address is a setting (default unchanged) and the fake campaign serves it. The speed test no longer races the clock.
+`send-outreach` installed alone keeps its guardrail files beside it. (Draft; finalised at the end of the run.)
+
 ## [0.7.2] â€” 2026-11-11
 
 The repository now carries a fully faked end-to-end campaign check (`scripts/e2e_fake_campaign.py`, run in CI).

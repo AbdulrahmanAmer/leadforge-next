@@ -9,6 +9,9 @@ for label, fn in (
     ("raw connect 203.0.113.9:80", lambda: socket.socket().connect(("203.0.113.9", 80))),
     ("lookup www.example.org", lambda: socket.getaddrinfo("www.example.org", 443)),
     ("udp send 192.0.2.53:53", lambda: socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(b"x", ("192.0.2.53", 53))),
+    # a DNS question is never local: a loopback stub resolver (127.0.0.53 on Linux runners) is the way out to the network
+    ("udp send loopback stub 127.0.0.53:53", lambda: socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(b"x", ("127.0.0.53", 53))),
+    ("tcp connect loopback stub 127.0.0.53:53", lambda: socket.create_connection(("127.0.0.53", 53), timeout=3)),
 ):
     try:
         fn()

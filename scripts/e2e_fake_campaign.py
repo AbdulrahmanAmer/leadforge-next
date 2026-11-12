@@ -315,8 +315,11 @@ def main() -> int:
         p = subprocess.run([a.python, str(HARNESS / "probe.py")], env=env, capture_output=True, encoding="utf-8", timeout=60)
         print(p.stdout + p.stderr)
         print("guard log:\n" + (log.read_text(encoding="utf-8") if log.exists() else "(empty)"))
-        refused = {(r["kind"]) for r in read_jsonl(log)}
-        ok = p.returncode == 0 and {"connect", "dns", "sendto"} <= refused
+        entries = read_jsonl(log)
+        refused = {r["kind"] for r in entries}
+        # the OS refuses TCP to a closed loopback port by itself, so the guard's own log is the evidence for port 53
+        dns_local = {r["kind"] for r in entries if r["host"] == "127.0.0.53" and r["port"] == 53}
+        ok = p.returncode == 0 and {"connect", "dns", "sendto"} <= refused and {"connect", "sendto"} <= dns_local
         print("PROBE", "PASS" if ok else "FAIL")
         return 0 if ok else 1
     ws = out / "ws"
