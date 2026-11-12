@@ -318,3 +318,41 @@ forces the refusal; seen red with the fallback broken (`assert (1 == 0)` on run_
 Found on the way, for L6's owners (not changed here): `forget`, `purge` and every command that calls `db.check_schema_before_write`
 on Windows fail with `PermissionError` while another process has the database open with data in its WAL (the same refused copy in
 `peek_schema_version`, which catches only `sqlite3.DatabaseError`). Not reproduced on the command line in this run.
+
+## Gate and hosted CI
+
+`node check.mjs` once, at below-normal priority, on 4c1cda4 (the venv's Scripts first on PATH; ruff 0.15.13 in the venv, see Decisions):
+
+```
+ok  versions agree  0.4
+ok — 2 skill(s) have portable frontmatter
+ok  skill frontmatter  0.2
+ok: 2 skills open every file they name when installed alone; shared reference copies are identical
+ok  skill references  0.3
+All checks passed!
+ok  lint  0.2
+899 passed, 4 skipped in 260.83s (0:04:20)
+ok  tests  262.5
+ok  cli digest  2.2
+CHECK PASS sha=4c1cda4 tree=clean steps=6 skipped=0 secs=266
+```
+
+Hosted CI, run 43185276515 on 4c1cda4 (pull request 14), read with `gh run view`: 13 jobs, 13 success.
+
+```
+claude plugin validate  success
+fake campaign · windows-latest  success
+Validate plugin manifests  success
+windows-latest · py3.12  success
+ubuntu-latest · py3.14  success
+ubuntu-latest · py3.12  success
+ubuntu-latest · py3.13  success
+Version strings agree  success
+windows-latest · py3.13  success
+fake campaign · ubuntu-latest  success
+windows-latest · py3.11  success
+windows-latest · py3.14  success
+ubuntu-latest · py3.11  success
+```
+
+The commit that adds this section has its own run; its result is in the pull request and the run report, not here.
