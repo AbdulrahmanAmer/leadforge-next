@@ -1,6 +1,28 @@
 {
   "identifier": "main",
-  "description": "The one window may ask the core for the engine's version. Nothing else: no shell, no opener, no files, no network.",
+  "description": "The one window may call the 21 engine commands of the seam (app/ui/src/engine.ts). Nothing else: no shell, no opener, no files, no network.",
   "windows": ["main"],
-  "permissions": ["allow-engine-version"]
+  "permissions": [
+    "allow-campaign-create",
+    "allow-run-start",
+    "allow-run-stop",
+    "allow-run-status",
+    "allow-campaigns-list",
+    "allow-sheet-export",
+    "allow-sheet-open",
+    "allow-people-list",
+    "allow-person-forget",
+    "allow-address-suppress",
+    "allow-purge-report",
+    "allow-purge-apply",
+    "allow-purge-everything",
+    "allow-retention-get",
+    "allow-retention-set",
+    "allow-keys-list",
+    "allow-key-save",
+    "allow-key-remove",
+    "allow-settings-get",
+    "allow-settings-set",
+    "allow-about"
+  ]
 }

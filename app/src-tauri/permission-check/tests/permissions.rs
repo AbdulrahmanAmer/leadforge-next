@@ -11,10 +11,55 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-/// Every permission a capability may grant. Adding one is a reviewed change.
-const ALLOWED_PERMISSIONS: &[&str] = &["allow-engine-version"];
-/// Every app command the window may call.
-const ALLOWED_COMMANDS: &[&str] = &["engine_version"];
+/// Every permission a capability may grant, and the capability must grant all of them: one `allow-` per command of
+/// the seam. Adding one is a reviewed change.
+const ALLOWED_PERMISSIONS: &[&str] = &[
+    "allow-campaign-create",
+    "allow-run-start",
+    "allow-run-stop",
+    "allow-run-status",
+    "allow-campaigns-list",
+    "allow-sheet-export",
+    "allow-sheet-open",
+    "allow-people-list",
+    "allow-person-forget",
+    "allow-address-suppress",
+    "allow-purge-report",
+    "allow-purge-apply",
+    "allow-purge-everything",
+    "allow-retention-get",
+    "allow-retention-set",
+    "allow-keys-list",
+    "allow-key-save",
+    "allow-key-remove",
+    "allow-settings-get",
+    "allow-settings-set",
+    "allow-about",
+];
+/// Every app command the window may call: the 21 names of the seam (app/ui/src/engine.tauri.ts `COMMANDS`).
+const ALLOWED_COMMANDS: &[&str] = &[
+    "campaign_create",
+    "run_start",
+    "run_stop",
+    "run_status",
+    "campaigns_list",
+    "sheet_export",
+    "sheet_open",
+    "people_list",
+    "person_forget",
+    "address_suppress",
+    "purge_report",
+    "purge_apply",
+    "purge_everything",
+    "retention_get",
+    "retention_set",
+    "keys_list",
+    "key_save",
+    "key_remove",
+    "settings_get",
+    "settings_set",
+    "about",
+];
 /// The only windows a capability may name.
 const ALLOWED_WINDOWS: &[&str] = &["main"];
 /// Crates the core may depend on. No tauri-plugin-* at all.
@@ -86,6 +131,21 @@ fn check_capability(cap: &Value, place: &str, problems: &mut Vec<String>) {
         }
         _ => problems.push(format!("{place}: `windows` must list the windows by name")),
     }
+    // exactly the list: nothing more (below) and nothing less (here), so a screen never meets a missing grant
+    let granted: Vec<&str> = obj
+        .get("permissions")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    for want in ALLOWED_PERMISSIONS {
+        if !granted.contains(want) {
+            problems.push(format!(
+                "{place}: permission `{want}` of the seam is not granted"
+            ));
+        }
+    }
     for p in obj
         .get("permissions")
         .and_then(Value::as_array)
@@ -150,8 +210,11 @@ fn check_csp(csp: &str, problems: &mut Vec<String>) {
             .find(|d| d.split(' ').next() == Some(name))
             .map(str::to_string)
     };
-    if directive("default-src").as_deref() != Some("default-src 'self'") {
-        problems.push("csp: `default-src 'self'` must be set".into());
+    if !matches!(
+        directive("default-src").as_deref(),
+        Some("default-src 'none'") | Some("default-src 'self'")
+    ) {
+        problems.push("csp: `default-src 'none'` or `default-src 'self'` must be set".into());
     }
     if directive("script-src").as_deref() != Some("script-src 'self'") {
         problems.push("csp: `script-src 'self'` must be set, with nothing else".into());
@@ -358,15 +421,19 @@ fn all_problems() -> Vec<String> {
 
     // 4. Where a command or a plugin would enter.
     let build = read(&root.join("build.rs"));
-    let cmds = listed_names(&build, ".commands(", ')');
-    if cmds != ALLOWED_COMMANDS {
+    let mut want: Vec<String> = ALLOWED_COMMANDS.iter().map(|s| s.to_string()).collect();
+    want.sort();
+    let mut cmds = listed_names(&build, ".commands(", ')');
+    cmds.sort();
+    if cmds != want {
         problems.push(format!(
             "build.rs: app commands {cmds:?} differ from the list {ALLOWED_COMMANDS:?}"
         ));
     }
     let lib = read(&root.join("src").join("lib.rs"));
-    let handlers = listed_names(&lib, "generate_handler![", ']');
-    if handlers != ALLOWED_COMMANDS {
+    let mut handlers = listed_names(&lib, "generate_handler![", ']');
+    handlers.sort();
+    if handlers != want {
         problems.push(format!(
             "src/lib.rs: handlers {handlers:?} differ from the list {ALLOWED_COMMANDS:?}"
         ));

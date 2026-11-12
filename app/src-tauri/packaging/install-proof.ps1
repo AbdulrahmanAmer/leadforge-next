@@ -20,8 +20,11 @@ $p = Start-Process -FilePath $Setup -ArgumentList '/S', '/NS', "/D=$Dir" -PassTh
 $files = @(Get-ChildItem -Recurse -File $Dir -ErrorAction SilentlyContinue)
 "installed: {0} files, {1:N1} MB" -f $files.Count, (($files | Measure-Object -Sum Length).Sum / 1MB)
 
-& (Join-Path $PSScriptRoot 'smoke-window.ps1') -Exe $exe -Png (Join-Path $env:TEMP 'lf-install-smoke.png')
-"installed app smoke exit: $LASTEXITCODE"
+# The installed app walks its screens on the bundled engine (about 40 s of window), pictures in %TEMP%\lf-install-shots.
+& (Join-Path $PSScriptRoot 'selftest-window.ps1') -Exe $exe -Shots (Join-Path $env:TEMP 'lf-install-shots') |
+    Select-String -Pattern 'origin=bundled|SELFTEST|probe|shots taken|app exit code' | ForEach-Object { $_.Line }
+$selftest = $LASTEXITCODE
+"installed app self-test exit: $selftest"
 
 $un = Join-Path $Dir 'uninstall.exe'
 Start-Process -FilePath $un -ArgumentList '/S' -Wait | Out-Null
@@ -34,4 +37,4 @@ $procs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -l
 $rest = @(Get-ChildItem -Recurse -Force 'D:\Temp\lf-install' -ErrorAction SilentlyContinue)
 "after uninstall: processes from D:\Temp\lf-install: $($procs.Count); files or folders left there: $($rest.Count) $(($rest | ForEach-Object FullName) -join '; ')"
 "uninstall registry key left: $(Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\LeadForge')"
-if ($procs.Count -eq 0 -and $rest.Count -eq 0) { 'PASS'; exit 0 } else { 'FAIL'; exit 1 }
+if ($procs.Count -eq 0 -and $rest.Count -eq 0 -and $selftest -eq 0) { 'PASS'; exit 0 } else { 'FAIL'; exit 1 }

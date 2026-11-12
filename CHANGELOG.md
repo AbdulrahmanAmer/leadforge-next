@@ -10,6 +10,11 @@
   suppress), data and retention, keys, settings and about. They talk to the engine only through `app/ui/src/engine.ts`; until the
   shell exists they run on made-up data. No send or outreach action. The tool's behaviour is unchanged.
 - `docs/window-actions.md`: every action of the window, the engine command behind it, and what the engine does not have yet.
+- One window (slice L11, first half): the screens are the shell's page, and the core answers their 21 commands by starting the
+  engine as `window <name>` with the arguments as one JSON document on stdin and the engine's JSON passed back untouched; a run's
+  progress streams line by line. Until the engine has those commands, a clearly named stand-in answers with made-up data (one-line
+  switch in `docs/slices/L11-window.md`). A second copy of the app brings the first to the front instead of starting. The screens'
+  build tool is pinned to `vite` 8.3.6 (no package younger than 7 days).
 
 ## [0.7.3] — 2026-11-12
 
