@@ -2,7 +2,9 @@
 
 Loaded by Python at start-up because this folder is on PYTHONPATH of every campaign process.
   * Every connection and every name lookup that is not loopback is refused and appended to the file named by
-    LF_GUARD_LOG (one JSON object per line: kind, host, port, caller, leadforge frame).
+    LF_GUARD_LOG (one JSON object per line: kind, host, port, caller, leadforge frame). So is every connection or datagram to
+    port 53 whatever the address: a loopback stub resolver (127.0.0.53 on Linux runners) forwards the question to the network,
+    so a DNS question is never "local".
   * Names listed in LF_GUARD_HOSTS (comma list, the invented *.example sites) resolve to 127.0.0.1 inside this
     process only - the guard is the resolver for the fixture world; no real lookup happens.
   * The pinned Maps scraper binary is never used: if LF_FAKE_MAPS names a gosom-shaped JSON file, the `gosom`
@@ -33,6 +35,14 @@ def _is_loopback_ip(host) -> bool:
         return ipaddress.ip_address(str(host).split("%")[0]).is_loopback
     except ValueError:
         return False
+
+
+DNS_PORT = 53
+
+
+def _is_local(host, port) -> bool:
+    """Reachable inside the guard: a loopback address, except that a DNS question (port 53) is never local."""
+    return _is_loopback_ip(host) and port != DNS_PORT
 
 
 def _callers() -> tuple[str, str]:
@@ -103,8 +113,8 @@ def _guard_addr_call(real, kind):
     def wrapper(self, address, *a):
         if self.family in (socket.AF_INET, socket.AF_INET6):
             host, port = _addr(address)
-            if not _is_loopback_ip(host):
-                _refuse(kind, host, port, ConnectionRefusedError(f"LF_GUARD: {kind} to {host}:{port} refused (not loopback)"))
+            if not _is_local(host, port):
+                _refuse(kind, host, port, ConnectionRefusedError(f"LF_GUARD: {kind} to {host}:{port} refused (not local)"))
         return real(self, address, *a)
     return wrapper
 
@@ -113,8 +123,8 @@ def _guard_sendto(self, data, *args):
     address = args[-1] if args else None
     if self.family in (socket.AF_INET, socket.AF_INET6) and address is not None:
         host, port = _addr(address)
-        if not _is_loopback_ip(host):
-            _refuse("sendto", host, port, ConnectionRefusedError(f"LF_GUARD: sendto {host}:{port} refused (not loopback)"))
+        if not _is_local(host, port):
+            _refuse("sendto", host, port, ConnectionRefusedError(f"LF_GUARD: sendto {host}:{port} refused (not local)"))
     return _real_sendto(self, data, *args)
 
 

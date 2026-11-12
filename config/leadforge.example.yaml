@@ -44,6 +44,7 @@ validation:
 
 registry:                         # optional free-registration keys; leave empty to disable (ADR-007)
   companies_house_key: ""
+  # companies_house_url: only the default address or a loopback one is accepted (the key goes with every request)
   opencorporates_token: ""
 
 social:                           # social/video presence signals (unit U4.8)

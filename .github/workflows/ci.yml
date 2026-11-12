@@ -44,14 +44,15 @@ jobs:
           # the packaged rubric must ship in the wheel — score once crashed here (repo-relative path)
           python -c "from importlib.resources import files; t=(files('leadforge')/'data'/'scoring.default.yaml').read_text(encoding='utf-8'); assert 'factors' in t"
 
-  # windows-latest only: the saved result was made on Windows; on Linux the guard sees no DNS packet (docs/slices/L5-...md).
+  # Both systems: the guard refuses a DNS question to a loopback stub resolver too (port 53 is never local), so Linux
+  # logs the same refused list as the Windows-made saved result (docs/slices/L5-...md).
   e2e-fake-campaign:
     name: fake campaign · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest]
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
 
@@ -111,3 +112,5 @@ jobs:
           done
       - name: Skill frontmatter is portable (spec fields only)
         run: python .github/scripts/check_skill_frontmatter.py
+      - name: Each skill opens every file it names when installed alone
+        run: python .github/scripts/check_skill_references.py

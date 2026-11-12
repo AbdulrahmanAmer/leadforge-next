@@ -23,7 +23,7 @@ import httpx
 from leadforge.grid import PlannedQuery
 from leadforge.models import RawListing
 from leadforge.providers.base import DiscoveryProvider, register
-from leadforge.providers.registry import _CH_BUCKET, CH_BASE
+from leadforge.providers.registry import _CH_BUCKET
 from leadforge.util import LOG, ProviderDegraded, ProviderFailed, now_iso
 
 ADVANCED_SEARCH_PATH = "/advanced-search/companies"
@@ -77,6 +77,7 @@ class CompaniesHouseDiscovery(DiscoveryProvider):
             max_hits = min(max_hits, limit)
         key = self.cfg.registry.companies_house_key
         auth = (key, "")
+        base = self.cfg.registry.companies_house_url
 
         out: list[RawListing] = []
         seen_numbers: set[str] = set()
@@ -88,11 +89,11 @@ class CompaniesHouseDiscovery(DiscoveryProvider):
                       ("size", size), ("start_index", start_index)]
             try:
                 _CH_BUCKET.wait()
-                r = httpx.get(f"{CH_BASE}{ADVANCED_SEARCH_PATH}", params=params, auth=auth, timeout=20.0)
+                r = httpx.get(f"{base}{ADVANCED_SEARCH_PATH}", params=params, auth=auth, timeout=20.0)
                 if r.status_code == 429:
                     time.sleep(60)
                     _CH_BUCKET.wait()
-                    r = httpx.get(f"{CH_BASE}{ADVANCED_SEARCH_PATH}", params=params, auth=auth, timeout=20.0)
+                    r = httpx.get(f"{base}{ADVANCED_SEARCH_PATH}", params=params, auth=auth, timeout=20.0)
                 r.raise_for_status()
             except httpx.HTTPError as e:
                 if out:

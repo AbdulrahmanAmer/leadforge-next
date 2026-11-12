@@ -6,6 +6,7 @@
 const STEPS = [
   { name: 'versions agree', cmd: 'python .github/scripts/check_versions.py' },
   { name: 'skill frontmatter', cmd: 'python .github/scripts/check_skill_frontmatter.py' },
+  { name: 'skill references', cmd: 'python .github/scripts/check_skill_references.py' },
   { name: 'lint', cmd: 'python -m ruff check src tests' },
   { name: 'tests', cmd: 'python -m pytest' },
   { name: 'cli digest', cmd: 'python .github/scripts/check_digest.py' },

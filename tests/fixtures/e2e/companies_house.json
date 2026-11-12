@@ -1,0 +1,22 @@
+{
+  "note": "Invented companies for the fake campaign. Company numbers start ZZ (no real register issues that prefix); every person is made up.",
+  "key": "fixture-key",
+  "companies": [
+    {"number": "ZZ000009", "title": "HARBOUR MOTORS BATH LTD", "status": "active", "created": "2014-02-03",
+     "locality": "Bath", "postal_code": "BA1 1ZZ", "sic_codes": ["45200"],
+     "officers": [{"name": "ASHDOWN, Perpetua", "role": "director", "appointed_on": "2014-02-03"}]},
+    {"number": "ZZ000001", "title": "HARBOUR MOTORS LTD", "status": "active", "created": "2011-04-12",
+     "locality": "Bristol", "postal_code": "BS1 1AA", "sic_codes": ["45200"],
+     "officers": [
+       {"name": "VERRILL, Tamsin", "role": "director", "appointed_on": "2011-04-12"},
+       {"name": "GONE, Alfred", "role": "director", "appointed_on": "2011-04-12", "resigned_on": "2019-06-30"}]},
+    {"number": "ZZ000002", "title": "NORTHGATE TYRES LIMITED", "status": "active", "created": "2016-09-01",
+     "locality": "Bristol", "postal_code": "BS1 4AA", "sic_codes": ["45320"],
+     "officers": [
+       {"name": "FENN, Ottoline", "role": "director", "appointed_on": "2016-09-01"},
+       {"name": "LARKIN, Barnaby", "role": "director", "appointed_on": "2017-01-15"}]},
+    {"number": "ZZ000003", "title": "PENNINE MOTORS LIMITED", "status": "dissolved", "created": "2008-11-20",
+     "locality": "Bristol", "postal_code": "BS1 6AA", "sic_codes": ["45200"],
+     "officers": [{"name": "STROUD, Emrys", "role": "director", "appointed_on": "2008-11-20"}]}
+  ]
+}
