@@ -1,7 +1,7 @@
 [package]
 name = "leadforge-window"
 # Same number as pyproject.toml (tests/version_agrees.rs fails when they drift).
-version = "0.7.3"
+version = "0.8.0"
 description = "LeadForge window: the Rust core starts the bundled Python engine; the window can start nothing."
 license = "MIT"
 edition = "2021"

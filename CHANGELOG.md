@@ -16,6 +16,34 @@
   switch in `docs/slices/L11-window.md`). A second copy of the app brings the first to the front instead of starting. The screens'
   build tool is pinned to `vite` 8.3.6 (no package younger than 7 days).
 
+## [0.8.0] — 2026-11-12
+
+The delete side. New command `leadforge forget <email | domain | name>` removes a person from the workspace: every table, the cache, the logs,
+the progress file, the outbox and inbox, the hand-off files, the draft packets and the sheets in `exports`; then it rewrites the database file
+so the rows do not stay readable inside it, and puts the value on the suppression list so a new run does not collect it again. Sheets you already
+handed to someone else cannot be reached.
+
+New command `leadforge purge`: a business and everything attached to it expires 12 months after the run that first found it (a refresh does not
+renew; `retention.months` can shorten the period to 1 to 12). `run` checks this at its start and prints how many records expire in the next 30
+days. Three protections: the **first run after this upgrade only reports and deletes nothing**; an automatic purge never deletes more than half
+the workspace (it stops the run and names `leadforge purge --apply`, which a wrong clock also triggers); a half-upgraded workspace stops the
+command. `purge --everything --yes` deletes the data folder's contents without opening the database. A purge cannot be undone.
+
+Also: a workspace made by an older LeadForge is now refused before anything is written to it (before, opening it switched the file to WAL mode
+and created tables first), and stays byte for byte as it was; the log file appears at the first log record. The Maps scraper's raw output file is
+deleted as soon as it is parsed (it holds reviewers' names). A suppressed email address is in no export file and on no tab; a draft addressed to
+it is not exported. A workspace made by 0.7.x opens unchanged (schema 7).
+
+Files expire with the business they hold: at expiry, every file under the workspace's own `exports` and `cache` folders that holds an expired
+business (a sheet, a cached page) is deleted whole, under the same protections as the records (the first run reports them, the 30-day line and the
+more-than-half stop count them). If a file cannot be deleted (another program holds it open), nothing is deleted from the database and the file is
+named. Files you wrote elsewhere with `--out` are yours and are never touched. `forget` now scrubs a log that a running process holds open, in
+place; if a file still holds the value, or cannot be checked, it names the file and exits 4 instead of saying it forgot.
+
+Not built, and left to the owner's decision: the suppression list holds the forgotten identifier in clear, so that the objection can be honoured on
+the next run. A hashed list would change the tables (and four lookups), which this slice's row forbids; until it is decided, a byte scan of the
+database finds the identifier in that one row and nowhere else.
+
 ## [0.7.3] — 2026-11-12
 
 The fake-campaign check runs on Linux too (its network guard now refuses any DNS question, even to a loopback stub resolver) and

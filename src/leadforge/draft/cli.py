@@ -143,6 +143,7 @@ def render(
 ) -> None:
     """Write one reviewable .txt file per drafted message (To/Subject preamble + body)."""
     from leadforge.draft.skeletons import render_txt
+    from leadforge.export import _masker
 
     cfg = _cfg(ctx)
     conn = db.connect(cfg.db_path)
@@ -152,12 +153,15 @@ def render(
     ).fetchall()
     out_dir = Path(out)
     out_dir.mkdir(parents=True, exist_ok=True)
+    mask = _masker(conn)
     n = 0
     for m in rows:
         b = conn.execute("SELECT * FROM businesses WHERE id=?", (m["business_id"],)).fetchone()
         contact_row = service.best_contact(conn, b, cfg) if b is not None else None
         to = contact_row["value"] if contact_row is not None else ((b["name"] if b is not None else "") or "")
-        txt = render_txt(to=to, subject=m["subject"], body=m["body_text"])
+        if contact_row is not None and db.is_suppressed(conn, to):
+            continue   # C7: no draft file for an address that objected
+        txt = render_txt(to=to, subject=mask(m["subject"]), body=mask(m["body_text"]))
         (out_dir / f"{m['target_id']}_{m['id']}.txt").write_text(txt, encoding="utf-8")
         n += 1
     _say(ctx, f"rendered={n} -> {out_dir}")
