@@ -291,3 +291,9 @@ time is NOT MEASURED. Verdict: KEEP the script as a trial that is run by hand on
 - `ruff check src tests scripts/mutation_trial.py`: `All checks passed!`. `python .github/scripts/check_versions.py`: all six copies `0.8.0`.
 - `gitleaks detect --log-opts "origin/master..HEAD"` (on the 13 commits before the last two): `no leaks found`.
 - Not run on STRIKERFORCE: a test that needs a real browser (none touched by this slice); Linux; hosted CI is read below.
+
+## Hosted CI, read from GitHub (`gh pr checks 6`), commit 44d07cb (run 43165231460, status completed, conclusion success)
+
+13 of 13 jobs pass, no job re-run: Validate plugin manifests · Version strings agree · claude plugin validate · fake campaign ubuntu-latest · fake campaign windows-latest ·
+ubuntu-latest py3.11 / py3.12 / py3.13 / py3.14 · windows-latest py3.11 / py3.12 / py3.13 / py3.14 (all `pass`). This table was added in a later commit that changes only this file; that
+commit's own run is read and written in the report.
