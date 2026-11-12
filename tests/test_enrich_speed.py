@@ -95,32 +95,44 @@ def test_render_gate_resizes_when_concurrency_changes():
 
 
 # ============================================================================ build item 5: DNS pool
-def test_validate_emails_parallel_matches_serial_and_is_faster(cfg, monkeypatch):
+def test_validate_emails_parallel_runs_calls_concurrently_up_to_the_pool_size(cfg, monkeypatch):
+    """No clock: every call waits at a barrier of `dns_workers` parties, which opens only when that many calls are in
+    flight at the same moment (a serial pool breaks it after the timeout and the test fails). The peak in flight is
+    counted, so the pool bound is checked too."""
+    import threading
+
     from leadforge.enrich import validate as validate_mod
 
+    workers = 8
+    gate = threading.Barrier(workers, timeout=5)  # the timeout is reached only when the code under test is wrong
+    lock = threading.Lock()
+    in_flight = {"now": 0, "peak": 0}
     calls: list[str] = []
 
     def fake_validate_email(email, label, cfg_):
-        time.sleep(0.05)
-        calls.append(email)
+        with lock:
+            in_flight["now"] += 1
+            in_flight["peak"] = max(in_flight["peak"], in_flight["now"])
+            calls.append(email)
+        try:
+            gate.wait()
+        finally:
+            with lock:
+                in_flight["now"] -= 1
         return ("valid", {"email": email})
 
     monkeypatch.setattr(validate_mod, "validate_email", fake_validate_email)
-    cfg.enrich.dns_workers = 8
-    rows = [{"id": i, "value": f"user{i}@example.test", "label": "personal"} for i in range(16)]
+    cfg.enrich.dns_workers = workers
+    rows = [{"id": i, "value": f"user{i}@example.test", "label": "personal"} for i in range(2 * workers)]
 
-    t0 = time.monotonic()
     results = validate_mod.validate_emails_parallel(rows, cfg)
-    elapsed = time.monotonic() - t0
 
-    assert len(results) == 16
-    assert {r_id for r_id, _tier, _meta in results} == {r["id"] for r in rows}
+    assert sorted(r_id for r_id, _tier, _meta in results) == [r["id"] for r in rows]  # each row once
     for r_id, tier, meta in results:
         assert tier == "valid"
         assert meta["email"] == f"user{r_id}@example.test"
-    assert len(calls) == 16  # every row actually validated, none skipped/duplicated
-    # serial would take 16*0.05s = 0.8s; pooled with 8 workers should be roughly 2*0.05s (+overhead)
-    assert elapsed < 0.4, f"pooled validation took {elapsed:.2f}s — expected well under the serial 0.8s"
+    assert sorted(calls) == sorted(r["value"] for r in rows)  # every row actually validated, none skipped/duplicated
+    assert in_flight["peak"] == workers  # calls overlapped, and never more than the pool size
 
 
 def test_validate_emails_parallel_empty_input_returns_empty():

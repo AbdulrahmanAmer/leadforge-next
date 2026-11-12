@@ -121,3 +121,23 @@ The old saved result already fails on the new campaign (the diff above is that f
 **Check by reading, after.** Server: 401 without the fixture key's basic-auth header (the key goes only to this loopback address, in line
 with item 1), search answers only companies holding every word of the query, profile/officers by number, unknown number 404; all
 CH traffic is logged in `requests`. Config: key and `http://127.0.0.1:<port>/ch` set through the same settings a user has.
+
+## Item 3 — the timing-flaky speed test, fixed at its cause
+
+**What the test is meant to prove.** `validate_emails_parallel(rows, cfg)` (`enrich/validate.py`) puts every row through
+`validate_email` on a pool of `cfg.enrich.dns_workers` threads: (a) each row exactly once, result mapped to its row id, and (b) the
+calls overlap, up to the pool size and never beyond it. The old test proved (b) only through a race against the clock (16 calls of
+0.05 s must finish in under 0.4 s); a busy runner stretches the sleeps and the bound fails with correct code (`0.55 < 0.4`, CI run
+43045072218). Cause: the assertion measured elapsed time, which depends on the machine, not on the code.
+
+**Must do (written before the change).** The fake `validate_email` waits on a `threading.Barrier(8)` (timeout 5 s, only ever
+reached when the code under test fails) and records how many calls are in flight at once under a lock. 16 rows, 8 workers:
+each group of 8 calls can only pass the barrier if 8 run at the same moment, so the peak in flight is exactly 8 on any machine, with
+no sleep and no clock in the assertion. Assertions: results are the 16 ids once each with the right email; `calls` has 16 entries;
+peak in flight == 8 (overlap happens, and the pool bound holds). Test renamed `..._runs_calls_concurrently_up_to_the_pool_size` since it
+no longer measures speed. Seen red first: with the pool forced to one worker the barrier breaks and the test fails; restored.
+
+**Check by reading, after; red/green.** The new test has no `time` call in its assertion path; the barrier timeout (5 s) is an upper bound for the
+failing case, not a margin. Passes in 0.35 s. With `workers = 1` forced in `validate_emails_parallel`: `1 failed ... threading.BrokenBarrierError`
+in 5.64 s (red for the right reason: the calls could not overlap); restored: `1 passed in 0.36s`. The two other wall-clock tests named in the L4
+list (`test_crawler_politeness.py::test_workers_12...`, `test_maps_list.py::test_parallel_queries_is_faster_than_serial`) are not in this brief: carried over.
