@@ -18,6 +18,16 @@ and created tables first), and stays byte for byte as it was; the log file appea
 deleted as soon as it is parsed (it holds reviewers' names). A suppressed email address is in no export file and on no tab; a draft addressed to
 it is not exported. A workspace made by 0.7.x opens unchanged (schema 7).
 
+Files expire with the business they hold: at expiry, every file under the workspace's own `exports` and `cache` folders that holds an expired
+business (a sheet, a cached page) is deleted whole, under the same protections as the records (the first run reports them, the 30-day line and the
+more-than-half stop count them). If a file cannot be deleted (another program holds it open), nothing is deleted from the database and the file is
+named. Files you wrote elsewhere with `--out` are yours and are never touched. `forget` now scrubs a log that a running process holds open, in
+place; if a file still holds the value, or cannot be checked, it names the file and exits 4 instead of saying it forgot.
+
+Not built, and left to the owner's decision: the suppression list holds the forgotten identifier in clear, so that the objection can be honoured on
+the next run. A hashed list would change the tables (and four lookups), which this slice's row forbids; until it is decided, a byte scan of the
+database finds the identifier in that one row and nowhere else.
+
 ## [0.7.3] — 2026-11-12
 
 The fake-campaign check runs on Linux too (its network guard now refuses any DNS question, even to a loopback stub resolver) and

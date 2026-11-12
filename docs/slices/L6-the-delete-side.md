@@ -467,3 +467,9 @@ said equivalent or outside the slice (chunk sizes, error-path `rollback`, back-u
 
 **Keep or cut (SPEC 3.4: keep only if it finds a real gap and ends under 20 minutes in CI): KEEP.** It found real gaps (two, above), it ends in 5.5 minutes, and it is not on every push (it starts by hand once the file is on the default branch, or when a commit changes
 its own files). The in-house `scripts/mutation_trial.py` stays as the Windows-side trial.
+
+## Item 4 — not built: the hashed suppression list (the owner's open decision)
+
+The suppression list holds the forgotten identifier in clear (`suppression`, `db.suppress`), so that the objection can be honoured on the next run (`is_suppressed` and the four SQL sub-selects compare the value). A hashed list would change the tables and those
+lookups, which this slice's row forbids ("no change to the tables"). So the byte scan of C4 finds the identifier in that one row and nowhere else (the copy-without-that-row test proves it). Written as an open decision of the owner in this file (also in "Plan and code
+disagree" 1 and "Open" above) and in the CHANGELOG entry of 0.8.0; no code for it was written in this run.
