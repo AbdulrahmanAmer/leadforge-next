@@ -103,7 +103,7 @@ Finding: licensed UK business-contact datasets advertise telephone-researched se
 verified contact details. They are not OSS, but they are a viable optional provider path if licensing, jurisdiction,
 cost, and use restrictions are recorded.
 
-Action: keep these behind the existing disabled-by-default paid adapter interface. Require provider-level cost,
+Action: (the paid adapter interface this named was removed in 0.7.1; a provider would need a new, separately reviewed design) Require provider-level cost,
 verification state, source terms, and person ownership. Benchmark provider DM reach rate against the open-source path.
 
 Source: [UK Business Contacts Plus Data listing](https://www.applytosupply.digitalmarketplace.service.gov.uk/g-cloud-14/services/552152090994615).

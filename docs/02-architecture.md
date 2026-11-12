@@ -112,7 +112,7 @@ flowchart LR
 | DM identification | snippet export → **agent labels** (default); GLiNER extra `[ner]` | ADR-003: token-optimal + best quality |
 | Storage | SQLite (stdlib) | ADR-004: zero-install, single-file, transactional |
 | Export | openpyxl (xlsx) + csv (utf-8-sig) | Styled, filterable, Excel-safe |
-| Resilience | tenacity retries, per-host token-bucket, stage checkpoints | Politeness + resumability |
+| Resilience | per-host token-bucket, stage checkpoints | Politeness + resumability |
 
 ## 4. Degradation ladder
 

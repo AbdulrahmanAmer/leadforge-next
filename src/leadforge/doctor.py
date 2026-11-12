@@ -33,7 +33,7 @@ GOSOM_REPO = "gosom/google-maps-scraper"
 STAMP_NAME = ".doctor_ok.json"
 CORE_IMPORTS = [
     "typer", "pydantic", "yaml", "httpx", "selectolax", "trafilatura",
-    "phonenumbers", "email_validator", "dns", "pyap", "tenacity", "openpyxl",
+    "phonenumbers", "email_validator", "dns", "pyap", "openpyxl",
 ]
 OPTIONAL_EXTRAS = {"crawl4ai": "browser", "gliner": "ner", "usaddress": "addressing", "yt_dlp": "social"}
 # extras --fix --full installs, with the concrete packages to fall back on when there is no
