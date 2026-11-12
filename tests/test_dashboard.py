@@ -25,7 +25,7 @@ def _seed(cfg) -> tuple[str, float]:
     for i in range(6):
         db.upsert_business(conn, Business(id=f"biz_{i}", name=f"B{i}", name_norm=f"b{i}", dedupe_key=f"na:{i}",
                                           domain=f"b{i}.example" if i < 4 else None, first_run_id=run_id,
-                                          last_seen_at="2026-09-03T00:00:00Z", source="gosom"))
+                                          last_seen_at="2026-09-03T00:00:00Z", source="fakelist"))
     conn.commit()
     feed = cfg.data_path / "progress.jsonl"
     lines = []

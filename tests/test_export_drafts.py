@@ -70,7 +70,7 @@ def test_new_columns_present_and_never_blank_include_draft_columns(tmp_path, mon
     """DRAFT_COLUMNS ride inside DEFAULT_EXTRA_COLUMNS, so the existing zero-blank contract already
     covers them — a bare business with no message at all still shows 'no draft', never blank."""
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="b1", name="Bare Garage", source="gosom", dedupe_key="dk-b1"))
+    db.upsert_business(conn, Business(id="b1", name="Bare Garage", source="fakelist", dedupe_key="dk-b1"))
     _score(conn, rid, "b1")
     arts = export_run(conn, _icp(), rid, cfg.exports_dir, ["csv"], cfg=cfg)
     row = _csv_rows(arts)[0]
@@ -85,7 +85,7 @@ def test_new_columns_present_and_never_blank_include_draft_columns(tmp_path, mon
 
 def test_csv_shows_the_four_draft_columns_from_a_seeded_message(tmp_path, monkeypatch):
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="b1", name="Drafted Garage", source="gosom", dedupe_key="dk-b1",
+    db.upsert_business(conn, Business(id="b1", name="Drafted Garage", source="fakelist", dedupe_key="dk-b1",
                                       domain="drafted.example"))
     _score(conn, rid, "b1")
     tid = _target(conn, "b1", "t")
@@ -101,7 +101,7 @@ def test_csv_shows_the_four_draft_columns_from_a_seeded_message(tmp_path, monkey
 
 def test_rejected_only_message_shows_no_draft(tmp_path, monkeypatch):
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="b1", name="Rejected Garage", source="gosom", dedupe_key="dk-b1"))
+    db.upsert_business(conn, Business(id="b1", name="Rejected Garage", source="fakelist", dedupe_key="dk-b1"))
     _score(conn, rid, "b1")
     tid = _target(conn, "b1", "t")
     _message(conn, tid, subject="Rejected subject", body="Rejected body", grade="C",
@@ -116,7 +116,7 @@ def test_rejected_only_message_shows_no_draft(tmp_path, monkeypatch):
 
 def test_newest_non_rejected_message_wins_over_an_older_one(tmp_path, monkeypatch):
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="b1", name="Two Draft Garage", source="gosom", dedupe_key="dk-b1"))
+    db.upsert_business(conn, Business(id="b1", name="Two Draft Garage", source="fakelist", dedupe_key="dk-b1"))
     _score(conn, rid, "b1")
     tid = _target(conn, "b1", "t")
     _message(conn, tid, subject="Old subject", body="Old body", grade="A", used_fact="hiring", step=1)
@@ -131,7 +131,7 @@ def test_message_in_a_different_campaign_is_not_picked_up(tmp_path, monkeypatch)
     """outreach_targets is unique on (business_id, campaign) — a business enrolled under a DIFFERENT
     campaign's messages must never leak into this campaign's export."""
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="b1", name="Other Campaign Garage", source="gosom",
+    db.upsert_business(conn, Business(id="b1", name="Other Campaign Garage", source="fakelist",
                                       dedupe_key="dk-b1"))
     _score(conn, rid, "b1")
     tid = _target(conn, "b1", "other-campaign")
@@ -147,7 +147,7 @@ def test_account_fit_unaffected_by_draft_columns(tmp_path, monkeypatch):
                               "target": {"categories": ["manufacturer"],
                                          "geography": {"areas": ["Dubai"], "country": "AE"}},
                               "scoring": {"profile": "account_fit"}})
-    db.upsert_business(conn, Business(id="b1", name="Acme", source="gosom", dedupe_key="dk-b1"))
+    db.upsert_business(conn, Business(id="b1", name="Acme", source="fakelist", dedupe_key="dk-b1"))
     db.save_score(conn, Score(business_id="b1", run_id=rid, total=70, tier="B",
                               factors=[ScoreFactor(factor="status", group="meta", weight=0, score=0,
                                                    points=0, why="NEW")]))
@@ -162,7 +162,7 @@ def test_xlsx_has_drafts_sheet_with_one_row_and_wrapped_body(tmp_path, monkeypat
     from openpyxl import load_workbook
 
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="b1", name="Sheet Garage", source="gosom", dedupe_key="dk-b1",
+    db.upsert_business(conn, Business(id="b1", name="Sheet Garage", source="fakelist", dedupe_key="dk-b1",
                                       domain="sheetgarage.example"))
     db.add_person(conn, Person(business_id="b1", name="Jo Owner", title="Owner", is_dm=1,
                                dm_confidence=0.9, labeled_by="agent"))
@@ -200,7 +200,7 @@ def test_xlsx_drafts_sheet_falls_back_to_best_email_when_no_contact_id(tmp_path,
     from openpyxl import load_workbook
 
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="b1", name="No Contact Garage", source="gosom",
+    db.upsert_business(conn, Business(id="b1", name="No Contact Garage", source="fakelist",
                                       dedupe_key="dk-b1", domain="nocontact.example"))
     db.add_contact(conn, Contact(business_id="b1", kind="email", value="info@nocontact.example",
                                  tier="role", affinity="own_domain"))
@@ -217,7 +217,7 @@ def test_xlsx_drafts_sheet_absent_when_no_messages_at_all(tmp_path, monkeypatch)
     from openpyxl import load_workbook
 
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="b1", name="No Draft Garage", source="gosom", dedupe_key="dk-b1"))
+    db.upsert_business(conn, Business(id="b1", name="No Draft Garage", source="fakelist", dedupe_key="dk-b1"))
     _score(conn, rid, "b1")
     arts = export_run(conn, _icp(), rid, cfg.exports_dir, ["xlsx"], cfg=cfg)
     wb = load_workbook(next(a for a in arts if a.endswith(".xlsx")))
@@ -229,7 +229,7 @@ def test_leads_sheet_draft_body_cell_is_wrapped(tmp_path, monkeypatch):
     from openpyxl import load_workbook
 
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="b1", name="Wrap Garage", source="gosom", dedupe_key="dk-b1"))
+    db.upsert_business(conn, Business(id="b1", name="Wrap Garage", source="fakelist", dedupe_key="dk-b1"))
     _score(conn, rid, "b1")
     tid = _target(conn, "b1", "t")
     _message(conn, tid, subject="Wrap subject", body="Wrap body text.")
@@ -246,7 +246,7 @@ def test_about_sheet_explains_draft_columns(tmp_path, monkeypatch):
     from openpyxl import load_workbook
 
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="b1", name="About Garage", source="gosom", dedupe_key="dk-b1"))
+    db.upsert_business(conn, Business(id="b1", name="About Garage", source="fakelist", dedupe_key="dk-b1"))
     _score(conn, rid, "b1")
     arts = export_run(conn, _icp(), rid, cfg.exports_dir, ["xlsx"], cfg=cfg)
     wb = load_workbook(next(a for a in arts if a.endswith(".xlsx")))
@@ -261,19 +261,19 @@ def test_report_json_and_digest_count_drafted_and_by_author(tmp_path, monkeypatc
     from leadforge.export import summarize_for_digest
 
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="drafted1", name="Drafted One", source="gosom",
+    db.upsert_business(conn, Business(id="drafted1", name="Drafted One", source="fakelist",
                                       dedupe_key="dk-d1"))
     _score(conn, rid, "drafted1")
     t1 = _target(conn, "drafted1", "t")
     _message(conn, t1, subject="s1")
 
-    db.upsert_business(conn, Business(id="drafted2", name="Drafted Two", source="gosom",
+    db.upsert_business(conn, Business(id="drafted2", name="Drafted Two", source="fakelist",
                                       dedupe_key="dk-d2"))
     _score(conn, rid, "drafted2")
     t2 = _target(conn, "drafted2", "t")
     _message(conn, t2, subject="s2")
 
-    db.upsert_business(conn, Business(id="none1", name="No Draft", source="gosom", dedupe_key="dk-n1"))
+    db.upsert_business(conn, Business(id="none1", name="No Draft", source="fakelist", dedupe_key="dk-n1"))
     _score(conn, rid, "none1")
 
     arts = export_run(conn, _icp(), rid, cfg.exports_dir, ["csv"], cfg=cfg)
@@ -289,7 +289,7 @@ def test_report_json_and_digest_count_drafted_and_by_author(tmp_path, monkeypatc
 
 def test_report_json_drafted_is_zero_with_no_messages(tmp_path, monkeypatch):
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="b1", name="Empty Garage", source="gosom", dedupe_key="dk-b1"))
+    db.upsert_business(conn, Business(id="b1", name="Empty Garage", source="fakelist", dedupe_key="dk-b1"))
     _score(conn, rid, "b1")
     arts = export_run(conn, _icp(), rid, cfg.exports_dir, ["csv"], cfg=cfg)
     report = json.loads(open(next(a for a in arts if a.endswith("report.json")),

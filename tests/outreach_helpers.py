@@ -37,7 +37,7 @@ def make_scored_business(conn: sqlite3.Connection, run_id: str, *, id_: str, nam
         enrich.update(enrich_extra)
     biz = Business(id=id_, place_id=place_id, name=name, name_norm=name.lower(), dedupe_key=f"pid:{place_id}" if place_id else f"na:{id_}",
                    website=f"https://{domain}" if domain else None, domain=domain, phone_e164=phone_e164, address_country="GB",
-                   source="gosom", last_seen_at="2026-09-02T00:00:00Z", enrich=enrich)
+                   source="fakelist", last_seen_at="2026-09-02T00:00:00Z", enrich=enrich)
     bid, _ = db.upsert_business(conn, biz)
     if email:
         db.add_contact(conn, Contact(business_id=bid, kind="email", value=email, tier=email_tier, affinity=affinity))

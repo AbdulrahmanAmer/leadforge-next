@@ -1,10 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
+Google Maps and the social presence provider are out of the public tool. Extra discovery providers now come through a
+seam: any installed package that declares an entry point in the group `leadforge.providers` is loaded; asking for a provider
+nobody provides prints "provider '<name>' is not available" and starts nothing. The two Maps providers, their settings, the
+helper download and their tests moved to a private add-on repository. The default provider is now the DVSA register; the
+plan holds register queries alone when no text-search provider is configured. `leadforge doctor` no longer downloads or checks a
+helper binary, the social provider and its `[social]` extra and `social:` settings are gone, and unknown keys under `discovery:`
+are kept (an add-on reads its own settings from them).
+
+Clean-up of the plan's debts (docs/slices/debts.md). `leadforge --version` prints the package version. Dropped the never-imported `tenacity` and `rich`
+declarations (the hashed locks are regenerated; `uv.lock` names the real project version), the `codeindex` extra, `scripts/code_index*`,
+`scripts/v03_gate.py` (the one gate is `node check.mjs`) and the code-index git hook. The DVSA test fixture holds invented rows. Paid-adapter
+references in the docs are corrected (the removal of 0.7.1 was checked against 0.6.14: nothing used that code). Behaviour is unchanged.
+
 ## [0.9.0] — 2026-11-12
 
 The collect side. A site's robots.txt answer is used for at most 24 hours and at least 500 KiB of the file is read; a redirect to another site
 is checked against that site's robots.txt. A 403 or 429 is final: no browser is started after it, also not with `render-check --force`. The
-helper program's `-email` switch is gone and the config key `discovery.email_crawl` is refused with a message. Protected (Cloudflare) e-mail
+config key `discovery.email_crawl` is refused with a message (the helper program's `-email` switch went with the helper, in L8). Protected (Cloudflare) e-mail
 addresses are no longer decoded unless `crawl.decode_protected_emails` is set. Every browser the product starts takes its profile folder from one
 function, which seeds a new folder before the first start.
 

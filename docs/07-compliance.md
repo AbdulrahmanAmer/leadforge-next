@@ -1,5 +1,7 @@
 # Compliance & Politeness Guardrails
 
+> **Slice L8 note:** Google Maps and the social provider left this repository (they live in a private add-on). Where this page names them it describes the earlier design; slice L12 rewrites these pages.
+
 Practical posture for an **internal-use** lead research tool. Not legal advice; see cited sources in `docs/01-research.md` §6 and consult
 counsel for jurisdictions you operate in.
 

@@ -113,8 +113,9 @@ def test_every_browser_start_in_the_product_goes_through_the_profile_function():
         violations += bad
         if n:
             seen[path.name] = n
-    # the scan is not empty: it finds the two starts the product has (the crawl4ai render and the Maps provider)
-    assert set(seen) == {"browser.py", "maps_list.py"}, seen
+    # the scan is not empty: it finds the one start the public product has (the crawl4ai render); the Maps provider, its other start,
+    # moved to a private add-on in L8 (that add-on imports `prepare_profile` from here)
+    assert set(seen) == {"browser.py"}, seen
     assert violations == []
 
 

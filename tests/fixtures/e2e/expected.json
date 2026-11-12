@@ -51,15 +51,7 @@
     "Draft Subject",
     "Draft Body",
     "Draft Grade",
-    "Draft Author",
-    "Email Source",
-    "Email Date",
-    "Email (Inferred) Source",
-    "Email (Inferred) Date",
-    "Phone Source",
-    "Phone Date",
-    "DM Phone Page",
-    "DM Phone Date"
+    "Draft Author"
    ],
    [
     "80",
@@ -111,15 +103,7 @@
     "Quick note for Harbour Motors",
     "Hello,\n\nNoticed Harbour Motors shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "B",
-    "template",
-    "byol_csv",
-    "<DATE>",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-01",
-    "<DATE>",
-    "-",
-    "-"
+    "template"
    ],
    [
     "80",
@@ -147,7 +131,7 @@
     "No social profile is linked from their website — presence-building angle",
     "registry-corroborated, site crawled, place_id; need signals: weak_social_presence; category adjacent to ICP targets (shared token)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-04",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -171,15 +155,7 @@
     "Quick note for Northgate Tyres",
     "Hello,\n\nNoticed Northgate Tyres shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "B",
-    "template",
-    "-",
-    "-",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-04",
-    "<DATE>",
-    "-",
-    "-"
+    "template"
    ],
    [
     "72",
@@ -207,7 +183,7 @@
     "No social profile is linked from their website — presence-building angle",
     "need signals: weak_social_presence; category adjacent to ICP targets (shared token); site crawled, place_id",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-02",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -231,15 +207,7 @@
     "Quick note for Kestrel Garage",
     "Hi Odell,\n\nNoticed Kestrel Garage shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "A",
-    "template",
-    "-",
-    "-",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-02",
-    "<DATE>",
-    "-",
-    "-"
+    "template"
    ],
    [
     "72",
@@ -267,7 +235,7 @@
     "No social profile is linked from their website — presence-building angle",
     "need signals: weak_social_presence; category adjacent to ICP targets (shared token); site crawled, place_id",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-03",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -291,15 +259,7 @@
     "Quick note for Millbrook Autos",
     "Hi Ysolde,\n\nNoticed Millbrook Autos shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "A",
-    "template",
-    "-",
-    "-",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-03",
-    "<DATE>",
-    "-",
-    "-"
+    "template"
    ],
    [
     "72",
@@ -327,7 +287,7 @@
     "No social profile is linked from their website — presence-building angle",
     "need signals: weak_social_presence; category adjacent to ICP targets (shared token); site crawled, place_id",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-08",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -351,15 +311,7 @@
     "Quick note for Riverside Auto",
     "Hi Linnet,\n\nNoticed Riverside Auto shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "A",
-    "template",
-    "-",
-    "-",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-08",
-    "<DATE>",
-    "-",
-    "-"
+    "template"
    ],
    [
     "56",
@@ -387,7 +339,7 @@
     "-",
     "category adjacent to ICP targets (shared token); 48 reviews within target band; inside target area (Bristol)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-05",
-    "gosom",
+    "fixture_list",
     "-",
     "never verified",
     "-",
@@ -411,15 +363,7 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft",
-    "-",
-    "-",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-05",
-    "<DATE>",
-    "-",
-    "-"
+    "no draft"
    ],
    [
     "56",
@@ -447,7 +391,7 @@
     "-",
     "category adjacent to ICP targets (shared token); 55 reviews within target band; inside target area (Bristol)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-06",
-    "gosom",
+    "fixture_list",
     "-",
     "never verified",
     "-",
@@ -471,15 +415,7 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft",
-    "-",
-    "-",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-06",
-    "<DATE>",
-    "-",
-    "-"
+    "no draft"
    ],
    [
     "56",
@@ -507,7 +443,7 @@
     "-",
     "category adjacent to ICP targets (shared token); 62 reviews within target band; inside target area (Bristol)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-07",
-    "gosom",
+    "fixture_list",
     "-",
     "never verified",
     "-",
@@ -531,15 +467,7 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft",
-    "-",
-    "-",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-07",
-    "<DATE>",
-    "-",
-    "-"
+    "no draft"
    ],
    [
     "56",
@@ -591,15 +519,7 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft",
-    "-",
-    "-",
-    "-",
-    "-",
-    "http://127.0.0.1:18765/dvsa/active-mot-stations.csv",
-    "<DATE>",
-    "-",
-    "-"
+    "no draft"
    ],
    [
     "56",
@@ -651,15 +571,7 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft",
-    "-",
-    "-",
-    "-",
-    "-",
-    "http://127.0.0.1:18765/dvsa/active-mot-stations.csv",
-    "<DATE>",
-    "-",
-    "-"
+    "no draft"
    ]
   ]
  },
@@ -809,37 +721,6 @@
    },
    "exit": 0,
    "step": "plan"
-  },
-  {
-   "argv": [
-    "-m",
-    "leadforge",
-    "run",
-    "--icp",
-    "icp.yaml"
-   ],
-   "digest": {
-    "artifacts": [],
-    "cmd": "run",
-    "counts": {},
-    "next": "leadforge doctor --fix",
-    "ok": false,
-    "run": null,
-    "warnings": [
-     "environment not ready: gosom-binary (leadforge doctor --fix)"
-    ]
-   },
-   "exit": 3,
-   "step": "run-unstamped"
-  },
-  {
-   "argv": [
-    "-c",
-    "import json,time;from leadforge import GOSOM_VERSION;from pathlib import Path;p=Path('leadforge_data');p.mkdir(exist_ok=True);(p/'.doctor_ok.json').write_text(json.dumps({'at':'harness','t':time.time(),'gosom':GOSOM_VERSION}))"
-   ],
-   "digest": null,
-   "exit": 0,
-   "step": "env-stamp"
   },
   {
    "argv": [
@@ -1106,11 +987,7 @@
    ],
    [
     "Source",
-    "which engine discovered the business (gosom = Google Maps)"
-   ],
-   [
-    "... Source / ... Date / DM Phone Page",
-    "where each e-mail and phone in the row came from (the page address, or the list's address for the business's own number) and the day it was seen; 'source not recorded' means the workspace holds no record of it, '-' means the row has no such value"
+    "which engine discovered the business"
    ],
    [
     "",
@@ -1192,9 +1069,7 @@
     "Used Fact",
     "Author",
     "State",
-    "Created",
-    "To Source",
-    "To Date"
+    "Created"
    ],
    [
     "Harbour Motors",
@@ -1206,9 +1081,7 @@
     "booking",
     "template",
     "drafted",
-    "<TS>",
-    "byol_csv",
-    "<DATE>"
+    "<TS>"
    ],
    [
     "Northgate Tyres",
@@ -1220,9 +1093,7 @@
     "booking",
     "template",
     "drafted",
-    "<TS>",
-    "-",
-    "-"
+    "<TS>"
    ],
    [
     "Kestrel Garage",
@@ -1234,9 +1105,7 @@
     "booking",
     "template",
     "drafted",
-    "<TS>",
-    "-",
-    "-"
+    "<TS>"
    ],
    [
     "Millbrook Autos",
@@ -1248,9 +1117,7 @@
     "booking",
     "template",
     "drafted",
-    "<TS>",
-    "-",
-    "-"
+    "<TS>"
    ],
    [
     "Riverside Auto",
@@ -1262,9 +1129,7 @@
     "booking",
     "template",
     "drafted",
-    "<TS>",
-    "-",
-    "-"
+    "<TS>"
    ]
   ],
   "Leads": [
@@ -1318,15 +1183,7 @@
     "Draft Subject",
     "Draft Body",
     "Draft Grade",
-    "Draft Author",
-    "Email Source",
-    "Email Date",
-    "Email (Inferred) Source",
-    "Email (Inferred) Date",
-    "Phone Source",
-    "Phone Date",
-    "DM Phone Page",
-    "DM Phone Date"
+    "Draft Author"
    ],
    [
     "80",
@@ -1378,15 +1235,7 @@
     "Quick note for Harbour Motors",
     "Hello,\n\nNoticed Harbour Motors shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "B",
-    "template",
-    "byol_csv",
-    "<DATE>",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-01",
-    "<DATE>",
-    "-",
-    "-"
+    "template"
    ],
    [
     "80",
@@ -1414,7 +1263,7 @@
     "No social profile is linked from their website — presence-building angle",
     "registry-corroborated, site crawled, place_id; need signals: weak_social_presence; category adjacent to ICP targets (shared token)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-04",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -1438,15 +1287,7 @@
     "Quick note for Northgate Tyres",
     "Hello,\n\nNoticed Northgate Tyres shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "B",
-    "template",
-    "-",
-    "-",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-04",
-    "<DATE>",
-    "-",
-    "-"
+    "template"
    ],
    [
     "72",
@@ -1474,7 +1315,7 @@
     "No social profile is linked from their website — presence-building angle",
     "need signals: weak_social_presence; category adjacent to ICP targets (shared token); site crawled, place_id",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-02",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -1498,15 +1339,7 @@
     "Quick note for Kestrel Garage",
     "Hi Odell,\n\nNoticed Kestrel Garage shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "A",
-    "template",
-    "-",
-    "-",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-02",
-    "<DATE>",
-    "-",
-    "-"
+    "template"
    ],
    [
     "72",
@@ -1534,7 +1367,7 @@
     "No social profile is linked from their website — presence-building angle",
     "need signals: weak_social_presence; category adjacent to ICP targets (shared token); site crawled, place_id",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-03",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -1558,15 +1391,7 @@
     "Quick note for Millbrook Autos",
     "Hi Ysolde,\n\nNoticed Millbrook Autos shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "A",
-    "template",
-    "-",
-    "-",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-03",
-    "<DATE>",
-    "-",
-    "-"
+    "template"
    ],
    [
     "72",
@@ -1594,7 +1419,7 @@
     "No social profile is linked from their website — presence-building angle",
     "need signals: weak_social_presence; category adjacent to ICP targets (shared token); site crawled, place_id",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-08",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -1618,15 +1443,7 @@
     "Quick note for Riverside Auto",
     "Hi Linnet,\n\nNoticed Riverside Auto shows an online-booking option on its site.\n\nOnline booking for independent garages — Fewer missed calls, more booked jobs\n\nHappy to share more — worth a quick call?\n\nFixture Agency\n\nWe use only publicly available business information to send this one-time introduction (UK GDPR Art. 14).\nReply 'unsubscribe' at any time and we will stop.\n",
     "A",
-    "template",
-    "-",
-    "-",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-08",
-    "<DATE>",
-    "-",
-    "-"
+    "template"
    ],
    [
     "56",
@@ -1654,7 +1471,7 @@
     "-",
     "category adjacent to ICP targets (shared token); 48 reviews within target band; inside target area (Bristol)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-05",
-    "gosom",
+    "fixture_list",
     "-",
     "never verified",
     "-",
@@ -1678,15 +1495,7 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft",
-    "-",
-    "-",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-05",
-    "<DATE>",
-    "-",
-    "-"
+    "no draft"
    ],
    [
     "56",
@@ -1714,7 +1523,7 @@
     "-",
     "category adjacent to ICP targets (shared token); 55 reviews within target band; inside target area (Bristol)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-06",
-    "gosom",
+    "fixture_list",
     "-",
     "never verified",
     "-",
@@ -1738,15 +1547,7 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft",
-    "-",
-    "-",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-06",
-    "<DATE>",
-    "-",
-    "-"
+    "no draft"
    ],
    [
     "56",
@@ -1774,7 +1575,7 @@
     "-",
     "category adjacent to ICP targets (shared token); 62 reviews within target band; inside target area (Bristol)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-07",
-    "gosom",
+    "fixture_list",
     "-",
     "never verified",
     "-",
@@ -1798,15 +1599,7 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft",
-    "-",
-    "-",
-    "-",
-    "-",
-    "https://www.google.com/maps/place/?q=place_id:fixture-place-07",
-    "<DATE>",
-    "-",
-    "-"
+    "no draft"
    ],
    [
     "56",
@@ -1858,15 +1651,7 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft",
-    "-",
-    "-",
-    "-",
-    "-",
-    "http://127.0.0.1:18765/dvsa/active-mot-stations.csv",
-    "<DATE>",
-    "-",
-    "-"
+    "no draft"
    ],
    [
     "56",
@@ -1918,15 +1703,7 @@
     "no draft",
     "no draft",
     "no draft",
-    "no draft",
-    "-",
-    "-",
-    "-",
-    "-",
-    "http://127.0.0.1:18765/dvsa/active-mot-stations.csv",
-    "<DATE>",
-    "-",
-    "-"
+    "no draft"
    ]
   ],
   "Summary": [
@@ -2041,14 +1818,6 @@
    [
     "  1×",
     "CALL - ask for the owner (email draft ready)"
-   ],
-   [
-    "",
-    ""
-   ],
-   [
-    "Source notice",
-    "Contains public sector information licensed under the Open Government Licence v3.0 (DVSA active MOT stations list)."
    ],
    [
     "",

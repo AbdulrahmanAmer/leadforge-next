@@ -283,26 +283,6 @@ def test_c10_the_environment_cannot_set_it_either(tmp_path, monkeypatch):
         load_config(tmp_path)
 
 
-def test_c10_the_helper_never_gets_the_email_argument(tmp_path, monkeypatch):
-    from leadforge.grid import PlannedQuery
-    from leadforge.providers import gosom as gosom_mod
-    from leadforge.providers.gosom import GosomProvider
-
-    monkeypatch.chdir(tmp_path)
-    cfg = load_config(tmp_path)
-    captured: dict = {}
-
-    def fake_run(args, out, t, **kw):
-        captured["args"] = args
-        out.write_text("", encoding="utf-8")
-        return {"returncode": 0, "stderr": ""}, False
-
-    monkeypatch.setattr(gosom_mod, "gosom_path", lambda cfg: "gosom-fake")
-    monkeypatch.setattr(GosomProvider, "_run_with_watchdog", staticmethod(fake_run))
-    GosomProvider(cfg).fetch(PlannedQuery(text="x in y", category="", area="", tile=None))
-    assert captured["args"] and "-email" not in captured["args"]
-
-
 # --------------------------------------------------------------- C11: protected e-mail addresses
 def _cfemail(addr, key=0x42):
     return f"{key:02x}" + "".join(f"{ord(c) ^ key:02x}" for c in addr)

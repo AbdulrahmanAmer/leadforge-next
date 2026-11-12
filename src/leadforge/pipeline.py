@@ -103,7 +103,7 @@ def run_discover(cfg: Config, icp: ICP, icp_path: Path, limit: int | None = None
     hard_cap = min(processed + limit, icp.caps.max_leads) if limit else icp.caps.max_leads
 
     # v0.3 speed unit: known-place skip hook. Providers that declare a `known_cids` attribute
-    # (maps_list) get every CID already in the DB, seeded once here and grown as new businesses are
+    # (a list-view add-on) get every CID already in the DB, seeded once here and grown as new businesses are
     # credited (_apply_query_result) — the provider marks repeat cards `data["known"]=True` instead
     # of re-visiting their (expensive) detail page. Providers without the attribute are unaffected.
     known_cids = {r["cid"] for r in conn.execute("SELECT cid FROM businesses WHERE cid IS NOT NULL")}
@@ -257,7 +257,7 @@ def _run_discover_parallel(conn, cfg: Config, icp: ICP, run_id: str, chain, prov
     """parallel_queries > 1: fan discover queries across N provider-chain instances (each its own
     browser/subprocess pool — item 6, docs/09 speed unit). Every normal (non-registry) query BORROWS
     one of the N persistent chains for the duration of its fetch and returns it when done — a chain
-    (and therefore a maps_list provider's single browser/page) is never used by two fetches at once.
+    (and therefore a provider's single browser/page) is never used by two fetches at once.
     Registry queries (PlannedQuery.provider set) always build their OWN fresh instance, exactly like
     the serial path, and don't consume a borrowed chain slot; overall concurrency is still capped at
     `n_workers` in-flight fetches. ALL DB writes happen on this (the main) thread, only ever after a

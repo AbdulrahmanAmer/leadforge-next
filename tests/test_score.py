@@ -7,7 +7,7 @@ from leadforge.score import Scorer, score_run
 
 def _seed_business(conn, **kw):
     base = dict(id="biz_x", name="Indie Auto", name_norm="indie auto", dedupe_key="pid:X", place_id="X",
-                category="auto repair shop", categories=["auto repair shop"], source="gosom",
+                category="auto repair shop", categories=["auto repair shop"], source="fakelist",
                 phone_e164="+17135550100", website=None, rating=3.5, review_count=80,
                 address_city="Houston", address_country="US", first_run_id="run_1")
     base.update(kw)
@@ -140,7 +140,7 @@ def test_export_cells_are_always_resolved(tmp_path, monkeypatch):
     cfg = load_config(tmp_path)
     conn = db.connect(cfg.db_path)
     rid = db.create_run(conn, "icp.yaml", "h")
-    db.upsert_business(conn, Business(id="b1", run_id=rid, name="No Web Garage", source="gosom",
+    db.upsert_business(conn, Business(id="b1", run_id=rid, name="No Web Garage", source="fakelist",
                                       phone_e164="+441483123456",
                                       hours={"Monday": ["9 AM-6 PM"], "Sunday": ["Closed"]}))
     db.save_score(conn, Score(business_id="b1", run_id=rid, total=50, tier="B",
@@ -457,12 +457,12 @@ def test_score_two_e2e_fixtures_have_exact_deterministic_totals(conn, sample_icp
     run_id = db.create_run(conn, "icp.yaml", sample_icp.icp_hash())
     bA = Business(id="det_a", name="Deterministic Auto A", name_norm="deterministic auto a",
                  dedupe_key="pid:det_a", place_id="DET_A", category="auto repair shop",
-                 categories=["auto repair shop"], source="gosom", phone_e164="+17135550100",
+                 categories=["auto repair shop"], source="fakelist", phone_e164="+17135550100",
                  website=None, rating=4.2, review_count=80, address_city="Houston", first_run_id="run_1")
     db.upsert_business(conn, bA)
     bB = Business(id="det_b", name="Acme Franchise Group", name_norm="acme franchise group",
                  dedupe_key="pid:det_b", place_id="DET_B", category="community centre",
-                 categories=["community centre"], source="gosom", phone_e164="+17135550200",
+                 categories=["community centre"], source="fakelist", phone_e164="+17135550200",
                  website="https://example.com", rating=3.0, review_count=None,
                  address_city="Dallas", address_full="1 Main St, Dallas, TX 75201", first_run_id="run_1")
     db.upsert_business(conn, bB)

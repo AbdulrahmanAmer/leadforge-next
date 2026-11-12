@@ -215,7 +215,7 @@ def test_everything_wipes_a_workspace_of_any_age_without_opening_the_database(tm
     (data / "bin" / "helper.txt").write_text("kept", encoding="utf-8")
     (data / ".doctor_ok.json").write_text("{}", encoding="utf-8")
     (data / "cache").mkdir()
-    (data / "cache" / "gosom_x.json").write_text("{}", encoding="utf-8")
+    (data / "cache" / "fakelist_x.json").write_text("{}", encoding="utf-8")
     (tmp_path / "dm_batch.ndjson").write_text("{}\n", encoding="utf-8")
     (tmp_path / "leadforge.yaml").write_text("retention:\n  months: 6\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)

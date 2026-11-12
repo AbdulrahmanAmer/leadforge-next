@@ -131,7 +131,7 @@ def test_infer_stage_writes_affinity(cfg, conn, monkeypatch):
 
     monkeypatch.setattr("leadforge.enrich.infer_email._mx_ok", lambda d, t: True)
     _cfg_on(cfg)
-    db.upsert_business(conn, Business(id="b1", run_id="r", name="Acme Widgets", source="gosom",
+    db.upsert_business(conn, Business(id="b1", run_id="r", name="Acme Widgets", source="fakelist",
                                       domain="acme.example"))
     db.add_contact(conn, Contact(business_id="b1", kind="email", value="bob.jones@acme.example",
                                  label="personal", tier="valid", affinity="own_domain"))
