@@ -85,7 +85,7 @@ def resolve_command(cfg: Config) -> list[str] | None:
     if not os.environ.get("PATH"):
         return None   # no PATH (the window starts the engine with none): Python would search `.;C:\bin` instead
     claude = shutil.which("claude")
-    if not claude or os.path.dirname(claude) in ("", os.curdir):
+    if not claude or os.path.dirname(claude) == os.curdir:
         return None   # Windows searches the current folder (the workspace) first: a program there is not the user's claude
     cmd = [claude, "-p", "--model", cfg.agent.model, "--output-format", "text", "--no-session-persistence"]
     if cfg.agent.isolate:
