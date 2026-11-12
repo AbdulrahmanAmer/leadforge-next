@@ -360,3 +360,84 @@ this slice's lab probe could not log in, so it neither confirms nor contradicts 
 - The real `keyring` package against a real OS backend: never imported in this run by design (the brief: the real keyring is never
   read or written). Settled by: on a throwaway user account, `pip install -e .[keyring]`, `keyring set leadforge
   registry.companies_house_key`, `leadforge config get registry.companies_house_key` prints `(from the OS keyring)`.
+
+## Review
+
+Run `l9-read`, 2026-11-12 09:34-10:00, STRIKERFORCE, independent reader (did not build this slice; the builder's run files
+not read before the verdict). Own clone, own venv (`requirements.lock` with hashes, `-e .` without deps; pytest 9.2.0,
+pytest-timeout 2.4.0, ruff 0.15.13 on top, the same pins the builder used). The whole diff against `master` (1050687) read
+line by line.
+
+1. **Token.** Followed from `RegistryCfg.opencorporates_token` to `OpenCorporatesRegistry.lookup`: the only request is
+   `httpx.get(..., params=...)` (no `follow_redirects`, so a redirect is not followed and `raise_for_status` raises); no
+   retry path; the error path logs `type(e).__name__` only; the `httpx` request line is cut by the filter on the `httpx`
+   logger. `get_registries` adds the provider only with `opencorporates_enabled` (default `false`). Holds. The documentation
+   page read once by the reader (`curl`, 2026-11-12 09:36): `HTTP 200 bytes 110067 url
+   https://api.opencorporates.com/documentation/API-Reference`; the quoted sentence is there word for word:
+   "Authentication is through a simple API token at present (see API accounts, below), and this should be submitted with
+   each request in the query parameters." `Authorization` 0 times, `X-API` 0 times in the page. The builder's conclusion
+   (no documented header, so off by default) follows from it.
+2. **Keys.** No path reads a registry key from `leadforge.yaml`: `load_config` raises `KeyInConfigFile` on a non-empty
+   value before merging, the message is built from the setting's name only (`key_refusal`), the root callback keeps it
+   whole, `config set` refuses it and writes nothing; `config get registry.<key>` prints `<hidden, n chars> (from the ...)`.
+   No other key-like setting exists in `config.py` (the proxies' `user:password@` stays, hidden since L2, as the slice
+   says). `keyring==25.7.0` is an optional extra, one exact version; PyPI shows its wheel uploaded 2025-11-16 (older than 7
+   days). The supply-chain note does not name `keyring` (searched: no hit), so it is neither on its never-install list
+   nor listed as cleared; the builder's check (publisher, version, age) is in item 2 above. Tests replace `_keyring_get` for
+   every test (autouse fixture).
+3. **`AgentFailed`.** Reader's probe (outside the repository, fake keys built at run time; one key as `--api-key=<key>`,
+   a second as `Authorization: Bearer <key2>`, the program echoing all arguments and then only `<key2>`), at 81c9f43:
+   ```
+   [exit] message:
+   agent command exited 3: D:\homelab-work\l9-read\venv\Scripts\python.exe <4 arguments hidden>
+   whole: <argument hidden> | <argument hidden> | <argument hidden>
+   token only: FAKE-header-value-not-real
+   [exit] fake key in message: False; second fake (header value) in message: True
+   [cannot start] message:
+   agent command could not be started: D:\homelab-work\l9-read\probe\l9read-4toapv74\no-such.exe <1 argument hidden> ([WinError 2] The system cannot find the file specified)
+   [cannot start] fake key in message: False; second fake (header value) in message: False
+   ```
+   Cause: `_without_arguments` cut each whole argument and the part after `=`, never a word of an argument with spaces
+   (the slice had listed "split" as not covered). **Fixed by the reader in 3b8acd6**: each whitespace-separated word of an
+   argument is cut too. New test `test_agent_failed_cuts_a_word_of_an_argument_with_spaces`, seen red before the fix:
+   ```
+   E           bad token FAKE-agent-planted-for-the-scan-not-real
+   FAILED tests/test_l9_agent_failed_redacts.py::test_agent_failed_cuts_a_word_of_an_argument_with_spaces
+   1 failed, 4 deselected in 0.95s
+   ```
+   After it: `39 passed in 15.25s` (`test_l9_agent_failed_redacts.py`, `test_agent_runner.py`, `test_c1_no_tools.py`); the
+   probe again: `token only: <argument hidden>` / `[exit] fake key in message: False; second fake (header value) in message:
+   False`. Still not covered: a key the program prints encoded, or a word shorter than 4 characters.
+4. **Fake shim.** The test drives the real `resolve_command` (real `shutil.which`, `PATH` = the shim's folder only) and the
+   real `run_agent`; it compares the recorded argv with the golden's `argv[1:]`, and the golden holds `""` as its own
+   element after `--tools`; one more assert checks that element. Holds. The real npm shim with `node.exe` stays UNPROVEN,
+   as the slice says.
+5. **`--restricted`.** The slice prints the probe's output (lab folder entries before: `[]`; `Not logged in · Please run
+   /login`) and says UNPROVEN, with what would settle it. No claim beyond the output. Holds.
+6. **Fake-key scan.** It walks typer's command tree (every leaf, not a chosen list) and runs each with no arguments and
+   with `--json`, plus named runs with arguments. Outputs it misses: `dashboard` (the pages it serves) and `watch` are not
+   run (named in `NOT_RUN`); commands needing arguments are scanned mostly at their usage error (the fake campaign covers
+   the full pipeline); a word-only echo by the agent (item 3) was outside the scan's planted shape (`--api-key=<key>`).
+7. **Version.** None on this branch, as the 08:55 correction asks (`master` 0.7.3): `check_versions.py` prints all six
+   copies `0.7.3`; CHANGELOG under `## [Unreleased]`. `gitleaks detect --log-opts="origin/master..HEAD"` at 3b8acd6:
+   `no leaks found`. Every key in the tests is built from pieces at run time; fixtures invented.
+8. **Hosted CI** on 3b8acd6, run 43176859490 (`pull_request`), 13 of 13 jobs `success`:
+   Validate plugin manifests, claude plugin validate, fake campaign · windows-latest, Version strings agree, fake campaign ·
+   ubuntu-latest, ubuntu-latest · py3.12, ubuntu-latest · py3.11, windows-latest · py3.13, ubuntu-latest · py3.14,
+   windows-latest · py3.14, windows-latest · py3.11, ubuntu-latest · py3.13, windows-latest · py3.12.
+
+9. **Local gate**, once, `node check.mjs` at below-normal priority on 3b8acd6 (tree dirty by this Review part only), last lines:
+   ```
+   E           RuntimeError: worker did not become ready within 10.0s
+   FAILED tests/test_ner_worker.py::test_worker_predict_returns_same_entities_it_was_given
+   1 failed, 862 passed, 6 skipped in 659.28s (0:10:59)
+   FAIL  tests  693.0
+   CHECK FAIL sha=3b8acd6 tree=dirty steps=5 skipped=0 secs=695
+   ```
+   Cause: the NER worker's 10 s start limit on a laptop shared by other builders (the suite took 11 min here, 4 min in the
+   builder's run); `ner_worker.py` is not touched by this slice. Re-run once alone at normal priority, as the rules say:
+   `1 passed in 3.22s`. Hosted CI ran the same suite green on 13 jobs (item 8).
+
+Verdict: PASS 3b8acd6
+
+Merge waits for L6 and L7 (the 08:55 correction): not merged by the reader. No version on this branch.
