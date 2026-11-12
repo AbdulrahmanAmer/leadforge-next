@@ -119,3 +119,30 @@ def test_a_suppressed_address_inside_other_text_is_masked(tmp_path, monkeypatch)
     assert holds(arts, SUPPRESSED) == [] and holds(arts, SUPPRESSED.upper()) == []
     assert holds(arts, "[suppressed]")
     assert holds(arts, OTHER)
+
+
+def test_draft_render_writes_no_file_to_a_suppressed_address(tmp_path, monkeypatch):
+    """`draft render` writes one .txt per drafted message: a draft whose To: would be a suppressed address is not written,
+    a suppressed address quoted in another draft is masked, and the other draft is still written."""
+    from typer.testing import CliRunner
+
+    from leadforge.cli import app
+
+    monkeypatch.chdir(tmp_path)
+    cfg = load_config(tmp_path)
+    conn = db.connect(cfg.db_path)
+    rid = db.create_run(conn, "icp.yaml", "h")
+    for bid, name, dom, addr in (("bq", "Quiet Bakery", "quiet-bakery.example", SUPPRESSED),
+                                 ("br", "Rival Bakery", "rival-bakery.example", OTHER)):
+        db.upsert_business(conn, Business(id=bid, name=name, name_norm=name.lower(), dedupe_key=f"k{bid}", source="gosom",
+                                          website=f"https://{dom}", domain=dom, first_run_id=rid))
+        cid = db.add_contact(conn, Contact(business_id=bid, kind="email", value=addr, tier="valid", affinity="own_domain"))
+        _message(conn, _target(conn, bid, cid), f"Your neighbour {SUPPRESSED} says hello." if bid == "br" else "A plain body.")
+    conn.commit()
+    db.suppress(conn, "email", SUPPRESSED, reason="objection")   # the objection arrives after the drafts
+    conn.close()
+    res = CliRunner().invoke(app, ["draft", "render", "--campaign", "t"])
+    assert res.exit_code == 0, res.output
+    files = sorted((tmp_path / "drafts").glob("*.txt"))
+    assert holds(files, SUPPRESSED) == []
+    assert len(files) == 1 and holds(files, OTHER) and holds(files, "[suppressed]")

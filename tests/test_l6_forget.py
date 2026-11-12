@@ -276,3 +276,27 @@ def test_forget_in_an_old_workspace_is_refused_and_changes_nothing(tmp_path, mon
     res = CliRunner().invoke(app, ["forget", EMAIL])
     assert res.exit_code == 4, res.output
     assert snap == {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in ws.rglob("*") if p.is_file()}
+
+
+def test_forget_reaches_the_query_text_and_run_stats_and_keeps_their_rows(tmp_path, monkeypatch):
+    """Two tables outside the row rules: a search text and a run's stats can hold the value too. They are redacted in place:
+    deleting a run row would change the age of every business it found (C5)."""
+    plant(tmp_path)
+    c = sqlite3.connect(tmp_path / "leadforge_data" / "db.sqlite3")
+    rid = c.execute("SELECT id FROM runs").fetchone()[0]
+    c.execute("INSERT INTO queries(run_id,query_text) VALUES(?,?)", (rid, f"plumber {NAME} Leeds"))
+    c.execute("UPDATE runs SET stats_json=? WHERE id=?", (json.dumps({"note": f"asked about {NAME}", "leads": 3}), rid))
+    c.commit()
+    c.close()
+    run_forget(tmp_path, monkeypatch, NAME)
+    probe = tmp_path / "probe"
+    probe.mkdir()
+    shutil.copyfile(tmp_path / "leadforge_data" / "db.sqlite3", probe / "db.sqlite3")
+    pc = sqlite3.connect(probe / "db.sqlite3")
+    pc.execute("DELETE FROM suppression")
+    pc.commit()
+    pc.execute("VACUUM")
+    query, stats = pc.execute("SELECT q.query_text, r.stats_json FROM queries q JOIN runs r ON r.id=q.run_id").fetchone()
+    pc.close()
+    assert scan(probe, NAME) == {}
+    assert query == "plumber [forgotten] Leeds" and json.loads(stats) == {"note": "asked about [forgotten]", "leads": 3}

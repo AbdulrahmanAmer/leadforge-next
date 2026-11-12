@@ -142,6 +142,30 @@ def test_run_digest_carries_the_purge_numbers(tmp_path, monkeypatch):
     assert digest_of(res.output)["counts"]["expiring_30d"] == 1
 
 
+def test_a_detached_run_makes_one_retention_pass_not_two(tmp_path, monkeypatch):
+    """`run --detach` (the skill's way to start a run) makes the pass in the parent; the child it starts runs `run` again
+    and must not make a second one, or the first run after the upgrade would arm and then delete seconds later."""
+    from leadforge import cli
+
+    path = make_workspace(tmp_path)
+    (tmp_path / "icp.yaml").write_text("x", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("leadforge.util.utcnow", lambda: NOW)
+    monkeypatch.setattr("leadforge.intake.load_icp", lambda p: object())
+    monkeypatch.setattr("leadforge.pipeline.ensure_run", lambda *a, **k: "r_new")
+    monkeypatch.setattr("leadforge.pipeline.run_pipeline", lambda *a, **k: {
+        "ok": True, "run": "r_new", "stage": "exported", "counts": {}, "warnings": [], "next": None})
+    spawned = []
+    monkeypatch.setattr(cli, "_spawn_detached", lambda cmd, log, cwd: spawned.append(cmd) or 4242)
+    parent = CliRunner().invoke(app, ["run", "--detach"])
+    assert parent.exit_code == 0, parent.output
+    assert ids(path) == ALL and digest_of(parent.output)["counts"]["purged"] == 0     # the first pass only arms
+    child = CliRunner().invoke(app, spawned[0][3:])     # the child's own arguments, run in this process
+    assert child.exit_code == 0, child.output
+    assert ids(path) == ALL                                              # and the child deleted nothing either
+    assert digest_of(child.output)["counts"].get("purged") is None
+
+
 def test_a_half_upgraded_workspace_stops_the_command(tmp_path, monkeypatch):
     path = make_workspace(tmp_path)
     c = sqlite3.connect(path)

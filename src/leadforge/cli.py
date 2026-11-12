@@ -426,7 +426,7 @@ def _detached_run_cmd(python: str, icp: str, *, limit: int | None, skip_dm: bool
                       autopilot: bool | None, from_stage: str | None) -> list[str]:
     """The foreground `run --resume` the detached child executes — every run option must be carried
     over (a dropped --from-stage once made the child silently resume the wrong stage)."""
-    cmd = [python, "-m", "leadforge", "--json", "run", "--icp", icp, "--resume"]
+    cmd = [python, "-m", "leadforge", "--json", "run", "--icp", icp, "--resume", "--retention-checked"]
     if limit:
         cmd += ["--limit", str(limit)]
     if skip_dm:
@@ -477,6 +477,9 @@ def run(
     detach: bool = typer.Option(
         False, "--detach",
         help="start the run in a background process and return immediately with its run id/pid/log"),
+    retention_checked: bool = typer.Option(
+        False, "--retention-checked", hidden=True,
+        help="the detached child: its parent already made this run's retention pass"),
 ):
     """Orchestrated, resumable pipeline: discover -> enrich -> (autopilot: label -> score -> draft, or
     pause for DM) -> export."""
@@ -496,7 +499,8 @@ def run(
         emit_digest(False, "run", warnings=[str(e)[:120]], next_="leadforge doctor --fix")
         raise typer.Exit(e.exit_code) from e
 
-    purge_counts = _start_of_run_purge(cfg, quiet=bool(ctx.obj.get("json_only")))
+    # one pass per run: a second pass in the detached child would delete right after the parent's report-only first pass
+    purge_counts = {} if retention_checked else _start_of_run_purge(cfg, quiet=bool(ctx.obj.get("json_only")))
 
     if detach:
         import sys as _sys

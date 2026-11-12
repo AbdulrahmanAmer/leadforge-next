@@ -38,6 +38,8 @@ ROW_RULES = {
 }
 BUSINESS_IDENTITY = ("name", "name_norm", "website", "domain", "maps_url", "address_full", "address_street")
 BUSINESS_JSON = ("enrich_json", "hours_json")
+# Rows that stay but whose text can hold the value: redacted in place. A run row is never deleted (it dates its businesses).
+REDACT_IN_PLACE = {"businesses": BUSINESS_JSON, "queries": ("query_text",), "runs": ("stats_json",)}
 BUSINESS_TABLES = ("events", "outcomes", "enrichment_observations", "evidence", "scores", "people", "contacts")
 LINE_FILES = re.compile(r"\.(log(\.\d+)?|jsonl|ndjson|tsv)$", re.IGNORECASE)
 HANDOFF_GLOBS = ("dm_batch*", "dm_labels*", "drafts_packets*", "drafts*.ndjson")
@@ -132,11 +134,12 @@ def forget_in_database(conn: sqlite3.Connection, needle: Needle) -> dict[str, in
     try:
         counts = _delete_everything_on(conn, biz, rows)
         redacted = 0
-        for r in conn.execute("SELECT * FROM businesses").fetchall():
-            for col in BUSINESS_JSON:
-                if r[col] and hit(r[col]):
-                    conn.execute(f"UPDATE businesses SET {col}=? WHERE id=?", (needle.pattern.sub(REDACTED, r[col]), r["id"]))
-                    redacted += 1
+        for table, cols in REDACT_IN_PLACE.items():
+            for r in conn.execute(f"SELECT * FROM {table}").fetchall():
+                for col in cols:
+                    if r[col] and hit(r[col]):
+                        conn.execute(f"UPDATE {table} SET {col}=? WHERE id=?", (needle.pattern.sub(REDACTED, r[col]), r["id"]))
+                        redacted += 1
         if redacted:
             counts["businesses_redacted"] = redacted
         db.suppress(conn, needle.kind, needle.text, reason="", source="forget")   # commits
