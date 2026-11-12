@@ -47,6 +47,15 @@ export function keyFieldProblem(error: unknown): string | null {
   return said.filter(Boolean).join(" ");
 }
 
+/** The Keys screen's line under its title: it promises the keyring only when the engine could reach one. */
+export function keysHeadline(error: unknown): string {
+  const kind = (error as { kind?: string } | null)?.kind;
+  if (kind === "missing") return "Saving a key needs a command this version of the engine does not have yet. Nothing is stored.";
+  // the bundled engine has no keyring package yet (requirements-keyring.lock, pull request 17): change when it ships
+  if (kind === "environment") return "Keys cannot be kept on this computer yet: this build of the engine has no keyring. Nothing is stored.";
+  return "Kept in the Windows keyring of your account. Once saved, a key is never shown again.";
+}
+
 /** About: the project's licence line, or what to say when the notices were not found. */
 export function licenceLine(about: About): string {
   return about.licence ?? "The licence notices were not found in this installation.";
