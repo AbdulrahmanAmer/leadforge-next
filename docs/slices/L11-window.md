@@ -528,3 +528,14 @@ in use'`), then restored. `cargo fmt` (the formatter) rewrote `selftest.rs` and 
    in", item 2): the installer carries the extra. The window shows the engine's answer; the Keys screen cannot save a key. Not patched.
 2. Not a finding, noted: a run started by `window run_start` on a fresh workspace ends with `counts.purged` and
    `counts.expiringIn30Days` null (allowed by the type; L11a's table names only runs not started by `run_start` as null).
+## The install on the real engine, run with the owner's normal token (2026-11-12, 14:33 to 14:35)
+
+Run by the orchestrator through `packaging\install-proof.ps1` on `LeadForge_0.9.0_x64-setup.exe` (36,523,737 bytes, sha256 beginning `424d42a054df`), started with the normal (not elevated) token. Result: PASS.
+
+- Silent per-user install into `D:\Temp\lf-install\LeadForge`: exit 0, no administrator prompt.
+- The INSTALLED app's short walk on the REAL bundled engine: `shots taken: 8 of 8; probe clean: True`, `expectations missed: 0`, `processes left: 0`, `throwaway folder left: False`, `SELFTEST PASS`; every data command in the core's log reads `origin=bundled ... ok`, with one exception below.
+- Uninstall: 0 processes, 0 files or folders left, no uninstall key. Checked separately: no `leadforge-window` process, no Start menu entry, no Defender detection that day.
+
+What this run shows is NOT working in the installed app: `cmd=keys_list origin=bundled ... error kind=environment`, and the Keys screen says keys cannot be kept in the keyring on this computer. Cause: the `keyring` package is in neither `requirements.lock` nor `uv.lock`, so the bundle has no keyring. The short walk accepts that answer today; once the locks and the bundle carry `keyring`, its expectation for `keys_list` must be `ok` again, and the keyring proof (save a made-up marker, search for it, remove it) is still owed.
+
+Not shown by this run: a run, the sheet, forget, suppress, retention and purge in the INSTALLED app (the whole campaign walk is on a debug build); an interactive (double-click) install; the default per-user install folder.
