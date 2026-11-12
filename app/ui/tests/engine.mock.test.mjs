@@ -17,7 +17,7 @@ const CALLS = {
   exportSheet: (e) => e.exportSheet("r-20261103-a41c"),
   openSheet: (e) => e.openSheet("leadforge_data\\exports\\r-20261103-a41c\\leads.xlsx"),
   listPeople: (e) => e.listPeople({ search: "", limit: 50 }),
-  forgetPerson: (e) => e.forgetPerson("priya@harbourside-motors.example"),
+  forgetPerson: (e) => e.forgetPerson("priya@harbourside-motors.example", false),
   suppressAddress: (e) => e.suppressAddress("cliftondowngarage.example"),
   purgeReport: (e) => e.purgeReport(),
   purgeApply: (e) => e.purgeApply(),
@@ -73,7 +73,7 @@ test("the retention period cannot be set above 12 months, and stays as it was", 
 
 test("forget and suppress refuse an empty value", async () => {
   const engine = createMockEngine({ speed: 0 });
-  await assert.rejects(engine.forgetPerson("  "), (error) => error.action === "forgetPerson");
+  await assert.rejects(engine.forgetPerson("  ", false), (error) => error.action === "forgetPerson");
   await assert.rejects(engine.suppressAddress(""), (error) => error.action === "suppressAddress");
 });
 
@@ -112,22 +112,21 @@ test("a saved key never comes back: the status holds no value", async () => {
 /* ---- rulings 15 and 16 of 2026-11-12, and About.licence null (src/follow.ts) ---- */
 import { keyBadge, keyFieldProblem, keyInUse, licenceLine, planFigures } from "../src/follow.ts";
 
-test("ruling 15: a null estimate, or today's 0/0/0 for a register, reads 'up to the cap' with no time; a count is shown", async () => {
+test("ruling 15: a null estimate reads 'up to the cap' with no time; a count, a zero included, is shown", async () => {
   const draft = { kinds: ["MOT garage"], places: ["Bristol"], country: "GB", source: "dvsa", offer: "x", sicCodes: [], maxLeads: 80 };
   const followUp = await createMockEngine({ speed: 0 }).createCampaign(draft);
   assert.equal(followUp.estimatedBusinesses, null);
   const fig = planFigures(followUp, "dvsa", 80);
   assert.equal(fig.counted, false);
   assert.equal(fig.line, "Up to 80 businesses; this register is not counted before the run.");
-  // TIGHTEN LATER: today's engine answers 0, 0, 0 for a register campaign
-  const today = await createMockEngine({ speed: 0, estimates: "zero" }).createCampaign(draft);
-  assert.equal(today.estimatedBusinesses, 0);
-  assert.equal(planFigures(today, "companies_house", 50).counted, false);
-  assert.deepEqual(planFigures({ ...today, estimatedBusinesses: 120, estimatedSites: 77, estimatedMinutes: 5 }, "dvsa", 50),
+  assert.deepEqual(planFigures({ ...followUp, estimatedBusinesses: 120, estimatedSites: 77, estimatedMinutes: 5 }, "dvsa", 50),
     { counted: true, businesses: 120, sites: 77, minutes: 5 });
+  // no tolerance for an older engine: 0, 0, 0 is a count of zero, shown as such
+  assert.deepEqual(planFigures({ ...followUp, estimatedBusinesses: 0, estimatedSites: 0, estimatedMinutes: 0 }, "companies_house", 50),
+    { counted: true, businesses: 0, sites: 0, minutes: 0 });
 });
 
-test("ruling 16: saved and not in use reads as such, naming registry.keyring; inUse missing reads as in use; save is refused on the field; remove works", async () => {
+test("ruling 16: saved and not in use reads as such, naming registry.keyring; save is refused on the field; remove works", async () => {
   const off = createMockEngine({ speed: 0, keyringOff: true });
   const ch = (await off.listKeys()).find((k) => k.name === "companies_house_key");
   assert.equal(ch.saved, true);
@@ -140,11 +139,15 @@ test("ruling 16: saved and not in use reads as such, naming registry.keyring; in
   assert.match(keyFieldProblem(refused), /registry\.keyring/);
   assert.equal(keyFieldProblem({ kind: "keyring", message: "x", details: [] }), null, "other refusals stay a banner");
   assert.equal((await off.removeKey("companies_house_key")).saved, false, "remove always works");
-  // TIGHTEN LATER: today's engine sends no inUse
-  const today = (await createMockEngine({ speed: 0, inUseMissing: true }).listKeys()).find((k) => k.saved);
-  assert.ok(!("inUse" in today));
-  assert.equal(keyInUse(today), true);
-  assert.equal(keyBadge(today).text, "Saved");
+  // saved and in use (the workspace reads the keyring)
+  const on = createMockEngine({ speed: 0 });
+  const saved = (await on.listKeys()).find((k) => k.saved);
+  assert.equal(saved.inUse, true);
+  assert.equal(keyInUse(saved), true);
+  assert.equal(keyBadge(saved).text, "Saved");
+  // `inUse` is never inferred: the engine's false is not in use, even for a saved key
+  assert.equal(keyInUse({ name: "companies_house_key", saved: true, savedAt: null, inUse: false }), false);
+  assert.equal(keyInUse({ name: "companies_house_key", saved: false, savedAt: null, inUse: false }), false);
 });
 
 test("About.licence null: the screen says the notices were not found, never an empty line", async () => {

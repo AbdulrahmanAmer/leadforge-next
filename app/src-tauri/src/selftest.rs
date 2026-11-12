@@ -57,7 +57,9 @@ pub const PROBE: &str = r#"(function () {
     },
     text: function () {
       var m = document.querySelector('main');
-      return (m ? m.getAttribute('data-screen') + ' | ' + m.innerText : '(no main)').replace(/\s+/g, ' ').slice(0, 600);
+      // an open confirmation comes first: its words (the forget report's numbers) must fit in the 600 characters
+      var d = document.querySelector('dialog[open]');
+      return (m ? m.getAttribute('data-screen') + ' | ' + (d ? 'DIALOG: ' + d.innerText + ' | PAGE: ' : '') + m.innerText : '(no main)').replace(/\s+/g, ' ').slice(0, 600);
     },
   };
 })();"#;
@@ -181,8 +183,16 @@ fn steps(walk: Walk) -> Vec<Step> {
                 // the exports; the fake campaign's sheet holds no person's email address to forget instead
                 Js("type the domain to forget", "__lf.type('main input[placeholder=\"name@business.example\"]','millbrook-autos.example')".into()),
                 Wait(400),
+                // report first: opening the confirmation makes the engine's dry run (person_forget, dry_run true); the
+                // confirmation shows its numbers; only then is the real call made by the confirm control
                 Js("forget: open the confirmation", "__lf.button('Forget')".into()),
-                Wait(800),
+                Until(
+                    "the forget report is on screen",
+                    "(function(){var d=document.querySelector('dialog[open]');return !!d && /files? that would be removed/.test(d.innerText);})()",
+                    60_000,
+                ),
+                Wait(600),
+                Shot("07a-forget-report"),
                 Js("forget: confirm", "__lf.dialog('Delete and keep them out')".into()),
                 Until("the forget is done", "!document.querySelector('dialog[open]')", 60_000),
                 Wait(2500),

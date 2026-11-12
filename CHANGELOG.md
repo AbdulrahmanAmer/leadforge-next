@@ -83,6 +83,14 @@ keeps its numbers. Each key status gains `inUse`: the key is saved and this work
 `saved` still says what the keyring holds. `key_save` is refused (`input`, naming `registry.keyring`) while the workspace does not
 read the keyring; `key_remove` works either way.
 
+The window, last batch before its review (slice L11, no engine change). Forget shows what it will delete first: the People screen
+asks the engine for a dry run (`person_forget` with `dry_run: true`, for the "someone asked to be removed" box and a row's Forget
+alike), the confirmation shows the engine's own numbers (rows, files removed, files edited) and its warnings, only the confirm
+control makes the real call, and a dry run that finds nothing says nothing is held and offers no delete. The window no longer reads
+an older engine's answers (a register plan of 0, 0, 0; a key status without `inUse`). Three wordings now say what the code does:
+the Data screen counts retention from the start of the run that first found a business, `docs/window-actions.md` no longer says
+keys sit in `leadforge.yaml`, and `config/leadforge.example.yaml` shows the default `crawl.timeout_s` (10.0).
+
 The existing command line, its digest lines and the plugin are unchanged. No version change yet.
 
 ## [0.9.0] — 2026-11-12

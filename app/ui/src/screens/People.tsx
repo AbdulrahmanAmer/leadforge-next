@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ForgetFlow, reportLines } from "../forget.ts";
+import type { ForgetStep } from "../forget.ts";
 import type { Engine, ForgetResult, Person, SuppressResult } from "../engine.ts";
 import type { ScreenId } from "../App";
 import { Badge, Button, Card, Dialog, EmptyState, ErrorBanner, SearchInput, SegmentedControl, Skeleton, StatusBanner, TextInput } from "../components/ui";
@@ -7,14 +9,6 @@ import { NOT_RECORDED, formatCount, formatDate, formatDateOrNot, useAction, useL
 
 type Target = { value: string; label: string };
 type Ask = { kind: "forget" | "suppress"; person: Person | null; typed: string };
-
-/** What `forget` removes, from the engine's own description of the command. */
-const FORGET_REMOVES = [
-  "their rows in every table of the workspace",
-  "cached pages and log lines that name them",
-  "their lines in the progress, hand-off and draft files",
-  "their rows in the sheets in the exports folder",
-];
 
 export function People({ engine, go, openDialog }: { engine: Engine; go: (s: ScreenId) => void; openDialog: string | null }) {
   const [search, setSearch] = useState("");
@@ -136,48 +130,77 @@ function Confirm({ ask, engine, onClose, onDone }: {
   ask: Ask | null; engine: Engine; onClose: () => void; onDone: (r: { forget?: ForgetResult; suppress?: SuppressResult }) => void;
 }) {
   const [index, setIndex] = useState(0);
-  const forget = useAction((value: string) => engine.forgetPerson(value));
+  const [step, setStep] = useState<ForgetStep>({ step: "idle" });
+  const flow = useMemo(() => new ForgetFlow(engine, setStep), [engine]);
   const suppress = useAction((value: string) => engine.suppressAddress(value));
-  useEffect(() => { setIndex(0); forget.clear(); suppress.clear(); }, [ask]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!ask) return <Dialog open={false} title="" onClose={onClose} actions={null}>{null}</Dialog>;
+  useEffect(() => { setIndex(0); flow.reset(); suppress.clear(); }, [ask]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const targets = targetsFor(ask);
-  const target = targets[Math.min(index, targets.length - 1)]!;
-  const isForget = ask.kind === "forget";
-  const action = isForget ? forget : suppress;
+  const targets = ask ? targetsFor(ask) : [];
+  const target = targets.length ? targets[Math.min(index, targets.length - 1)]! : null;
+  const isForget = ask?.kind === "forget";
+  // Forget is report-first: choosing what to act on runs the engine's dry run for it, and nothing is deleted by that
+  useEffect(() => {
+    if (isForget && target) void flow.check(target.value);
+  }, [ask, index]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!ask || !target) return <Dialog open={false} title="" onClose={onClose} actions={null}>{null}</Dialog>;
+
+  const deleting = step.step === "deleting";
+  const confirmable = step.step === "report" || step.step === "deleting" || step.step === "delete-failed";
   const confirm = async () => {
-    if (isForget) { const r = await forget.call(target.value); if (r) onDone({ forget: r }); }
+    if (isForget) { const r = await flow.confirm(); if (r) onDone({ forget: r }); }
     else { const r = await suppress.call(target.value); if (r) onDone({ suppress: r }); }
   };
+  const busy = isForget ? deleting : suppress.busy;
 
   return (
     <Dialog open title={isForget ? `Forget ${ask.person?.name ?? ask.typed}?` : `Suppress ${ask.person?.email ?? ask.person?.domain ?? ask.typed}?`} onClose={onClose}
       actions={
         <>
-          <Button variant="ghost" size="lg" onClick={onClose} disabled={action.busy}>Cancel</Button>
-          <Button variant={isForget ? "danger" : "primary"} size="lg" busy={action.busy} onClick={() => void confirm()}>
-            {action.busy ? (isForget ? "Deleting" : "Adding") : isForget ? "Delete and keep them out" : "Suppress"}
-          </Button>
+          <Button variant="ghost" size="lg" onClick={onClose} disabled={busy}>{isForget && step.step === "nothing" ? "Close" : "Cancel"}</Button>
+          {(!isForget || confirmable) && (
+            <Button variant={isForget ? "danger" : "primary"} size="lg" busy={busy} onClick={() => void confirm()}>
+              {busy ? (isForget ? "Deleting" : "Adding") : isForget ? "Delete and keep them out" : "Suppress"}
+            </Button>
+          )}
         </>
       }>
       {targets.length > 1 && (
         <SegmentedControl label="What to act on" options={targets.map((t, i) => ({ id: String(i), label: t.label }))} value={String(Math.min(index, targets.length - 1))} onChange={(id) => setIndex(Number(id))} />
       )}
       <p className="lf-confirm__target lf-mono">{target.value}</p>
-      {isForget ? (
-        <>
-          <p>This deletes, from this workspace:</p>
-          <ul className="lf-confirm__list">{FORGET_REMOVES.map((line) => <li key={line}>{line}</li>)}</ul>
-          <p>They also go on the suppression list, so a new run does not collect them again.</p>
-          <p className="lf-note lf-note--warn"><Icon name="alert" size={16} />It cannot reach sheets you already gave to someone, or files written outside this folder. It cannot be undone.</p>
-        </>
-      ) : (
+      {isForget ? <ForgetReport step={step} onRetry={() => void flow.check(target.value)} /> : (
         <>
           <p>The address leaves every sheet and every tab from the next export on, and a new run does not collect it again.</p>
           <p>Nothing is deleted from the workspace. To delete as well, use Forget. A suppression cannot be lifted from this window.</p>
         </>
       )}
-      {action.error !== null && <ErrorBanner compact error={action.error} />}
+      {!isForget && suppress.error !== null && <ErrorBanner compact error={suppress.error} />}
     </Dialog>
+  );
+}
+
+/** What the Forget confirmation says in each step of the flow: the engine's own numbers and words. */
+function ForgetReport({ step, onRetry }: { step: ForgetStep; onRetry: () => void }) {
+  if (step.step === "idle" || step.step === "checking") return <Skeleton lines={3} label="Checking what the workspace holds" />;
+  if (step.step === "report-failed") {
+    return (
+      <>
+        <p>The check did not finish, so nothing was deleted and nothing can be deleted from here yet.</p>
+        <ErrorBanner compact error={step.error} onRetry={onRetry} />
+      </>
+    );
+  }
+  if (step.step === "nothing") {
+    return <p>Nothing is held for this value: no database rows and no files. There is nothing to delete. To keep it out of new runs, use Suppress.</p>;
+  }
+  if (step.step === "done") return null;
+  return (
+    <>
+      <p>The workspace holds this. Deleting it removes:</p>
+      <ul className="lf-confirm__list">{reportLines(step.report).map((line) => <li key={line}>{line}</li>)}</ul>
+      {step.report.warnings.map((w) => <p key={w} className="lf-note lf-note--warn"><Icon name="alert" size={16} />{w}</p>)}
+      <p>They also go on the suppression list, so a new run does not collect them again. It cannot be undone.</p>
+      {step.step === "delete-failed" && <ErrorBanner compact error={step.error} />}
+    </>
   );
 }

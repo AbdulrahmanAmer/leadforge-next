@@ -43,12 +43,8 @@ export interface MockOptions {
   runEndsNull?: boolean;
   /** The clock the mock reads. */
   now?: () => Date;
-  /** A register campaign's plan: `null` (default, ruling 15: not estimated) or `zero` (today's engine 0.9.0: 0, 0, 0). */
-  estimates?: "null" | "zero";
   /** The workspace does not read the keyring (`registry.keyring: false`): a saved key is not in use, `key_save` refuses. */
   keyringOff?: boolean;
-  /** Key statuses without `inUse` (today's engine 0.9.0). */
-  inUseMissing?: boolean;
   /** `about` finds no notices file: `licence` null, no licences. */
   noLicence?: boolean;
 }
@@ -228,15 +224,12 @@ export function createMockEngine(options: MockOptions = {}): Engine {
   const listedSources: SourceId[] = [...(options.sources ?? ["dvsa", "companies_house"])];
   const configuredSources: SourceId[] = [...(options.configured ?? listedSources)];
   let settings: Settings = { workspace: "D:\\Leads\\west-country", sheetFormats: ["xlsx", "csv"], openSheetWhenDone: true, sources: listedSources };
-  const keys: Record<KeyName, KeyStatus> = {
+  const keys: Record<KeyName, Omit<KeyStatus, "inUse">> = {
     companies_house_key: { name: "companies_house_key", saved: !options.empty, savedAt: options.empty ? null : "2026-11-03T08:50:00Z" },
     opencorporates_token: { name: "opencorporates_token", saved: false, savedAt: null },
   };
-  // ruling 16: `inUse` is saved AND the workspace reads the keyring; today's engine (`inUseMissing`) has no such field
-  const keyOut = (k: KeyStatus): KeyStatus => {
-    const { inUse: _drop, ...plain } = k;
-    return options.inUseMissing ? { ...plain } : { ...plain, inUse: k.saved && !options.keyringOff };
-  };
+  // ruling 16: `inUse` is saved AND the workspace reads the keyring
+  const keyOut = (k: Omit<KeyStatus, "inUse">): KeyStatus => ({ ...k, inUse: k.saved && !options.keyringOff });
   let run: { status: RunStatus; stopped: boolean; unknown: boolean; onEvent: (event: RunMessage) => void } | null = null;
   /** A status the way the engine sends it when it does not know: campaign, done and the clean-up counts null. */
   const shown = (status: RunStatus, unknown: boolean): RunStatus =>
@@ -282,9 +275,8 @@ export function createMockEngine(options: MockOptions = {}): Engine {
       const searches = draft.kinds.length * draft.places.length * 12;
       const slug = `${draft.places[0]}-${draft.kinds[0]}s`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
       // every source the window offers is a register, which the engine does not count before the run (ruling 15)
-      const est = options.estimates === "zero" ? 0 : null;
       return {
-        campaign: slug, searches, estimatedBusinesses: est, estimatedSites: est, estimatedMinutes: est,
+        campaign: slug, searches, estimatedBusinesses: null, estimatedSites: null, estimatedMinutes: null,
         warnings: [], retentionMonths: months,
       };
     },
@@ -390,18 +382,23 @@ export function createMockEngine(options: MockOptions = {}): Engine {
       return { people: hit.slice(0, query.limit).map((p) => ({ ...p })), total: people.length, matching: hit.length };
     },
 
-    async forgetPerson(value: string): Promise<ForgetResult> {
-      await begin("forgetPerson", 1600);
+    async forgetPerson(value: string, dryRun: boolean): Promise<ForgetResult> {
+      await begin("forgetPerson", dryRun ? 500 : 1600);
       const v = value.trim().toLowerCase();
       if (!v) throw new EngineError("forgetPerson", "usage", "Nothing was changed.", ["Give an email address, a domain or a name."], "nothing was changed");
       const kind: ForgetKind = v.includes("@") ? "email" : /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(v) ? "domain" : "name";
       const gone = people.filter((p) => (kind === "email" ? p.email?.toLowerCase() === v : kind === "domain" ? p.domain === v : p.name.toLowerCase() === v));
-      people = people.filter((p) => !gone.includes(p));
-      suppressed += 1;
-      return {
+      const out: ForgetResult = {
         kind, value: value.trim(), rows: gone.length * 7, filesRemoved: gone.length ? 2 : 0, filesEdited: gone.length ? 3 : 0,
         warnings: ["Sheets already handed out, or written outside this folder, cannot be reached from here."],
       };
+      if (dryRun) {
+        // a report: the same answer, and nothing in the workspace changes
+        return { ...out, warnings: ["Nothing was deleted: this is what forgetting it would delete.", ...out.warnings] };
+      }
+      people = people.filter((p) => !gone.includes(p));
+      suppressed += 1;
+      return out;
     },
 
     async suppressAddress(value: string, kind?: SuppressKind): Promise<SuppressResult> {

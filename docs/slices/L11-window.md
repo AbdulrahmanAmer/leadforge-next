@@ -539,3 +539,98 @@ Run by the orchestrator through `packaging\install-proof.ps1` on `LeadForge_0.9.
 What this run shows is NOT working in the installed app: `cmd=keys_list origin=bundled ... error kind=environment`, and the Keys screen says keys cannot be kept in the keyring on this computer. Cause: the `keyring` package is in neither `requirements.lock` nor `uv.lock`, so the bundle has no keyring. The short walk accepts that answer today; once the locks and the bundle carry `keyring`, its expectation for `keys_list` must be `ok` again, and the keyring proof (save a made-up marker, search for it, remove it) is still owed.
 
 Not shown by this run: a run, the sheet, forget, suppress, retention and purge in the INSTALLED app (the whole campaign walk is on a debug build); an interactive (double-click) install; the default per-user install folder.
+
+## The last batch before the review (2026-11-12, `master` 2fb6b93 merged as acfaaf7)
+
+**1. `master` in, the two tolerances out.** `origin/master` 2fb6b93 (the engine side of rulings 15 and 16 and `About.licence` null) merged
+with no conflict. Removed from `app/ui/src/follow.ts`: "a register plan answering 0/0/0 reads as not estimated" (`planFigures` now
+reads only null as not estimated; a zero is a count and is shown) and "a missing `inUse` reads as true" (`keyInUse` is `saved && inUse`).
+`KeyStatus.inUse` is required in `engine.ts`, the mock (its `estimates` and `inUseMissing` options and the `&estimates=zero`,
+`&inuse=missing` render switches are gone) and the stand-in (it already sent it). Tests: `seam-shape.test.mjs` holds `inUse` as
+`{optional: false, nullable: false}`; `engine.mock.test.mjs` asserts a 0/0/0 plan reads as counted zeros and a saved key with
+`inUse: false` is not in use. **Seen red** (the 0/0/0 rule and `inUse?:` put back): `ruling 15 ... actual: { counted: false ... }
+expected: { counted: true, businesses: 0 ... }` and `engine.ts: rulings 15 and 16 ... actual: { optional: true ... } expected: { optional: false ... }`;
+restored, green. **The real-shapes test against the real engine** (through the lock, engine 0.9.0 at master's source,
+`packaging/real-shapes.ps1`): `test result: ok. 1 passed`, `cargo test exit: 0`, shape check `ℹ tests 10 ... ℹ pass 10 ... ℹ fail 0`,
+`guard: outside attempts refused and logged: 25`, `REAL SHAPES PASS`. Not seen in it: `KeyStatus` (the three key commands still answer
+`environment`: item 4), `sheet_open`'s null.
+
+**2. Forget shows what it will delete first.** `app/ui/src/forget.ts` (`ForgetFlow`, tested in Node) and the People screen. The seam:
+`forgetPerson(value, dryRun)` sends `{value, dry_run}` (`dry_run`, snake_case; the real engine took `true` and `false`). Both ways in (the
+"someone asked to be removed" box and a row's Forget control, which also checks again when another target is chosen in its dialog) open
+the confirmation with the engine's dry run running ("Checking what the workspace holds"). Then: the engine's own numbers (rows, files that
+would be removed, files that would be edited) and its warnings in its words, and the confirm control; only that control makes the real
+call (`dry_run: false`), and the real result is then shown in the "Forgotten:" banner. A dry run with 0 rows and 0 files removed or edited
+says "Nothing is held for this value ..." and has a Close button only. A dry run that fails shows the engine's error with "Try again" under a
+line saying nothing was deleted, and no delete control. A real call that fails keeps the report and the error, and the confirm can be tried
+again. Mock and stand-in honour `dry_run` (the stand-in refuses a non-boolean one, kind `usage`) and use the real engine's dry-run warning,
+"Nothing was deleted: this is what forgetting it would delete."
+
+Tests: `tests/forget-flow.test.mjs` (11), `seam-shape.test.mjs` +1 (the stand-in's dry run), and the real-shapes run asks the real engine
+for the dry run twice and then the real call and holds the three to the same numbers (a planted mismatch is a finding). **Seen red once**,
+five plants at once (the mock's dry run deleting; `holdsNothing` always false; `confirm` allowed from "nothing" and "report-failed"; the seam
+sending `dryRun` instead of `dry_run`): 8 tests red, e.g. `nothing changed` (a dry run changed the workspace), `a dry run that finds nothing
+... actual: 'report', expected: 'nothing'`, `no real call after a failed report ... actual: [[..., true], [..., false]]`, and the `dry_run` key
+test; restored: 11 of 11 green. The stand-in's dry run planted to delete: `a dry run changed the workspace`; restored, green.
+`npm test` at the end: `tests 117, pass 116, fail 0, skipped 1` (the real-answer test, which needs `LF_REAL_ANSWERS`).
+
+Renders: 24 pictures (checking, report from a row, report from the box, nothing held, dry run failed, done; light and dark, 1280 x 800 and
+900 x 600) in `D:\LeadForge\wt\window-shots\forget\`, made by headless Edge over CDP, one browser, killed afterwards; the dialog fits every
+state (at 900 x 600 the tallest, the report with two warnings, ends at y 548 of 600). After looking: a failed dry run showed only the
+engine's error, so a line was added above it saying the check did not finish and nothing was deleted (the dry-run-failed pictures were made
+again). Same tokens and components (`Dialog`, `Skeleton`, `StatusBanner`, `ErrorBanner`, the warn note); nothing new in the visual language.
+The pictures were made before the mock's warning words were changed to the real engine's.
+
+**The campaign walk** (`selftest.rs`, `packaging/selftest-window.ps1`; 15 pictures now): opening the confirmation waits until the dialog
+shows "files that would be removed", takes picture `07a-forget-report`, and only then presses "Delete and keep them out". The script
+expects, in order: `cmd=person_forget ... ok` (the dry run), `selftest: shows 07a-forget-report: ... DIALOG: ... database rows ... files that would be
+removed ... files that would be edited`, `cmd=person_forget ... ok` (the real call), `shows 07b-people-forgotten: ... Forgotten: millbrook-autos.example`;
+and the numbers and the first 40 characters of each warning on that screen equal the engine's own dry run taken from its command line
+(`forget report on screen must hold: '13 database rows', '2 files that would be removed', '0 files that would be edited'`). Walk 3 of this job:
+```
+cmd=person_forget origin=dev-venv in=50B ms=519 ok out=296B
+selftest: shows 07a-forget-report: "people | DIALOG: Forget millbrook-autos.example? ... 13 database rows 2 files that would be removed 0 files that would be edited (lines taken out) Nothing was deleted: ...
+cmd=person_forget origin=dev-venv in=51B ms=535 ok out=232B
+selftest: shows 07b-people-forgotten: "people | ... Forgotten: millbrook-autos.example 13 database rows, 2 files deleted, 0 files with lines taken out. ...
+shots taken: 15 of 15; probe clean: True / CAMPAIGN COMPARE PASS / expectations missed: 0 / processes left: 0 / throwaway folder left: False / SELFTEST PASS
+```
+**Three walks on the owner's screen (about 82 s each).** Walks 1 and 2 passed every log expectation (`expectations missed: 0`,
+`CAMPAIGN COMPARE PASS`) but the pictures were 160 x 24 title bars (the window was minimised; `shots taken: 1 of 15`, then `0 of 15`):
+`SELFTEST FAIL`. The script now restores a minimised window before each picture (`LfWin.Restore`, SW_SHOWNOACTIVATE); seen red and green on a
+throwaway minimised WinForms window, not the app: without the restore `picture 160x24 counted: False`, with it `picture 1000x700 counted: True`.
+Walk 3: the lines above, `SELFTEST PASS`. Not seen red in a walk: the new order and number expectations (no fourth walk was allowed). Not
+run: the short walk on the release build (the install proof runs it).
+
+**3. Three wordings that disagreed with the code (the code is the truth; no code changed).**
+- Data screen, retention caption. Code: `retention.classify` takes the age from `runs.started_at` of the run named by `businesses.first_run_id`
+  (the run that created the row; an empty or dangling one counts as the workspace's earliest run; no run at all: no age, never expires);
+  `last_seen_at` is never read. L6 finding 2: a business first found through a register and merged with a Maps twin can carry the younger
+  twin's run, so its expiry can come later. Was: "Counted from the day a business first entered the workspace." Now: "Counted from the start
+  of the run that first found the business (the workspace's first run, if that run is not recorded). Finding it again does not extend it."
+- `docs/window-actions.md`, "Missing" 6, the history table. Code: `config.key_refusal`: a registry key is read only from its environment
+  variable or the OS keyring (service `leadforge`, entry `registry.<name>`) and a key in `leadforge.yaml` is refused. Was: "Today a key is a
+  plain value in `leadforge.yaml`". Now says so, marked history. (Also updated there: the report-first forget, the rulings paragraph.)
+- `config/leadforge.example.yaml`, `crawl.timeout_s`: `config.py` `CrawlCfg.timeout_s` is `10.0` (home page fetch; was 15.0); the example said 15.
+  Now `10.0`. No test pins the example file (`tests/` and `scripts/` read only `icp.wescore.example.yaml`).
+
+**4. The keyring: not done, the lock is not on `master`.** `git cat-file -e origin/master:requirements-keyring.lock` after a fetch at the start
+and again at the end: `fatal: path 'requirements-keyring.lock' does not exist in 'origin/master'`. Nothing was improvised: the bundle and the
+short walk (which still accepts `environment` for `keys_list`) are unchanged and the keyring proof was not run. When the lock lands: bring `master`
+in, build the bundle's environment with the install line in the keyring slice file, change the short walk's `keys_list` expectation back to `ok`,
+then the guarded proof (`keys_list` first; stop if a key is saved; marker saved through the Keys screen, searched for in every log, removed,
+`keys_list` and the engine's command line checked for nothing left, the backend named).
+
+**Gates on the final tree (through the lock, one at a time).** `app/src-tauri`: `cargo fmt --check` exit 0; `cargo clippy --all-targets --locked
+-- -D warnings` exit 0; `cargo test --locked`: unit 14, `engine_dev` 4, `key_value_never_leaks` 2, `real_engine_shapes` 1 ignored, `run_seam` 6,
+`standin_switch` 1, `version_agrees` 1, all passed; `permission-check` 3 passed. The capability file, `permission-check` and `build.rs`: `git diff` empty.
+`app/ui`: `tsc --noEmit` exit 0, `vite build` exit 0, `npm test` as above. On this laptop the toolchain is `stable-x86_64-pc-windows-msvc`
+(`RUSTUP_TOOLCHAIN=stable` resolves to the gnu host and fails at `dlltool`).
+
+**The installer.** `build-engine-embed.ps1` rebuilt the bundled engine from the merged source (`leadforge 0.9.0`; the version is the engine's,
+nothing edited by hand), then under the heavy lock `run-measured.ps1` ran `tauri.js build --config tauri.bundle.conf.json --bundles nsis -- --locked`:
+`exit 0; duration 206 s; peak working set of the build's process tree 815 MB; free RAM before 1754 MB` (a first try ended `exit 1` at
+`parking_lot_core`, `dlltool.exe` not found: no `RUSTUP_TOOLCHAIN` was set). `D:\LeadForge\wt\target\release\bundle\nsis\LeadForge_0.9.0_x64-setup.exe`,
+36,513,553 bytes, sha256 `5f846667cc6033d6ca4bbcc74d309a01e46ab16e74a91dfae595f23fb20d3d10`. Its NSIS script names no stand-in, the release
+`leadforge-window.exe` holds no `leadforge_window_standin` (byte search 0), and `target\release\engine` holds `python` only.
+**The install proof, for the orchestrator with the normal token** (this session is elevated):
+`powershell -NoProfile -ExecutionPolicy Bypass -File D:\LeadForge\wt\window\app\src-tauri\packaging\install-proof.ps1 -Setup D:\LeadForge\wt\target\release\bundle\nsis\LeadForge_0.9.0_x64-setup.exe`

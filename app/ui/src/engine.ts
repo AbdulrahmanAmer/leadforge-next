@@ -265,9 +265,8 @@ export interface KeyStatus {
   name: KeyName;
   saved: boolean;
   savedAt: string | null;
-  /** Saved AND this workspace reads the keyring (`registry.keyring` in its leadforge.yaml; ruling 16 of 2026-11-12).
-   *  TIGHTEN LATER: optional only until the engine's follow-up (slice/L11a-follow) is on master; missing reads as true. */
-  inUse?: boolean;
+  /** Saved AND this workspace reads the keyring (`registry.keyring` in its leadforge.yaml; ruling 16 of 2026-11-12). Always present. */
+  inUse: boolean;
 }
 
 /* ------------------------------------------------------------------- settings */
@@ -322,8 +321,10 @@ export interface Engine {
   openSheet(path: string): Promise<void>;
   /** People: the engine's named people, with an email or phone only where it was recorded as that person's. */
   listPeople(query: PeopleQuery): Promise<PeoplePage>;
-  /** Forget: removes an email address, a domain or a name from the workspace and keeps them off new runs. */
-  forgetPerson(value: string): Promise<ForgetResult>;
+  /** Forget: removes an email address, a domain or a name from the workspace and keeps them off new runs.
+   *  `dryRun` true (sent as `dry_run`): the engine answers the same shape for what it WOULD delete and changes nothing.
+   *  The People screen always asks with `dryRun` true first (src/forget.ts). */
+  forgetPerson(value: string, dryRun: boolean): Promise<ForgetResult>;
   /** Suppress: the address or domain leaves every export and is not collected again. */
   suppressAddress(value: string, kind?: SuppressKind): Promise<SuppressResult>;
   /** What the next clean-up would delete. Changes nothing. */
