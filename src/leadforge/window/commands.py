@@ -312,6 +312,8 @@ def sheet_open(args: dict, opener: Callable[[Path], None] | None = None) -> None
         raise refused from None
     if not target.is_file() or not target.is_relative_to(root) or target == root:
         raise refused
+    if target.suffix.lower() not in (".xlsx", ".csv") and target.name != "report.json":   # only what sheet_of lists:
+        raise refused   # the OS starts any other file (a planted .cmd, .exe, .lnk) with its default program
     (opener or _default_opener)(target)
     return None
 
