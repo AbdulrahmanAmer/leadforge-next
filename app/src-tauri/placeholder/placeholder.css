@@ -1,0 +1,4 @@
+body { font-family: "Segoe UI", sans-serif; margin: 0; background: #f6f5f2; color: #1d1d1b; }
+main { max-width: 40rem; margin: 4rem auto; padding: 0 1.5rem; }
+h1 { font-size: 1.6rem; }
+#engine { font-family: Consolas, monospace; }

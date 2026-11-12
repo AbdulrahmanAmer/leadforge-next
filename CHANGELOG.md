@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+- The window's shell (`app/src-tauri`, Tauri 2, slice L10): its Rust core starts the bundled engine, and only it; the window has one
+  command, `engine_version`, and no permission to start a program, open a file or reach the network (a Rust test reads the permission
+  files and fails on anything outside its list). The engine ships as python.org's embeddable Python with its packages beside it
+  (measured against one PyInstaller file: `docs/slices/L10-shell.md`). Placeholder page only; the screens come with `app/ui`.
+
 ## [0.7.3] — 2026-11-12
 
 The fake-campaign check runs on Linux too (its network guard now refuses any DNS question, even to a loopback stub resolver) and

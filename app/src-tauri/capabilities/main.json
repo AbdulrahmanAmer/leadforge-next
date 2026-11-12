@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "The one window may ask the core for the engine's version. Nothing else: no shell, no opener, no files, no network.",
+  "windows": ["main"],
+  "permissions": ["allow-engine-version"]
+}
