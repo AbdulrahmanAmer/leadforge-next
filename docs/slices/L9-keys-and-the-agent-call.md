@@ -441,3 +441,79 @@ line by line.
 Verdict: PASS 3b8acd6
 
 Merge waits for L6 and L7 (the 08:55 correction): not merged by the reader. No version on this branch.
+
+## Brought onto master (0.9.0)
+
+Run `l9-rebase`, 2026-11-12 11:38-, STRIKERFORCE. One merge, `git merge origin/master` (1d741bc, 0.9.0) into 00cd52d: merge commit
+8362c87. No rebase, no forced push. The Spec, Build and Review parts above are left as they were written; where they name
+`discovery.proxies` or `proxy.example` they describe the branch before this merge.
+
+**Settled, file by file** (both sides read against their base 1050687):
+
+| File | L9 wanted | master wanted | Written |
+|---|---|---|---|
+| `pyproject.toml` | the extra `keyring = ["keyring==25.7.0"]` (its old block still carried `social`) | `social` and `codeindex` extras gone (L8, debts) | master's block plus the one `keyring` line; nothing master removed comes back |
+| `scripts/e2e_fake_campaign.py` | the Companies House key and a planted OpenCorporates token in the child's environment | `LF_FAKE_MAPS` / `maps_listings.json` renamed `LF_FAKE_LISTINGS` / `listings.json` | master's line, then L9's two environment variables and their comment |
+| `skills/generate-leads/references/cli.md` | "registry keys" out of the `leadforge.yaml` line (keys are refused there) | "proxies passthrough" out of the same line | both words out: "provider order, politeness knobs, validation.staleness_days ..." |
+| `tests/test_config_secrets.py` | the section check of `config get registry` with a key planted by writing the file, as a pre-L9 workspace holds it | `discovery.proxies` / `proxy.example` renamed `discovery.upstreams` / `upstream.example` | master's `upstreams` assert, then L9's planted-file check (L9's order: the file is written after the `upstreams` read) |
+| `CHANGELOG.md` | its paragraph under `## [Unreleased]` | its two paragraphs (Maps out, debts) under `## [Unreleased]` | all three kept: L9's first, master's two after it |
+
+`uv.lock`, `requirements.lock` and `tests/fixtures/dvsa_sample.csv` are master's byte for byte (`git diff --quiet origin/master --` on
+the three: no difference). **Locks: master's, keyring not added.** `requirements.lock` is "no dev, no extras, no project"
+(`scripts/make_plugin_lock.py`), so an extra never enters it; no test reads `uv.lock`'s extras (`tests/test_plugin_lock.py` checks only
+that each pinned package and hash of `requirements.lock` is in `uv.lock`), and no test imports `keyring` (the fake from
+`tests/conftest.py`). So the extra stays out of the locked install without breaking a test, as the brief allows. Left as before: `uv.lock`'s
+`provides-extras` does not list `keyring` (a `uv lock` would add keyring and its dependencies; that needs a network resolve).
+
+**Other uses of renamed names** (step 4): `git diff origin/master` over the merged tree, added lines only, searched for `LF_FAKE_MAPS`,
+`maps_listings`, `proxies`, `proxy.example`, `gosom`, `social`, `codeindex`, `tenacity`, `maps`: 0 hits (the hits for `keyring` are L9's
+own). The tree-wide hits for `gosom` and `social` are master's own (docs pages under their L8 note, `.claude/POSITION-HISTORY.md`). Fixed: 0.
+Read too: master's new commands `forget` and `purge` (L6) are now walked by the fake-key scan like every other leaf.
+
+**Written before any test ran** (11:42): the L9 tests and the two older changed test files pass; the fake campaign moves no cell of
+master's `expected.json` (the key moves to the environment with the same value; the keyring is off; the OpenCorporates provider is off).
+
+**L9 tests** (below-normal priority, this run's venv: `requirements.lock` with hashes, `-e .` without deps, pytest 9.2.0,
+pytest-timeout 2.4.0, ruff 0.15.13), the five `test_l9_*` files plus `test_config_secrets.py` and `test_cli_contract.py`:
+```
+..........................................                               [100%]
+42 passed in 38.41s
+```
+**Fake campaign** (`scripts/e2e_fake_campaign.py --out D:\homelab-work\l9-rebase\e2e1`, below-normal), tail:
+```
+fake-key scan: clean (25 files: step outputs, guard and request logs, workspace logs, database, exports)
+PASS - result equals tests/fixtures/e2e/expected.json (3 refused-call entries, as saved)
+```
+The prediction held: no cell moved. The key from the environment is used: the fake Companies House's request log has 10
+`/ch/search/companies`, 2 `/ch/company/...`, 2 `.../officers`, all `"status": 200`.
+
+**Static checks.** `ruff check pyproject.toml scripts/e2e_fake_campaign.py tests/test_config_secrets.py`: `All checks passed!`.
+`python .github/scripts/check_versions.py`: all six copies `0.9.0` (master's; this branch sets none). `gitleaks detect
+--log-opts="origin/master..HEAD"` (8.30.1): `10 commits scanned.` / `no leaks found`.
+
+**Gate**, once, `node check.mjs` at below-normal priority with this run's venv first on `PATH`, on 8362c87 (tree dirty by this part
+only, written while the gate ran), 11:45-11:50:
+```
+ok  versions agree  0.2
+ok  skill frontmatter  0.1
+ok  skill references  0.3
+ok  lint  1.2
+967 passed, 3 skipped in 294.62s (0:04:54)
+ok  tests  296.0
+ok  cli digest  2.4
+CHECK PASS sha=8362c87 tree=dirty steps=6 skipped=0 secs=300
+```
+
+**Hosted CI on 8362c87** (the merge commit), read with `gh run view`:
+- run 43193533865 (`pull_request`), `completed success`, 13 of 13 jobs `success`: claude plugin validate, fake campaign ·
+  windows-latest, Validate plugin manifests, Version strings agree, ubuntu-latest · py3.11, fake campaign · ubuntu-latest,
+  ubuntu-latest · py3.14, windows-latest · py3.12, ubuntu-latest · py3.13, windows-latest · py3.11, windows-latest · py3.14,
+  windows-latest · py3.13, ubuntu-latest · py3.12.
+- run 43193527061 (`push`, the mutation trial: the merge brings master's L6 delete modules into the branch's diff), `completed
+  success`, 1 job: "mutmut on the delete modules · ubuntu-latest: success". 14 checks on 8362c87, 0 failed, 0 pending.
+
+The CI of the commit that adds this part (slice file only) is read by the run and written in its report and on the pull request,
+not here (a commit cannot hold its own CI result).
+
+Not done here: no merge into `master` (the brief: an independent reader re-judges and merges). The Review part's verdict
+(PASS 3b8acd6) was given before this merge; it needs refreshing on the new head.
