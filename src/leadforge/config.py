@@ -2,20 +2,54 @@
 
 Order: built-in defaults -> ./leadforge.yaml (workspace) -> env LEADFORGE_SECTION__KEY.
 All runtime state lives under `data_dir` (default ./leadforge_data). Nothing here performs network I/O.
+The registry keys (KEY_SETTINGS) are the exception (L9, C2): never from leadforge.yaml (refused there), only from the
+environment or the OS keyring.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import logging
 import os
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 CH_BASE_DEFAULT = "https://api.company-information.service.gov.uk"
+KEY_SETTINGS = ("companies_house_key", "opencorporates_token")  # in the `registry` section
+KEYRING_SERVICE = "leadforge"
+
+
+def key_env_name(name: str) -> str:
+    return f"LEADFORGE_REGISTRY__{name.upper()}"
+
+
+def key_refusal(name: str) -> str:
+    """Why a key in leadforge.yaml is refused and where it goes instead. Names the setting, never the value."""
+    return (f"registry.{name} must not be in leadforge.yaml: keys are read only from the environment variable "
+            f"{key_env_name(name)} or the OS keyring (service '{KEYRING_SERVICE}', name 'registry.{name}', e.g. "
+            f"`keyring set {KEYRING_SERVICE} registry.{name}`); remove it from leadforge.yaml")
+
+
+class KeyInConfigFile(ValueError):
+    """A registry key written in leadforge.yaml (L9, C2)."""
+
+
+def _keyring_get(name: str) -> str | None:
+    """The OS keyring's entry for registry.<name>, or None. The `keyring` package is optional (extra `keyring`);
+    without it the environment still works. tests/conftest.py replaces this function, so no test reads a real keyring."""
+    try:
+        import keyring
+    except ImportError:
+        return None
+    try:
+        return keyring.get_password(KEYRING_SERVICE, f"registry.{name}")
+    except Exception as e:  # noqa: BLE001 — a broken backend counts as "not set", with a warning (no value)
+        logging.getLogger("leadforge").warning("OS keyring not readable for registry.%s: %s", name, type(e).__name__)
+        return None
 
 
 class DvsaCfg(BaseModel):
@@ -51,6 +85,17 @@ class DiscoveryCfg(BaseModel):
     est_min_per_tiled_query: float = 4.0   # measured 2026-08-31: 3.5-4.7 min tiled
     dvsa: DvsaCfg = Field(default_factory=DvsaCfg)
     companies_house: CompaniesHouseDiscoveryCfg = Field(default_factory=CompaniesHouseDiscoveryCfg)
+    # C10: the key that once let the helper fetch business sites with no robots.txt check is refused.
+    @model_validator(mode="before")
+    @classmethod
+    def _refuse_email_crawl(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "email_crawl" in data:
+            raise ValueError(
+                "discovery.email_crawl was removed: the helper program's -email switch fetches business sites "
+                "without LeadForge's robots.txt check, so it is never used. Delete the key; LeadForge reads "
+                "e-mail addresses from the sites itself, after the robots.txt check")
+        return data
+
     # speed unit: fan discover queries across N provider-chain instances (each its own browser/subprocess
     # pool); ==1 keeps the original strictly-serial loop. See pipeline.run_discover.
     parallel_queries: int = 1
@@ -71,6 +116,8 @@ class CrawlCfg(BaseModel):
     page_timeout_s: float = 6.0      # secondary/candidate page + sitemap-probe fetch timeout
     site_budget_s: float = 45.0      # per-site wall-clock budget across the whole crawl() call
     max_text_bytes: int = 400_000
+    # C11: Cloudflare's "protected" e-mail addresses are an anti-harvesting measure; they are not decoded unless asked
+    decode_protected_emails: bool = False
 
 
 class PolitenessCfg(BaseModel):
@@ -148,11 +195,16 @@ class EnrichCfg(BaseModel):
 
 
 class RegistryCfg(BaseModel):
+    # the two keys are filled by load_config from the environment or the OS keyring, never from leadforge.yaml
     companies_house_key: str = ""
     # Every request to this address carries companies_house_key (basic auth), so only the default or a loopback address
     # (a local stand-in server) is accepted; DVSA's url takes any host because it sends no secret.
     companies_house_url: str = CH_BASE_DEFAULT
     opencorporates_token: str = ""
+    # L9 (C2): OpenCorporates documents its token only as a query parameter, so it would travel in the web address;
+    # off unless the operator accepts that.
+    opencorporates_enabled: bool = False
+    keyring: bool = True               # L9: look in the OS keyring when the environment has no key
     min_name_similarity: float = 0.45  # v0.3: a registry hit must also resemble the business name
     active_only: bool = True           # v0.3: dissolved/liquidated companies are never matched
 
@@ -267,6 +319,7 @@ class Config(BaseModel):
     pipeline: PipelineCfg = Field(default_factory=PipelineCfg)
 
     _workspace: Path = Path(".")
+    _key_sources: dict[str, str] = {}  # registry key name -> "environment" | "OS keyring" (set keys only)
 
     # --- path helpers (create-on-demand) -------------------------------------------------
     @property
@@ -289,6 +342,10 @@ class Config(BaseModel):
     @property
     def cache_dir(self) -> Path:
         return self._dir("cache")
+
+    @property
+    def browser_profiles_dir(self) -> Path:
+        return self._dir("browser-profiles")
 
     @property
     def exports_dir(self) -> Path:
@@ -338,10 +395,27 @@ def load_config(workspace: Path | str = ".", data_dir_override: str | None = Non
         loaded = yaml.safe_load(cfg_file.read_text(encoding="utf-8")) or {}
         if not isinstance(loaded, dict):
             raise ValueError(f"{cfg_file} must contain a YAML mapping")
+        registry = loaded.get("registry")
+        for name in KEY_SETTINGS:
+            if isinstance(registry, dict) and registry.get(name) not in (None, ""):
+                raise KeyInConfigFile(key_refusal(name))
         merged = _deep_merge(merged, loaded)
-    merged = _deep_merge(merged, _env_overrides())
+    env = _env_overrides()
+    if isinstance(env.get("registry"), dict):
+        for name in KEY_SETTINGS:
+            env["registry"].pop(name, None)  # read below as written, not parsed as YAML
+    merged = _deep_merge(merged, env)
     if data_dir_override:
         merged["data_dir"] = data_dir_override
     cfg = Config.model_validate(merged)
     cfg._workspace = workspace
+    sources: dict[str, str] = {}
+    for name in KEY_SETTINGS:
+        value, source = os.environ.get(key_env_name(name), "").strip(), "environment"
+        if not value and cfg.registry.keyring:
+            value, source = (_keyring_get(name) or "").strip(), "OS keyring"
+        setattr(cfg.registry, name, value)
+        if value:
+            sources[name] = source
+    cfg._key_sources = sources
     return cfg

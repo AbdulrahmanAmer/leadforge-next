@@ -73,7 +73,7 @@ leadforge dm export --max 60              # (only needed with --no-autopilot, or
 leadforge dm apply --in dm_labels.ndjson
 leadforge run    --icp icp.yaml --resume  # score + export
 leadforge status
-leadforge config set registry.companies_house_key XXX  # read/write one leadforge.yaml value (set|get)
+leadforge config set agent.model sonnet  # read/write one leadforge.yaml value (set|get); keys: environment or keyring
 leadforge export --icp icp.yaml --format xlsx,csv      # re-export the latest run
 leadforge suppress add someone@example.com   # opt-outs, honored everywhere (--kind domain|email|place_id)
 leadforge render-check https://site.example  # diagnose one site: robots -> plain fetch -> browser -> contacts
@@ -215,6 +215,17 @@ See [`docs/07-compliance.md`](docs/07-compliance.md) for the practical GDPR/PECR
   businesses, or more than half of the files in `exports` and `cache`, are past the limit (it stops and names `leadforge purge --apply`).
   `leadforge purge` alone only reports; `purge --apply` deletes; `purge --everything --yes` wipes the data folder without opening the database.
   If a file cannot be deleted (another program holds it open), no record is deleted either, the file is named, and the next pass tries again.
+
+### The collect side (0.9.0)
+
+- **A refusal is final.** A site that answers 403 or 429 is left alone: no second try in a browser. robots.txt is read in full rules (4xx allows,
+  5xx forbids, up to 24 hours kept, a redirect to another site is checked against that site's file). The browser profile of every browser the product
+  starts is made by one function.
+- **Every exported e-mail and phone says where it came from and when** (columns `... Source` and `... Date`; "source not recorded" when the workspace
+  holds no record). The DVSA list is under the Open Government Licence v3.0; the Summary sheet carries its sentence.
+- **Send rules by country.** The tool e-mails only into countries it has a rule for: the US (opt-out), the UK (companies; a sole trader needs consent)
+  and Germany (consent). Every other country, and a business with no country, shows "not eligible". The tool does not record consent: for a lead that
+  needs it, get it yourself and write to the person by your own means. Not legal advice; the duties are yours (`docs/07-compliance.md`).
 
 ## Outreach and drafting (v0.3)
 

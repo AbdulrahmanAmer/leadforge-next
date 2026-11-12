@@ -47,7 +47,15 @@
     "LinkedIn",
     "Contactability",
     "Data Confidence",
-    "Status"
+    "Status",
+    "Email Source",
+    "Email Date",
+    "Email (Inferred) Source",
+    "Email (Inferred) Date",
+    "Phone Source",
+    "Phone Date",
+    "DM Phone Page",
+    "DM Phone Date"
   ],
   "COLUMNS": [
     "Score",
@@ -135,7 +143,15 @@
     "Draft Subject",
     "Draft Body",
     "Draft Grade",
-    "Draft Author"
+    "Draft Author",
+    "Email Source",
+    "Email Date",
+    "Email (Inferred) Source",
+    "Email (Inferred) Date",
+    "Phone Source",
+    "Phone Date",
+    "DM Phone Page",
+    "DM Phone Date"
   ],
   "DRAFT_COLUMNS": [
     "Draft Subject",

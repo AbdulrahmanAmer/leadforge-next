@@ -1,7 +1,8 @@
 # Company-mode ICP (docs/09 Wave 2 H): GainLev's own client pipeline on Companies House, not Google Maps.
 # Also set, in leadforge.yaml (workspace config, not this file):
 #   discovery: { providers: [companies_house] }
-#   registry:  { companies_house_key: "<your free key>" }   # https://developer.company-information.service.gov.uk
+# and the key in the environment (never in leadforge.yaml): LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY=<your free key>
+#   (or the OS keyring: `keyring set leadforge registry.companies_house_key`)  # https://developer.company-information.service.gov.uk
 version: 1
 campaign: gainlev-own-pipeline
 offer:

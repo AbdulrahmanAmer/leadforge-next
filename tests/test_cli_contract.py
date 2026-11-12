@@ -196,12 +196,16 @@ def test_suppress_unknown_action_is_an_error(tmp_path):
 
 def test_config_set_get_roundtrip(offline):
     runner = offline
-    d = _invoke_digest(runner, ["config", "set", "registry.companies_house_key", "test-key-123"])
+    d = _invoke_digest(runner, ["config", "set", "agent.model", "haiku"])
     assert d["ok"] is True
     from leadforge.config import load_config
-    assert load_config(".").registry.companies_house_key == "test-key-123"
-    d2 = _invoke_digest(runner, ["config", "get", "registry.companies_house_key"])
+    assert load_config(".").agent.model == "haiku"
+    d2 = _invoke_digest(runner, ["config", "get", "agent.model"])
     assert d2["ok"] is True
+    # L9: a registry key is not a leadforge.yaml value any more; `get` says only whether it is set
+    refused = runner.invoke(app, ["--json", "config", "set", "registry.companies_house_key", "test-key-123"])
+    assert refused.exit_code == 2 and '"ok":false' in refused.output
+    assert _invoke_digest(runner, ["config", "get", "registry.companies_house_key"])["counts"] == {"key_set": 0}
 
 
 def test_intake_warns_uk_without_registry_key(offline):

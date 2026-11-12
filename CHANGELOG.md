@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+Keys and the agent call (slice L9, no version yet). **Registry keys are no longer read from `leadforge.yaml`:** set
+`LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY` / `LEADFORGE_REGISTRY__OPENCORPORATES_TOKEN` in the environment, or store them in the OS
+keyring (the optional `keyring` extra, `pip install -e .[keyring]`; then `keyring set leadforge registry.companies_house_key`; the plugin's locked install does not carry it). A workspace whose
+`leadforge.yaml` still holds a key is refused with a message naming the setting; `leadforge config set registry.companies_house_key ""`
+clears it. `config get` of a key says only whether it is set and where from. OpenCorporates is off by default (new setting
+`registry.opencorporates_enabled`): its API takes the token only in the web address. Agent-call errors and `config get agent` show the
+agent program and its argument count, never the arguments.
+
 Google Maps and the social presence provider are out of the public tool. Extra discovery providers now come through a
 seam: any installed package that declares an entry point in the group `leadforge.providers` is loaded; asking for a provider
 nobody provides prints "provider '<name>' is not available" and starts nothing. The two Maps providers, their settings, the
@@ -37,6 +45,26 @@ Clean-up of the plan's debts (docs/slices/debts.md). `leadforge --version` print
 declarations (the hashed locks are regenerated; `uv.lock` names the real project version), the `codeindex` extra, `scripts/code_index*`,
 `scripts/v03_gate.py` (the one gate is `node check.mjs`) and the code-index git hook. The DVSA test fixture holds invented rows. Paid-adapter
 references in the docs are corrected (the removal of 0.7.1 was checked against 0.6.14: nothing used that code). Behaviour is unchanged.
+
+## [0.9.0] — 2026-11-12
+
+The collect side. A site's robots.txt answer is used for at most 24 hours and at least 500 KiB of the file is read; a redirect to another site
+is checked against that site's robots.txt. A 403 or 429 is final: no browser is started after it, also not with `render-check --force`. The
+config key `discovery.email_crawl` is refused with a message (the helper program's `-email` switch went with the helper, in L8). Protected (Cloudflare) e-mail
+addresses are no longer decoded unless `crawl.decode_protected_emails` is set. Every browser the product starts takes its profile folder from one
+function, which seeds a new folder before the first start.
+
+**Sheet contract change.** Every exported e-mail address and phone number now carries where it came from (the page address, or the list's address
+for the business's own number) and the day it was seen: eight columns at the end of the Leads sheet and the CSV (`Email Source`, `Email Date`,
+`Email (Inferred) Source`, `Email (Inferred) Date`, `Phone Source`, `Phone Date`, `DM Phone Page`, `DM Phone Date`) and `To Source`, `To Date` at the end of
+the Drafts tab. No column moved and no table changed. "source not recorded" / "date not recorded" say that the workspace holds no record. The Summary
+sheet carries the Open Government Licence sentence when a row comes from the DVSA list.
+
+**Send rules by country.** The business's own country now decides whether the tool will e-mail it: `US` as before (opt-out), `GB` corporate
+subscribers as before but a sole trader or partnership (registry looked, no company found) needs consent, `DE` needs consent, any other country and an
+unknown one: no send (reasons `country_no_rule`, `country_unknown`, `consent_required`). The tool records no consent, so those leads show
+"not eligible" on the sheet, in `outreach plan` and in the re-check inside `outreach send`. A business with no country, which was mailable before,
+is not mailable now: add the country to it, or re-run discovery.
 
 ## [0.8.0] — 2026-11-12
 

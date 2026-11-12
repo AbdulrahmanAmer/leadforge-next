@@ -104,6 +104,29 @@ def is_available(cfg: Config) -> bool:
     return resolve_command(cfg) is not None
 
 
+def _shown_command(cmd: list[str]) -> str:
+    """The program and how many arguments it got, never an argument's text: an operator's own `agent.command` may
+    carry a key (L9, C2)."""
+    n = len(cmd) - 1
+    return f"{cmd[0]} <{n} argument{'' if n == 1 else 's'} hidden>"
+
+
+def _without_arguments(text: str, cmd: list[str]) -> str:
+    """`text` (the command's stderr, an OS error) with every argument of 4+ characters cut, also the part after an
+    `=` (`--api-key=...`) and each word of an argument with spaces (`Authorization: Bearer ...`): a wrapper may echo
+    its own arguments, whole or in part."""
+    parts = set()
+    for arg in cmd[1:]:
+        parts.add(arg)
+        if "=" in arg:
+            parts.add(arg.split("=", 1)[1])
+        parts.update(arg.split())
+    for part in sorted(parts, key=len, reverse=True):
+        if len(part) >= 4:
+            text = text.replace(part, "<argument hidden>")
+    return text
+
+
 def _log_invocation(cfg: Config, cmd: list[str], prompt: str, secs: float,
                      exit_code: int | None, out_chars: int) -> None:
     """One JSON line per invocation under `<data_dir>/logs/agent_runner.log` (created on demand)."""
@@ -184,17 +207,20 @@ def run_agent(cfg: Config, prompt: str, *, cwd: Path | None = None, timeout_s: i
         except OSError as e:
             secs = time.monotonic() - t0
             _log_invocation(cfg, cmd, prompt, secs, None, 0)
-            raise AgentFailed(f"agent command could not be started: {' '.join(cmd)} ({e})") from e
+            # `from None`: a traceback logged at debug level must not carry the argv either
+            raise AgentFailed(f"agent command could not be started: {_shown_command(cmd)} "
+                              f"({_without_arguments(str(e), cmd)})") from None
 
         try:
             stdout, stderr = proc.communicate(input=prompt, timeout=effective_timeout)
-        except subprocess.TimeoutExpired as e:
+        except subprocess.TimeoutExpired:
             _kill_process_tree(proc)
             proc.communicate()  # reap; discard whatever partial output remains
             secs = time.monotonic() - t0
             _log_invocation(cfg, cmd, prompt, secs, None, 0)
+            # `from None`: TimeoutExpired's own text is the whole argv
             raise AgentFailed(f"agent command timed out after {secs:.1f}s (limit {effective_timeout}s): "
-                              f"{' '.join(cmd)}") from e
+                              f"{_shown_command(cmd)}") from None
 
         returncode = proc.returncode
 
@@ -204,9 +230,10 @@ def run_agent(cfg: Config, prompt: str, *, cwd: Path | None = None, timeout_s: i
 
     if returncode != 0:
         stderr_tail = (stderr or "")[-2000:]
-        raise AgentFailed(f"agent command exited {returncode}: {' '.join(cmd)}\n{stderr_tail}")
+        raise AgentFailed(f"agent command exited {returncode}: {_shown_command(cmd)}\n"
+                          f"{_without_arguments(stderr_tail, cmd)}")
     if not out.strip():
-        raise AgentFailed(f"agent command produced empty stdout: {' '.join(cmd)}")
+        raise AgentFailed(f"agent command produced empty stdout: {_shown_command(cmd)}")
     return out
 
 

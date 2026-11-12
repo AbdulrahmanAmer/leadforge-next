@@ -101,7 +101,7 @@ latest run for the same ICP hash; every stage is idempotent (upserts, per-tile /
   `LeadForgeBot/<ver> (internal lead research; +contact-in-repo)`; hard per-page timeout 15 s; max `crawl.pages_per_site` (default 6).
 - Page selection: `/` always; then discovered nav links matching (about|team|staff|people|leadership|contact|impress|imprint|legal
   |meet) up to cap; sitemap.xml probe if nav yields < 2 targets.
-- Extraction per page (`extract.py`): mailto + email regex + cfemail decode + at/dot normalization; tel: links + phone regex →
+- Extraction per page (`extract.py`): mailto + email regex + cfemail decode (off unless `crawl.decode_protected_emails`, C11) + at/dot normalization; tel: links + phone regex →
   phonenumbers; social links (allowlist hosts); copyright-year → `stale_site` signal if < current_year − 2; person+title candidates:
   lines/headings where a Title keyword (Owner, CEO, Founder, GM, Manager, Director, Principal, Broker, …) sits within 60 chars of a
   Capitalized-Name pattern → snippet (≤300 chars) + source URL stored on `people`.
@@ -127,14 +127,15 @@ latest run for the same ICP hash; every stage is idempotent (upserts, per-tile /
 - Runs for **every** business in a covered jurisdiction — including site-less ones, which never enter the crawl stage (where lookups
   used to happen). Silent no-op without a configured key. Run alone via `leadforge enrich --stage registry`
   (`--stage` accepts all|site|registry|validate).
-- Companies House (GB/UK; key via `leadforge config set registry.companies_house_key …`): company search by name, candidates filtered
+- Companies House (GB/UK; key from the environment variable `LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY` or the OS keyring, never `leadforge.yaml`): company search by name, candidates filtered
   by locality match against the business address; stores the matched **company profile** (number, incorporation date, status, SIC
   codes) in `enrich_json.registry_profile` → the sheet's Company No / Incorporated / Company Status / SIC Codes columns; then
   `/company/{n}/officers` → active (non-resigned) officers as `people` rows labeled_by=registry, each with evidence.
 - Auto-DM (ADR-010): exactly ONE active individual director (corporate officers filtered out) and no DM already chosen → auto-marked DM
   at confidence 0.9 — official-registry evidence beats agent inference, so big runs don't queue the obvious cases. 0 or 2+ individuals
   stay with the agent.
-- OpenCorporates (token required) is the fallback for its jurisdictions (GB/US). On a 429 a registry backs off 60 s once, then disables
+- OpenCorporates (token required, and off unless `registry.opencorporates_enabled: true`: its API takes the token only in the
+  web address) is the fallback for its jurisdictions (GB/US). On a 429 a registry backs off 60 s once, then disables
   itself and the stage stops rather than hammering the rate limit. Every looked-up business is stamped `registry_checked` so re-runs
   never repeat lookups.
 - Heartbeat: the `LF_PROGRESS` stream carries `registry` and `validate` stages alongside `discover`/`enrich` (docs/06).

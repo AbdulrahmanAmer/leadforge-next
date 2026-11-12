@@ -16,7 +16,7 @@ Digest line (always last): `LF_DIGEST {"ok":bool,"cmd":str,"run":str|null,"count
 | `dm apply` | ingest labels | `--in F` | `applied`, `rejected`, `skipped` |
 | `score` | rubric scoring + hooks | `--icp F` | `scored`, `tier_a/b/c`, `dq` |
 | `export` | write XLSX + CSV + report.json | `--out DIR`, `--format xlsx,csv` | artifacts = file paths |
-| `config set\|get KEY [VALUE]` | read/write one `leadforge.yaml` value (e.g. `registry.companies_house_key`) | — | counts.set |
+| `config set\|get KEY [VALUE]` | read/write one `leadforge.yaml` value (e.g. `agent.model`); a registry key is refused there, `get` says only whether it is set | — | counts.set |
 | `version` | print version | — | digest only |
 | `run` | orchestrated: discover→enrich→**label→score→draft→export (autopilot, v0.4 default)**, resumable | `--icp F`, `--resume`, `--from-stage STAGE` (forces resume to start from STAGE; requires `--resume`), `--detach` (returns run id/pid/log immediately instead of blocking), `--limit N`, `--skip-dm`, `--autopilot`/`--no-autopilot` | `stage`, `dm_labeled`, `dm_unlabeled`, `drafted`, `draft_rejected`, `draft_abstained`, `runner` (`agent`\|`none`); `--detach` returns `pid`, `detached:true` and the log path as an artifact; use `status --run <run_id>` to follow it |
 | `status` | current/last run snapshot: stage, whether a `--detach`'d process is alive, live progress | `--run ID` | `stage`, `businesses`, `pid`, `alive` (when detached), `progress_stage`, `progress_done`, `progress_total`, `eta_seconds` |
@@ -62,5 +62,5 @@ Notes
   browser/subprocess) instead of one query at a time.
 - Optional extras change behavior when installed: `[browser]` auto-covers `needs_browser` sites; configured registry keys add
   officer cross-checks. Digest `warnings` tell you when an extra would have helped.
-- Config file `leadforge.yaml` (workspace, optional): provider order, politeness knobs, registry keys, validation.staleness_days (drives the sheet's Stale? column). Write values with `leadforge config set <dotted.key> <value>`.
+- Config file `leadforge.yaml` (workspace, optional): provider order, politeness knobs, validation.staleness_days (drives the sheet's Stale? column). Write values with `leadforge config set <dotted.key> <value>`.
   Don't edit it unless the user asks; defaults are sane.
