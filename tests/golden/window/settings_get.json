@@ -1,10 +1,11 @@
 {
-  "accent": "cobalt",
   "openSheetWhenDone": true,
   "sheetFormats": [
     "xlsx",
     "csv"
   ],
-  "theme": "system",
+  "sources": [
+    "dvsa"
+  ],
   "workspace": "<ws>"
 }

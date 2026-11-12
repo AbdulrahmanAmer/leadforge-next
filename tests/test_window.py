@@ -62,10 +62,11 @@ TYPES = {
     "PurgeEverythingResult": {"filesRemoved": N},
     "Retention": {"months": N, "min": N, "max": N},
     "KeyStatus": {"name": {"companies_house_key", "opencorporates_token"}, "saved": B, "savedAt": (NULL, S)},
-    "Settings": {"theme": {"light", "dark", "system"}, "accent": {"cobalt", "brass", "celadon", "ember"}, "workspace": S,
-                 "sheetFormats": [{"xlsx", "csv"}], "openSheetWhenDone": B},
+    # Build 3, decision 8: theme and accent are the window's own and absent here; decision 3: the configured sources
+    "Settings": {"workspace": S, "sheetFormats": [{"xlsx", "csv"}], "openSheetWhenDone": B, "sources": [{"dvsa", "companies_house"}]},
     "Licence": {"name": S, "version": S, "licence": S, "notice": S},
-    "About": {"windowVersion": gap(S), "engineVersion": S, "licence": S, "licences": ["Licence"]},
+    # Build 3, decision 9: windowVersion is absent
+    "About": {"engineVersion": S, "licence": S, "licences": ["Licence"]},
     "Error": {"kind": SEVEN, "message": S, "details": [S], "next": (NULL, S)},
 }
 RESULT = {
@@ -112,20 +113,25 @@ def conforms(value, t, where="$") -> list[str]:
 
 # ------------------------------------------------------------------ an invented workspace
 class FakeKeyring:
-    def __init__(self, fail_with: str | None = None):
-        self.entries: dict[tuple[str, str], str] = {}
+    """In place of the `keyring` package: it writes into conftest's fake store, the one L9's `config._keyring_get` reads in
+    tests, under L9's service only. Never the real keyring."""
+
+    def __init__(self, store: dict, fail_with: str | None = None):
+        self.store = store
         self.fail_with = fail_with
 
     def get_password(self, service, username):
-        return self.entries.get((service, username))
+        return self.store.get(username) if service == "leadforge" else None
 
     def set_password(self, service, username, password):
         if self.fail_with:
             raise RuntimeError(f"{self.fail_with} {password}")   # a backend that quotes what it was given
-        self.entries[(service, username)] = password
+        assert service == "leadforge"
+        self.store[username] = password
 
     def delete_password(self, service, username):
-        del self.entries[(service, username)]
+        assert service == "leadforge"
+        del self.store[username]
 
 
 @pytest.fixture
@@ -138,7 +144,11 @@ def ws(tmp_path, monkeypatch):
         raise AssertionError("a test tried to reach the geocoder")
 
     monkeypatch.setattr("leadforge.grid.httpx.get", refuse)
-    (tmp_path / "leadforge.yaml").write_text(yaml.safe_dump({"discovery": {"area_bbox": {"Bristol": [-2.65, 51.42, -2.52, 51.50]}}}),
+    # the workspace's own file names its providers (a window campaign must be for one of them); conftest's `[fakelist]` in the
+    # environment would win over it (config.py: defaults, then leadforge.yaml, then the environment), and no test here discovers
+    monkeypatch.delenv("LEADFORGE_DISCOVERY__PROVIDERS", raising=False)
+    (tmp_path / "leadforge.yaml").write_text(yaml.safe_dump({"discovery": {"providers": ["dvsa"],
+                                                                           "area_bbox": {"Bristol": [-2.65, 51.42, -2.52, 51.50]}}}),
                                              encoding="utf-8")
     from leadforge.models import ICP
 
@@ -247,8 +257,10 @@ def fake_pipeline(monkeypatch, *, stop_after: int | None = None, stages=(("disco
 
 
 # ------------------------------------------------------------------ one golden and one shape check per command
+DRAFT = {"kinds": ["MOT garage"], "places": ["Bristol"], "country": "GB", "source": "dvsa", "offer": "Online booking for garages",
+         "sicCodes": [], "maxLeads": 50}
 ARGS = {
-    "campaign_create": {"draft": {"kinds": ["MOT garage"], "places": ["Bristol"], "country": "GB", "source": "dvsa", "maxLeads": 50}},
+    "campaign_create": {"draft": DRAFT},
     "run_stop": {"runId": RID}, "run_status": {"runId": None}, "campaigns_list": {}, "sheet_export": {"runId": RID},
     "sheet_open": {"path": f"leadforge_data/exports/{RID}/{CAMPAIGN}.csv"}, "people_list": {"query": {"search": "", "limit": 50}},
     "person_forget": {"value": "priya@harbourside-motors.example"},
@@ -265,10 +277,9 @@ def test_the_seam_names_exactly_the_21():
 
 
 @pytest.mark.parametrize("name", sorted(RESULT))
-def test_command_golden_and_shape(ws, monkeypatch, name):
-    fake = FakeKeyring()
-    fake.entries[("leadforge", "registry.opencorporates_token")] = "fixture-token"
-    monkeypatch.setattr(keys, "make_keys", lambda: keys.Keys(fake, "leadforge"))
+def test_command_golden_and_shape(ws, monkeypatch, _never_the_real_keyring, name):
+    _never_the_real_keyring["registry.opencorporates_token"] = "fixture-token"
+    monkeypatch.setattr(keys, "default_backend", lambda: FakeKeyring(_never_the_real_keyring))
     opened = []
     monkeypatch.setattr(commands, "_default_opener", opened.append)
     if name == "run_stop":   # a run the window started, still going (this test process stands in for it)
@@ -374,10 +385,10 @@ def test_sheet_open_refuses_what_is_not_in_exports(ws, monkeypatch, case):
     assert opened == []
 
 
-def test_a_planted_key_appears_in_no_output_and_no_log(ws, monkeypatch, capsys):
+def test_a_planted_key_appears_in_no_output_and_no_log(ws, monkeypatch, capsys, _never_the_real_keyring):
     planted = "".join(["lf", "PLANTED", "k3y", str(31337 * 7)])   # built at run time, never written in the source
-    fake = FakeKeyring()
-    monkeypatch.setattr(keys, "make_keys", lambda: keys.Keys(fake, "leadforge"))
+    store = _never_the_real_keyring
+    monkeypatch.setattr(keys, "default_backend", lambda: FakeKeyring(store))
     seen = []
     for name, args in (("key_save", {"name": "companies_house_key", "value": planted}), ("keys_list", {}),
                        ("key_remove", {"name": "companies_house_key"})):
@@ -385,22 +396,48 @@ def test_a_planted_key_appears_in_no_output_and_no_log(ws, monkeypatch, capsys):
         cap = capsys.readouterr()
         seen += [cap.out, cap.err]
         assert code == 0, cap.out
-    assert fake.entries == {}   # saved, then removed
-    failing = FakeKeyring(fail_with="backend refused")   # a backend whose error quotes the value
-    monkeypatch.setattr(keys, "make_keys", lambda: keys.Keys(failing, "leadforge"))
+    assert store == {}   # saved, then removed
+    monkeypatch.setattr(keys, "default_backend", lambda: FakeKeyring(store, fail_with="backend refused"))   # its error quotes the value
     code = win.main(["key_save"], stdin=io.StringIO(json.dumps({"name": "companies_house_key", "value": planted})))
     cap = capsys.readouterr()
     seen += [cap.out, cap.err]
-    assert code == 1
+    assert code == 1 and json.loads(cap.out)["kind"] == "keyring"
     logs = ws / "leadforge_data" / "logs"
     seen += [p.read_text(encoding="utf-8", errors="replace") for p in logs.rglob("*")] if logs.is_dir() else []
     assert not any(planted in s for s in seen)
 
 
-def test_key_commands_without_l9_answer_keyring(ws):
+def test_key_commands_keep_the_key_where_l9_reads_it(ws, monkeypatch, keyring_fake):
+    """After L9: key_save stores under L9's service and entry, so the engine's own read (config._keyring_get, and
+    load_config with the keyring switch on) finds the key the window saved; keys_list says set; key_remove removes it."""
+    from leadforge import config
+
+    value = "".join(["fixture", "-", "ch", "-", "key"])
+    monkeypatch.setattr(keys, "default_backend", lambda: FakeKeyring(keyring_fake))
+    code, out = call("key_save", {"name": "companies_house_key", "value": value})
+    assert code == 0 and one_doc(out) == {"name": "companies_house_key", "saved": True, "savedAt": None}
+    assert config._keyring_get("companies_house_key") == value
+    assert config.load_config(ws).registry.companies_house_key == value   # what a run would use
     code, out = call("keys_list", {})
-    doc = one_doc(out)
-    assert code == 1 and doc["kind"] == "keyring" and "L9" in doc["next"]
+    assert [k["saved"] for k in one_doc(out)] == [True, False]
+    keyring_fake["registry.opencorporates_token"] = "fixture-token"   # set outside the window (e.g. `keyring set`): shown too
+    code, out = call("keys_list", {})
+    assert [k["saved"] for k in one_doc(out)] == [True, True]
+    code, out = call("key_remove", {"name": "companies_house_key"})
+    assert code == 0 and one_doc(out)["saved"] is False
+    assert config._keyring_get("companies_house_key") is None
+
+
+def test_key_commands_without_the_keyring_package_answer_environment(ws, monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "keyring", None)   # `import keyring` raises ImportError
+    for name, args in (("keys_list", {}), ("key_save", {"name": "companies_house_key", "value": "fixture-value"}),
+                       ("key_remove", {"name": "companies_house_key"})):
+        code, out = call(name, args)
+        doc = one_doc(out)
+        assert (code, doc["kind"]) == (3, "environment"), doc
+        assert "leadforge[keyring]" in doc["next"] and "L9" not in json.dumps(doc)
 
 
 def test_run_stop_stops_between_businesses_and_keeps_the_place(ws, monkeypatch):
@@ -452,7 +489,7 @@ def test_read_commands_answer_while_a_run_holds_the_database(ws, monkeypatch):
 def screen_args(ws: Path) -> dict:
     sheet = str((ws / "leadforge_data" / "exports" / RID / f"{CAMPAIGN}.csv").resolve())   # Sheet.files[].path, as the engine gave it
     return {
-        "campaign_create": {"draft": {"kinds": ["MOT garage"], "places": ["Bristol"], "country": "GB", "source": "dvsa", "maxLeads": 50}},
+        "campaign_create": {"draft": DRAFT},
         "run_start": {"args": {"campaign": CAMPAIGN, "resume": False}},
         "run_stop": {"runId": RID}, "run_status": {"runId": None}, "campaigns_list": {}, "sheet_export": {"runId": RID},
         "sheet_open": {"path": sheet}, "people_list": {"query": {"search": "priya", "limit": 50}},
@@ -460,15 +497,14 @@ def screen_args(ws: Path) -> dict:
         "address_suppress": {"value": "hello@cliftondowngarage.example", "kind": None},
         "purge_report": {}, "purge_apply": {}, "purge_everything": {"confirm": True}, "retention_get": {}, "retention_set": {"months": 6},
         "keys_list": {}, "key_save": {"name": "companies_house_key", "value": "fixture-value"}, "key_remove": {"name": "companies_house_key"},
-        "settings_get": {}, "settings_set": {"patch": {"theme": "dark", "accent": "brass", "sheetFormats": ["xlsx", "csv"],
-                                                       "openSheetWhenDone": True}},
+        "settings_get": {}, "settings_set": {"patch": {"sheetFormats": ["xlsx", "csv"], "openSheetWhenDone": True}},
         "about": {},
     }
 
 
 @pytest.mark.parametrize("name", win.NAMES)
-def test_each_command_answers_what_the_screens_send(ws, monkeypatch, name):
-    monkeypatch.setattr(keys, "make_keys", lambda: keys.Keys(FakeKeyring(), "leadforge"))
+def test_each_command_answers_what_the_screens_send(ws, monkeypatch, _never_the_real_keyring, name):
+    monkeypatch.setattr(keys, "default_backend", lambda: FakeKeyring(_never_the_real_keyring))
     opened = []
     monkeypatch.setattr(commands, "_default_opener", opened.append)
     fake_pipeline(monkeypatch)
@@ -487,7 +523,7 @@ def test_each_command_answers_what_the_screens_send(ws, monkeypatch, name):
         assert docs == [None] and [p.name for p in opened] == [f"{CAMPAIGN}.csv"]
     if name == "settings_set":
         code, out = call("settings_get", {})
-        assert (one_doc(out)["theme"], one_doc(out)["accent"]) == ("dark", "brass")
+        assert (one_doc(out)["sheetFormats"], one_doc(out)["openSheetWhenDone"]) == (["xlsx", "csv"], True)
 
 
 def test_the_error_kinds_are_the_seven_the_screens_know():
@@ -665,3 +701,95 @@ def test_run_stop_from_a_second_process_ends_the_run_within_10_s_and_status_answ
     assert not (ws / "leadforge_data" / "window-run.stop").exists()
     code, doc, err, _ = ask(ws, "run_status", {"runId": rid}, 30)
     assert code == 0 and doc["state"] == "stopped"
+
+
+# ------------------------------------------------------------------ Build 3: the lead's decisions, after L7 and L9
+def set_providers(ws: Path, providers: list[str]) -> None:
+    path = ws / "leadforge.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data["discovery"]["providers"] = providers
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+
+@pytest.mark.parametrize("change, field", [
+    ({"offer": None}, "offer"), ({"offer": "   "}, "offer"), ("no offer", "offer"),
+    ({"source": "companies_house", "sicCodes": []}, "sicCodes"), ({"source": "companies_house", "sicCodes": [""]}, "sicCodes"),
+    ({"source": "companies_house", "sicCodes": ["45200"]}, "source"),   # this workspace is set to dvsa only
+])
+def test_campaign_create_refuses_a_missing_offer_sic_codes_or_an_unconfigured_source(ws, change, field):
+    if field == "sicCodes":
+        set_providers(ws, ["dvsa", "companies_house"])
+    draft = {k: v for k, v in DRAFT.items() if k != "offer"} if change == "no offer" else {**DRAFT, **change}
+    before = tree_hashes(ws)
+    code, out = call("campaign_create", {"draft": draft})
+    doc = one_doc(out)
+    assert (code, doc["kind"]) == (4, "input"), doc
+    assert any(d.startswith(f"{field}:") for d in doc["details"]), doc["details"]
+    if field == "source":
+        assert doc["next"] == "This workspace is set to: dvsa."
+    assert tree_hashes(ws) == before   # a refused draft writes nothing
+
+
+def test_campaign_create_keeps_the_offer_and_makes_a_companies_house_campaign(ws):
+    code, out = call("campaign_create", {"draft": {**DRAFT, "sicCodes": ["not even read for dvsa"]}})
+    assert code == 0, out
+    name = one_doc(out)["campaign"]
+    answers = yaml.safe_load((ws / "campaigns" / name / "answers.yaml").read_text(encoding="utf-8"))
+    assert answers["offer"]["what"] == "Online booking for garages" and "sic_codes" not in answers["target"]
+    set_providers(ws, ["companies_house"])
+    code, out = call("campaign_create", {"draft": {**DRAFT, "source": "companies_house", "sicCodes": ["45200"]}})
+    assert code == 0, out
+    answers = yaml.safe_load((ws / "campaigns" / one_doc(out)["campaign"] / "answers.yaml").read_text(encoding="utf-8"))
+    assert (answers["target"]["mode"], answers["target"]["sic_codes"]) == ("company", ["45200"])
+
+
+def test_settings_carry_the_configured_sources_and_not_the_windows_own(ws):
+    code, out = call("settings_get", {})
+    doc = one_doc(out)
+    assert doc["sources"] == ["dvsa"] and "theme" not in doc and "accent" not in doc   # the fixture's leadforge.yaml
+    set_providers(ws, ["companies_house", "an-add-on", "dvsa", "companies_house"])
+    assert one_doc(call("settings_get", {})[1])["sources"] == ["companies_house", "dvsa"]
+    for key, value in (("theme", "dark"), ("accent", "brass")):
+        code, out = call("settings_set", {"patch": {key: value}})
+        assert (code, one_doc(out)["kind"]) == (2, "usage")
+    assert not (ws / "leadforge_data" / "window-settings.json").exists()
+
+
+def test_people_list_says_where_and_when_from_c12(ws):
+    """After L7: a person the engine's persist step stores from a page carries that page and the time it was recorded; a person
+    with no such record (planted, as one stored before C12 would be) has both null, not a page without its date."""
+    from leadforge.config import load_config
+    from leadforge.enrich import runner
+    from leadforge.enrich.extract import PersonCandidate
+    from leadforge.models import Evidence, Person
+
+    cfg = load_config(ws)
+    conn = db.connect(ws / "leadforge_data" / "db.sqlite3")
+    conn.execute("INSERT INTO businesses(id,place_id,name,name_norm,website,domain,address_country,first_run_id,last_seen_at,dedupe_key) "
+                 "VALUES('b3','place-b3','Avon Gorge Autos','avon gorge autos','https://avongorgeautos.example/','avongorgeautos.example',"
+                 "'GB',?,'2026-11-01T09:10:00Z','key-b3')", (RID,))
+    conn.execute("INSERT INTO people(business_id,name,title,source_url) VALUES('b2','Ines Thornbury','Director',"
+                 "'https://cliftondowngarage.example/about')")   # a page, but no record of when: planted
+    b = conn.execute("SELECT * FROM businesses WHERE id='b3'").fetchone()
+    page = "https://avongorgeautos.example/team"
+    res = {"emails": {}, "phones": [], "socials": {}, "signals": {}, "needs_browser": False, "ok": True, "pages": 2, "error": "",
+           "people": [PersonCandidate(name="Wren Ashdown", title="Service manager", snippet="Wren Ashdown, Service manager",
+                                      source_url=page)]}
+    counts = {"sites_crawled": 0, "contacts": 0, "dm_candidates": 0, "needs_browser": 0, "emails_valid": 0}
+    runner._persist(conn, cfg, b, res, counts)
+    # a register's officer: stored with evidence of the register page, no observation
+    register = "https://register.example/company/ZZ000009"
+    runner._persist_registry_result(conn, b, counts, [(
+        Person(business_id="b3", name="Corin Hale", title="Director", labeled_by="registry", source_url=register, origin="registry"),
+        Evidence(business_id="b3", ref_table="people", fact="registry_officer", url=register, snippet="Director — appointed 2019-04-01",
+                 observed_at="2026-11-01T09:12:00Z"))], None)
+    conn.commit()
+    conn.close()
+    code, out = call("people_list", {"query": {"search": "", "limit": 50}})
+    people = {p["name"]: p for p in one_doc(out)["people"]}
+    found = people["Wren Ashdown"]
+    assert found["source"] == page and found["foundAt"] and datetime.strptime(found["foundAt"], "%Y-%m-%dT%H:%M:%SZ")
+    assert (people["Corin Hale"]["source"], people["Corin Hale"]["foundAt"]) == (register, "2026-11-01T09:12:00Z")
+    for planted in ("Ines Thornbury", "Tomasz Zielinski"):
+        assert (people[planted]["source"], people[planted]["foundAt"]) == (None, None), people[planted]
+    assert people["Priya Nair"]["foundAt"] == "2026-11-01T09:10:00Z"   # her email's own record

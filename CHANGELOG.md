@@ -41,6 +41,14 @@ keyring slice is in; an arguments document over 1 MiB is refused; no `run_start`
 marked); once a run exists, `run_start` ends its stream with an end event on every way out, including a failure while planning
 or while recording the end. `run_status` of a run the window started reports where its last progress line left it. `people_list` gives each person the time their email (else phone) was seen.
 
+The window commands in their final shape (the lead's decisions). `campaign_create` requires the offer (`offer`) and, for a
+Companies House campaign, its SIC codes (`sicCodes`, compiled to the engine's company mode); it refuses a source the workspace's
+`leadforge.yaml` does not enable, saying which ones it does, and `settings_get` lists those (`sources`). The engine no longer
+keeps or returns the window's `theme` and `accent`, and `about` no longer returns a window version. The key commands keep the
+keys where the engine reads them (the OS keyring entries of the keys slice); without the `keyring` extra they answer
+`environment`. `people_list` says where and when each person was found, from what the engine records (none: null). A run the
+window stops now stops between two page fetches of one site, not only between two businesses.
+
 The existing command line, its digest lines and the plugin are unchanged. No version change yet.
 
 ## [0.9.0] — 2026-11-12

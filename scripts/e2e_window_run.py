@@ -104,11 +104,15 @@ def main() -> int:
         end = second[-1] if second else {}
         checks.append(("resumed run ends finished, same run", code == 0 and end.get("type") == "finished"
                        and second[0]["runId"] == rid, f"exit {code}, last {json.dumps(end)[:300]}"))
-        for name, args in (("campaigns_list", {}), ("sheet_export", {"runId": rid}), ("people_list", {"query": {"search": "", "limit": 5}})):
+        for name, args in (("campaigns_list", {}), ("sheet_export", {"runId": rid}), ("people_list", {"query": {"search": "", "limit": 500}})):
             code, so, _ = window(a.python, ws, env, name, args)
             ok = code == 0 and so.count("\n") == 1
             checks.append((f"{name} answers one JSON document", ok, so.strip()[:300]))
             (out / f"{name}.json").write_text(so, encoding="utf-8")
+            if name == "people_list" and ok:   # C12 (L7): every person this run found says where and when
+                people = json.loads(so)["people"]
+                checks.append(("every person found by this run has source and foundAt", bool(people) and all(
+                    p["source"] and p["foundAt"] for p in people), json.dumps([[p["name"], p["source"], p["foundAt"]] for p in people])[:300]))
         # every outside attempt was refused by the guard; the rule is the fake campaign's: none outside its known set
         known = {tuple(x) for x in json.loads(fake.GOLDEN.read_text(encoding="utf-8"))["refused"]}
         got = {tuple(x) for x in fake.normalized({"steps": [], "refused": fake.read_jsonl(out / "guard.log"), "requests": []}, str(ws))["refused"]}

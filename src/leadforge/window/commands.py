@@ -22,8 +22,8 @@ from leadforge.config import Config, load_config
 from leadforge.util import InputError, LeadForgeError, setup_logging
 from leadforge.window import WindowError, int_arg, keys, object_arg, only, text_arg, usage
 
-# offer.what is required by the engine; the window's form does not ask for it yet (seam change 2 in the slice file)
-OFFER_NOT_GIVEN = "not given: the campaign was made in the window"
+# engine.ts SourceId: the providers a window campaign can be for
+SOURCES = ("dvsa", "companies_house")
 HANDED_OUT = ("Sheets and files you already handed to someone else, or wrote outside this folder with --out, cannot be reached "
               "from here.")
 
@@ -37,6 +37,11 @@ def load_cfg() -> Config:
                           "Repair leadforge.yaml in the workspace folder, then try again.") from None
     setup_logging(Path(cfg.workspace) / cfg.data_dir / "logs")   # not cfg.logs_dir: that creates the folder
     return cfg
+
+
+def workspace_sources(cfg: Config) -> list[str]:
+    """The SourceIds among the providers leadforge.yaml enables (discovery.providers), in its order, each once."""
+    return list(dict.fromkeys(p for p in cfg.discovery.providers if p in SOURCES))
 
 
 def db_file(cfg: Config) -> Path:
@@ -123,7 +128,7 @@ def campaign_create(args: dict) -> dict:
 
     only(args, "draft")
     draft = object_arg(args, "draft")
-    only(draft, "kinds", "places", "country", "source", "maxLeads")
+    only(draft, "kinds", "places", "country", "source", "offer", "sicCodes", "maxLeads")
     kinds, places = draft.get("kinds"), draft.get("places")
     problems = []
     if not isinstance(kinds, list) or not all(isinstance(k, str) for k in kinds) or not any(k.strip() for k in kinds):
@@ -136,21 +141,31 @@ def campaign_create(args: dict) -> dict:
     max_leads = draft.get("maxLeads")
     if isinstance(max_leads, bool) or not isinstance(max_leads, int) or max_leads < 1:
         problems.append("caps.max_leads: must be a whole number, 1 or more")
+    offer = draft.get("offer")
+    if not isinstance(offer, str) or not offer.strip():
+        problems.append("offer: one or two lines on what you offer these businesses")
     source = draft.get("source")
-    if source not in ("dvsa", "companies_house"):
+    sic_codes = draft.get("sicCodes")
+    if source not in SOURCES:
         problems.append("source: dvsa or companies_house")
-    elif source == "companies_house":
-        problems.append("source companies_house: the engine needs SIC codes for a Companies House campaign, and the window's "
-                        "form has none yet")
+    elif source == "companies_house" and (not isinstance(sic_codes, list) or not all(isinstance(c, str) for c in sic_codes)
+                                          or not any(c.strip() for c in sic_codes)):
+        problems.append("sicCodes: at least one SIC code for a Companies House campaign")
     if problems:
         raise WindowError("input", "The campaign is not complete.", problems, "Fill in the marked fields and check the plan again.")
+    cfg = load_cfg()
+    configured = workspace_sources(cfg)
+    if source not in configured:   # the engine takes its providers from leadforge.yaml, never from the draft
+        raise WindowError("input", "The campaign is not complete.",
+                          [f"source: {source} is not a source this workspace is configured for"],
+                          f"This workspace is set to: {', '.join(configured) or 'no source'}.")
     kinds = [k.strip() for k in kinds if k.strip()]
     places = [p.strip() for p in places if p.strip()]
-    cfg = load_cfg()
     name = _slug(f"{places[0]}-{kinds[0]}")
-    answers = {"version": 1, "campaign": name, "offer": {"what": OFFER_NOT_GIVEN},
-               "target": {"categories": kinds, "geography": {"areas": places, "country": country.strip().upper()}},
-               "caps": {"max_leads": max_leads}}
+    target: dict[str, Any] = {"categories": kinds, "geography": {"areas": places, "country": country.strip().upper()}}
+    if source == "companies_house":   # the engine's company mode: Companies House advanced search by SIC code
+        target = {"mode": "company", **target, "sic_codes": [c.strip() for c in sic_codes if c.strip()]}
+    answers = {"version": 1, "campaign": name, "offer": {"what": offer.strip()}, "target": target, "caps": {"max_leads": max_leads}}
     import yaml
 
     with tempfile.TemporaryDirectory() as td:   # compiled away from the workspace: a refused draft writes nothing
@@ -309,15 +324,25 @@ def people_list(args: dict) -> dict:
     with reading(cfg) as conn:
         if conn is None:
             return {"people": [], "total": 0, "matching": 0}
-        found: dict[tuple[str, str], dict[str, str]] = {}   # (business, person name) -> field -> newest value
-        for r in conn.execute("SELECT business_id, person_name, field, value_json, observed_at FROM enrichment_observations "
-                              "WHERE person_name<>'' AND field IN ('email','phone') ORDER BY observed_at"):
+        # C12 (L7): where and when the engine found a detail is its observation's page (else source name) and time. Per person
+        # the newest record of each field: email and phone recorded as that person's, and the person's own find (person.name).
+        found: dict[tuple[str, str], dict[str, tuple[str, str, str]]] = {}   # (business, person name) -> field -> (value, where, when)
+        by_id: dict[int, tuple[str, str, str]] = {}                          # person id -> its newest person.name record
+        for r in conn.execute("SELECT business_id, person_name, person_id, field, value_json, source, source_url, observed_at "
+                              "FROM enrichment_observations WHERE person_name<>'' AND field IN ('email','phone','person.name') "
+                              "ORDER BY observed_at, id"):
             try:
-                seen_now = found.setdefault((r["business_id"], r["person_name"]), {})
-                seen_now[r["field"]] = str(json.loads(r["value_json"]))
-                seen_now[r["field"] + "_at"] = r["observed_at"] or ""
+                record = (str(json.loads(r["value_json"])), r["source_url"] or r["source"] or "", r["observed_at"] or "")
             except ValueError:
                 continue
+            found.setdefault((r["business_id"], r["person_name"]), {})[r["field"]] = record
+            if r["field"] == "person.name" and r["person_id"] is not None:
+                by_id[r["person_id"]] = record
+        # a person with no observation (a register's officer): the evidence the engine wrote for that person's page, newest first
+        evidence: dict[tuple[str, str], list[tuple[str, str, str]]] = {}   # (business, page) -> [(fact, snippet, when)]
+        for r in conn.execute("SELECT business_id, url, fact, snippet, observed_at FROM evidence WHERE ref_table='people' AND url<>'' "
+                              "ORDER BY id DESC"):
+            evidence.setdefault((r["business_id"], r["url"]), []).append((r["fact"], r["snippet"] or "", r["observed_at"] or ""))
         campaigns: dict[str, str | None] = {}
         people = []
         for r in conn.execute("SELECT p.id, p.name, p.title, p.source_url, b.id bid, b.name bname, b.domain, b.first_run_id "
@@ -329,18 +354,27 @@ def people_list(args: dict) -> dict:
                 campaigns[run_id] = icp.campaign if icp else None
             seen = found.get((r["bid"], r["name"]), {})
             email, phone = seen.get("email"), seen.get("phone")
+            # one record says where and when, never two mixed: the shown email's, else the phone's, else the person's own find
+            origin = email or phone or by_id.get(r["id"]) or seen.get("person.name") or _evidence_of(evidence, r) or ("", "", "")
             people.append({
                 "id": str(r["id"]), "name": r["name"], "role": r["title"] or "", "business": r["bname"], "domain": r["domain"] or "",
-                "email": email, "phone": phone,
-                "source": r["source_url"] or None,   # the page the name was read on, when the engine kept it
-                # the day the engine saw the shown email (else phone); null when it holds neither for this person
-                "foundAt": (seen.get("email_at") if email else seen.get("phone_at") if phone else None) or None,
+                "email": email[0] if email else None, "phone": phone[0] if phone else None,
+                "source": origin[1] or None, "foundAt": origin[2] or None,   # null: no record, "not recorded" on the screen
                 "campaign": campaigns[run_id],
-                "suppressed": db.is_suppressed(conn, email, r["domain"]),
+                "suppressed": db.is_suppressed(conn, email[0] if email else None, r["domain"]),
             })
     hits = [p for p in people if not search or any(search in (v or "").casefold()
                                                      for v in (p["name"], p["email"], p["domain"], p["business"], p["phone"]))]
     return {"people": hits[:limit], "total": len(people), "matching": len(hits)}
+
+
+def _evidence_of(evidence: dict, person) -> tuple[str, str, str] | None:
+    """(page, page, when) of the newest evidence for this person's page; a site page's row only when it names the person."""
+    page = person["source_url"] or ""
+    for fact, snippet, when in evidence.get((person["bid"], page), []):
+        if fact != "dm_candidate" or snippet.startswith(person["name"]):
+            return page, page, when
+    return None
 
 
 # ------------------------------------------------------------------ 9 person_forget, 10 address_suppress
@@ -465,9 +499,18 @@ def retention_set(args: dict) -> dict:
 def _keys() -> keys.Keys:
     try:
         return keys.make_keys()
-    except keys.KeysNotAvailable as e:
-        raise WindowError("keyring", "Keys cannot be kept in the keyring yet.", [str(e)],
-                          "This needs the keys slice (L9) in the engine; until then the key stays in leadforge.yaml.") from None
+    except keys.KeyringMissing as e:
+        raise WindowError("environment", "Keys cannot be kept in the keyring on this computer.", [str(e)],
+                          "Install the keyring extra: pip install leadforge[keyring]") from None
+
+
+def _in_keyring(change: Callable[[], dict]) -> dict:
+    """A save or remove; a backend that fails is `keyring`, named by its type only (its text may quote the value)."""
+    try:
+        return change()
+    except Exception as e:  # noqa: BLE001
+        raise WindowError("keyring", "The keyring did not take the change.", [type(e).__name__],
+                          "Check that the Windows keyring (Credential Manager) can be reached, then try again.") from None
 
 
 def _key_name(args: dict) -> str:
@@ -488,52 +531,35 @@ def key_save(args: dict) -> dict:
     value = args.get("value")
     if not isinstance(value, str) or not value.strip():
         raise usage("The key was not saved.", "The key is empty.")
-    return _keys().save(name, value.strip())
+    store = _keys()
+    return _in_keyring(lambda: store.save(name, value.strip()))
 
 
 def key_remove(args: dict) -> dict:
     only(args, "name")
-    return _keys().remove(_key_name(args))
+    name = _key_name(args)
+    store = _keys()
+    return _in_keyring(lambda: store.remove(name))
 
 
 # ------------------------------------------------------------------ 19 to 21 settings, about
 SHEET_FORMATS = ("xlsx", "csv")
-# the window's own two settings (engine.ts ThemeSetting, AccentSetting); the engine keeps them for it, the first value until set
-WINDOW_SETTINGS = {"theme": ("system", "light", "dark"), "accent": ("cobalt", "brass", "celadon", "ember")}
-
-
-def window_settings_file(cfg: Config) -> Path:
-    return Path(cfg.workspace) / cfg.data_dir / "window-settings.json"
-
-
-def _window_settings(cfg: Config) -> dict:
-    try:
-        kept = json.loads(window_settings_file(cfg).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        kept = {}
-    kept = kept if isinstance(kept, dict) else {}
-    return {k: kept[k] if kept.get(k) in allowed else allowed[0] for k, allowed in WINDOW_SETTINGS.items()}
 
 
 def settings_get(args: dict) -> dict:
+    """The engine's settings only: the window keeps its own look (theme, accent) itself."""
     only(args)
     cfg = load_cfg()
-    return {**_window_settings(cfg),
-            "workspace": str(Path(cfg.workspace).resolve()),
+    return {"workspace": str(Path(cfg.workspace).resolve()),
             "sheetFormats": [f for f in cfg.export.formats if f in SHEET_FORMATS],
-            "openSheetWhenDone": cfg.export.auto_open}
+            "openSheetWhenDone": cfg.export.auto_open,
+            "sources": workspace_sources(cfg)}
 
 
 def settings_set(args: dict) -> dict:
     only(args, "patch")
     patch = object_arg(args, "patch")
-    only(patch, "theme", "accent", "sheetFormats", "openSheetWhenDone")
-    window_own: dict[str, str] = {}
-    for k, allowed in WINDOW_SETTINGS.items():
-        if k in patch:
-            if patch[k] not in allowed:
-                raise usage("The setting was not saved.", f"{k}: one of {', '.join(allowed)}")
-            window_own[k] = patch[k]
+    only(patch, "sheetFormats", "openSheetWhenDone")
     changes: dict[str, Any] = {}
     if "sheetFormats" in patch:
         f = patch["sheetFormats"]
@@ -544,13 +570,9 @@ def settings_set(args: dict) -> dict:
         if not isinstance(patch["openSheetWhenDone"], bool):
             raise usage("The setting was not saved.", "openSheetWhenDone: true or false")
         changes["export.auto_open"] = patch["openSheetWhenDone"]
-    cfg = load_cfg()
+    load_cfg()
     if changes:
         write_settings(changes)
-    if window_own:
-        f = window_settings_file(cfg)
-        f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_text(json.dumps({**_window_settings(cfg), **window_own}), encoding="utf-8")
     return settings_get({})
 
 
@@ -571,8 +593,7 @@ def about(args: dict) -> dict:
     except (OSError, ValueError):
         raise WindowError("failed", "The licence notices are missing from this build.", ["data/licences.json"],
                           "Reinstall LeadForge.") from None
-    return {"windowVersion": None,   # the window's own version: the shell knows it, the engine does not
-            "engineVersion": __version__, "licence": _own_licence(),
+    return {"engineVersion": __version__, "licence": _own_licence(),   # the window's own version is the window's
             "licences": [{k: p[k] for k in ("name", "version", "licence", "notice")} for p in notices["packages"]]}
 
 

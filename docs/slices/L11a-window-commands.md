@@ -725,6 +725,12 @@ person's id when it stores a person from a page.
   phone) recorded as that person's; when the person has neither, the newest `person.name` observation of that person (by
   `person_id`, else by name at the business). `source` is that record's page address (`source_url`), else its `source` name, as
   C12 does in the sheet; `foundAt` is its `observed_at`; an empty value is null.
+- Added after the first e2e run (below): a person from a register (`providers/registry.py`) has no observation; the register
+  writes an `evidence` row (`ref_table = 'people'`, `fact = 'registry_officer'`, the register page, the time it was read) with no
+  person id and no name, and the same page as the person's `people.source_url`. So, when a person has no observation: the newest
+  `evidence` row of `ref_table = 'people'` at that business whose `url` is the person's `people.source_url` (a `dm_candidate` row
+  only when its snippet starts with the person's name, since a site page names several people); `source` its `url`, `foundAt`
+  its `observed_at`. Every officer read from one register page gets that page and that time: they were read in that one fetch.
 - A person with no such record (stored before the engine kept one, or planted) has `source` null and `foundAt` null: the screen says
   "not recorded". `people.source_url` alone (a page with no date) is no longer used: a source without its date is not C12.
 - Test seen red first: a person stored by the engine's own persist step (`enrich.runner._persist`, the step a run takes after a
