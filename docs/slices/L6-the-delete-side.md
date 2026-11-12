@@ -488,3 +488,53 @@ disagree" 1 and "Open" above) and in the CHANGELOG entry of 0.8.0; no code for i
 - The owner's decision on a literal "finds nothing" (hashed suppression list): not built.
 - UNPROVEN: the time to read a very large `exports` folder at the start of every run; the other 252 mutation survivors (names in the log only), settled by one more run that prints `mutmut show` for them.
 - Not merged: an independent reader follows this run.
+
+# Review 2 (0.8.0)
+
+Independent reader (run `l6-finish-read`), fresh clone, read the contracts, this whole file and the diff `dc02236..b15ef7a` line by line (`retention.py`, `cli.py`,
+`e2e_fake_campaign.py`, README, CHANGELOG, the new tests and the mutation workflow) before running anything. Read as the person whose data it deletes.
+
+Verdict: PASS 29430d0
+
+## What was checked, by reading first
+1. **C5 for files.** `expiring_candidates` lists only regular files, not links, whose real path is inside `leadforge_data/exports` or `leadforge_data/cache`;
+   `--out` files, logs, `bin/` and the database are never in the list. Protection 1: `purge()` returns `armed` before `_delete_files` (and `report` before that),
+   so the first pass after the upgrade deletes no file. Protection 2: `soon` counts files that hold a business due within 30 days and no expired one. Protection 3:
+   `2 * expired files > total files` stops the automatic pass, deleting nothing. Files go before records; a file left or unreadable returns `files_locked` before a
+   record is touched. **A file of a business that has not expired can go:** (a) a sheet that also lists an expired business is deleted whole, with the live
+   rows; (b) word edges match a name inside a longer name: probe `_patterns_for({"old"}, ..., {"old": {"brindlewick motors"}, "live": {"brindlewick motors ltd"}})`
+   on a sheet naming only the live one printed `live-only sheet matched as expired: True`. The live business's records stay in the database. The README
+   said only "a sheet is deleted whole"; the reader's commit 29430d0 says it plainly (live rows go with the sheet, the look-alike case, records stay,
+   `leadforge export` writes the latest run's sheet again, `leadforge purge` lists the files first). Docs only, no test.
+2. **The detached run.** File deletion lives inside `retention.purge`, the one pass `cli._start_of_run_purge` makes; the child carries `--retention-checked` and
+   skips it (`cli.py` 429, 503). The child cannot delete a file.
+3. **`forget` on a held file.** `_scrub_file`: replace, else rewrite in place (`r+b`, write, truncate), else the file goes to `files_failed`; `cli.forget` then
+   exits 4, `ok: false`, names the file, never prints "forgot that". `test_l6_forget_held.py` holds a real second process on the log (Windows) and patches both
+   ways off (any platform).
+4. **The refused-call compare.** `normalized()` keeps the set of distinct (kind, host, port, caller). Broken in this clone: `maps_listings.json` site 1 pointed at
+   `http://www.harbourmotors-garage.co.uk/` (the guard refuses the lookup inside the process; nothing left the laptop). Result: `FAIL - differs ...` with the new
+   entry `dns,www.harbourmotors-garage.co.uk,80,httpcore` beside the three saved ones; restored. A call that disappears: `test_a_saved_call_that_no_longer_happens_is_a_different_result`.
+5. **One delete test broken on purpose.** `purge()`: `_delete_files(cfg, files["expired"])` inserted in the `marker is None` branch.
+   `test_expired_businesses_files_go_with_them_and_the_rest_stays` -> `E  assert False ... all(<generator ...>)` at the "first pass deletes no file" line,
+   `1 failed`; restored, `1 passed`.
+6. **The first reader's open list.** C5 for `exports` and `cache`: closed (above). Linux mutation trial: closed (run 43171737338, 5 min 34 s, KEEP). Hashed
+   suppression list: open, the owner's decision, written here and in the CHANGELOG (not blocking). UNPROVEN list of the pull request: a log held open by the same
+   process is now also covered by the in-place rewrite; the cost of the copy-based schema read under a live `-wal` stays UNPROVEN.
+7. Versions: all six copies `0.8.0`. No new package in the product (`pyproject.toml` gains only `[tool.mutmut]`); mutmut lives only in its workflow (hashed file,
+   actions pinned to commit ids, `contents: read`, starts by hand or when its own files change). Fixtures: `.example` addresses, Ofcom drama numbers
+   (`+447700900123`, `0113 496 0000`).
+
+## Gates on 29430d0 (this laptop, one process at a time)
+- `node check.mjs` stopped at `lint` because this reader's venv had no ruff (`No module named ruff`: the lock carries no dev tools); the steps were then run by hand:
+  versions, skill frontmatter, skill references `ok`; `ruff check src tests` (ruff 0.15.13): `All checks passed!`; `python -m pytest` (serial, below normal):
+  `1 failed, 901 passed, 6 skipped in 675.92s` - the failure `test_ner_worker.py::test_worker_shutdown_leaves_no_live_process` ("worker did not become ready within
+  10.0s", code this slice does not touch), run once more alone at normal priority: `1 passed in 5.75s`; `check_digest.py`: exit 0.
+- `gitleaks git --log-opts="origin/master..HEAD"`: `28 commits scanned ... no leaks found`.
+- Outside the gate: `ruff check scripts` finds `B905` in `scripts/e2e_compare.py:28`, a file this slice does not touch (last change 614cb5f on master).
+
+## Open (not blocking)
+- The owner's decision on the hashed suppression list.
+- In a workspace that re-runs the same searches, new sheets list refreshed old businesses, so once those pass the limit most files may hold one and the
+  automatic pass stops the run (file half rule) until `purge --apply`: by reading, UNPROVEN in use. Under `--json` a `files_locked` start-of-run pass puts no
+  file name and no warning in the digest (records are kept, the next pass retries).
+- UNPROVEN as before: reading a very large `exports` folder at each run; the 252 mutation survivors not read one by one.
