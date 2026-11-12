@@ -49,9 +49,14 @@ export function NewCampaign({ engine, run, onStart, go, autoPlan }: {
       <div className="lf-grid lf-grid--form">
         <Card>
           <form className="lf-form" onSubmit={(e) => { e.preventDefault(); check(); }}>
-            <Field label="Kind of business" hint="Separate several with commas." error={problem("target.categories")}>
-              {(id, note) => <TextInput id={id} aria-describedby={note} placeholder="MOT garage" value={kinds} onChange={(e) => { setKinds(e.target.value); edited(); }} />}
-            </Field>
+            <div className="lf-form__row">
+              <Field label="Kind of business" hint="Separate several with commas." error={problem("target.categories")}>
+                {(id, note) => <TextInput id={id} aria-describedby={note} placeholder="MOT garage" value={kinds} onChange={(e) => { setKinds(e.target.value); edited(); }} />}
+              </Field>
+              <Field label="Stop after" hint="Businesses." error={problem("caps.max_leads")}>
+                {(id, note) => <TextInput id={id} aria-describedby={note} className="ds-input lf-input--short" inputMode="numeric" value={maxLeads} onChange={(e) => { setMaxLeads(e.target.value.replace(/\D/g, "")); edited(); }} />}
+              </Field>
+            </div>
             <div className="lf-form__row">
               <Field label="Place" hint="Towns, counties or postcode areas." error={problem("target.geography.areas")}>
                 {(id, note) => <TextInput id={id} aria-describedby={note} placeholder="Bristol" value={places} onChange={(e) => { setPlaces(e.target.value); edited(); }} />}
@@ -74,10 +79,6 @@ export function NewCampaign({ engine, run, onStart, go, autoPlan }: {
                 </label>
               ))}
             </fieldset>
-
-            <Field label="Stop after" hint="Businesses. The run ends when it has this many." error={problem("caps.max_leads")}>
-              {(id, note) => <TextInput id={id} aria-describedby={note} className="ds-input lf-input--short" inputMode="numeric" value={maxLeads} onChange={(e) => { setMaxLeads(e.target.value.replace(/\D/g, "")); edited(); }} />}
-            </Field>
 
             <div className="lf-form__actions">
               <Button type="submit" variant={plan.result ? "soft" : "primary"} size="lg" busy={plan.busy}>{plan.busy ? "Checking the plan" : "Check the plan"}</Button>

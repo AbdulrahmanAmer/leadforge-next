@@ -193,7 +193,8 @@
   .lf-app__main { padding: var(--ds-space-4) var(--ds-space-6) var(--ds-space-8) var(--ds-space-2); }
   .lf-screen, .lf-grid, .lf-stack { gap: var(--ds-space-4); }
   .lf-grid--form { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
-  .lf-choice { grid-template-columns: minmax(0, 1fr); }
+  .lf-form { gap: var(--ds-space-4); }
+  .lf-choice__item { padding: var(--ds-space-3); gap: var(--ds-space-2); }
   .lf-table { font-size: var(--ds-text-sm); }
   .lf-table tbody th, .lf-table td { padding: var(--ds-space-3) var(--ds-space-2); }
   .lf-table__line { overflow-wrap: normal; }
