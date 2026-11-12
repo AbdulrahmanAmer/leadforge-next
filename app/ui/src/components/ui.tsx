@@ -95,8 +95,10 @@ export function StatusBanner({ tone, title, detail, icon, action, compact }: {
 }
 
 /** An engine failure in the engine's own words: what happened, its details, what it suggests next. */
-export function ErrorBanner({ error, onRetry, compact }: { error: unknown; onRetry?: () => void; compact?: boolean }) {
-  const e = error instanceof EngineError ? error : null;
+export function ErrorBanner({ error, onRetry, compact, hide }: { error: unknown; onRetry?: () => void; compact?: boolean; hide?: readonly string[] }) {
+  const found = error instanceof EngineError ? error : null;
+  // details a screen already shows beside the field they name are not said twice
+  const e = found && hide ? { message: found.message, next: found.next, details: found.details.filter((d) => !hide.includes(d)) } : found;
   return (
     <StatusBanner
       tone="danger"
@@ -105,10 +107,12 @@ export function ErrorBanner({ error, onRetry, compact }: { error: unknown; onRet
       detail={
         <>
           {e?.details.map((d) => <p key={d}>{d}</p>)}
-          {e?.next && <p className="ds-status__next">{e.next}</p>}
+          {e?.next && !e.details.some((d) => d.toLowerCase().includes(e.next!.toLowerCase())) && (
+            <p className="ds-status__next">{e.next.charAt(0).toUpperCase() + e.next.slice(1)}</p>
+          )}
         </>
       }
-      action={onRetry && <Button variant="surface" size="sm" leadingIcon="refresh" onClick={onRetry}>Try again</Button>}
+      action={onRetry && found?.kind !== "missing" && <Button variant="surface" size="sm" leadingIcon="refresh" onClick={onRetry}>Try again</Button>}
     />
   );
 }

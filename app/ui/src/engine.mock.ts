@@ -33,7 +33,7 @@ const FIXED_NOW = "2026-11-12T10:24:00Z";
 /** The failure each action shows, copied from what the engine prints for that case. */
 const FAILURES: Record<ActionName, [kind: EngineError["kind"], message: string, details: string[], next: string | null]> = {
   createCampaign: ["input", "The campaign is not complete.", ["target.geography.country: country is required", "target.categories: at least one kind of business"], "Fill in the marked fields and check the plan again."],
-  startRun: ["environment", "The engine could not start the run.", ["The MOT test stations register file is missing from this workspace."], "Open Settings and run the engine check."],
+  startRun: ["environment", "The engine could not start the run.", ["The MOT test stations register file is missing from this workspace."], "Check the workspace folder in Settings, then try again."],
   stopRun: ["failed", "The run did not stop.", ["The engine process did not end within 10 seconds."], "Try again; the run keeps its place either way."],
   runStatus: ["usage", "The workspace settings file cannot be read.", ["leadforge.yaml invalid: ValidationError"], "Repair the value in Settings."],
   listCampaigns: ["missing", "The engine cannot list campaigns yet.", ["There is no engine command that lists the runs of a workspace."], null],
@@ -45,7 +45,7 @@ const FAILURES: Record<ActionName, [kind: EngineError["kind"], message: string, 
   purgeReport: ["input", "The clean-up report could not be made.", ["This workspace is half upgraded; nothing was changed."], "nothing was changed"],
   purgeApply: ["input", "Nothing was deleted.", ["148 of 212 businesses are past the 12-month limit: more than half of the workspace, so nothing was deleted (a wrong clock looks like this)."], "Check the date on this computer, then try again."],
   purgeEverything: ["failed", "Not everything could be deleted.", ["A sheet in the exports folder is open in another program."], "Close the sheet and try again."],
-  getRetention: ["usage", "The retention period could not be read.", ["leadforge.yaml invalid: ValidationError"], "Repair the value below."],
+  getRetention: ["usage", "The retention period could not be read.", ["leadforge.yaml invalid: ValidationError"], "Repair leadforge.yaml in the workspace folder, then try again."],
   setRetention: ["usage", "The retention period was not changed.", ["invalid value for retention.months: ValidationError"], "Choose 1 to 12 months."],
   listKeys: ["keyring", "The Windows keyring did not answer.", ["Credential Manager is not available for this account."], "Sign in to Windows again, then reopen this page."],
   saveKey: ["keyring", "The key was not saved.", ["The Windows keyring refused the entry."], "Nothing was stored. Try again."],
@@ -258,8 +258,8 @@ export function createMockEngine(options: MockOptions = {}): Engine {
             onEvent({ type: "notice", text: event.text, at: stamp() });
           } else {
             status.state = "failed";
-            status.reason = "The Companies House register stopped answering (5 tries).";
-            onEvent({ type: "failed", status: { ...status }, error: { kind: "source", message: status.reason, details: ["HTTP 503 from the register, five times in a row.", "What was found so far is kept; the run can continue from this stage."] } });
+            status.reason = "This computer went offline while the websites were being read.";
+            onEvent({ type: "failed", status: { ...status }, error: { kind: "environment", message: status.reason, details: ["Five requests in a row got no answer.", "What was found so far is kept; the run can continue from this stage."] } });
             return;
           }
         }

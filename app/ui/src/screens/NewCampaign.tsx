@@ -34,6 +34,7 @@ export function NewCampaign({ engine, run, onStart, go, autoPlan }: {
 
   const problems = plan.error instanceof EngineError ? plan.error.details : [];
   const problem = (key: string) => problems.find((p) => p.startsWith(key))?.split(": ")[1] ?? null;
+  const onFields = problems.filter((p) => ["target.categories", "target.geography.areas", "target.geography.country", "caps.max_leads"].some((key) => p.startsWith(key)));
   const edited = () => { if (plan.result || plan.error) plan.clear(); };
 
   return (
@@ -94,11 +95,11 @@ export function NewCampaign({ engine, run, onStart, go, autoPlan }: {
           {!plan.busy && plan.error !== null && (
             <>
               <CardHeader title="The plan" />
-              <ErrorBanner error={plan.error} onRetry={problems.length ? undefined : check} />
+              <ErrorBanner error={plan.error} onRetry={onFields.length ? undefined : check} hide={onFields} />
             </>
           )}
           {!plan.busy && !plan.error && !plan.result && (
-            <EmptyState icon="campaign" title="The plan appears here" detail="How many searches, about how long, and how many businesses at most. Nothing is collected until you start the run." />
+            <EmptyState icon="search" title="The plan appears here" detail="How many searches, about how long, and how many businesses at most. Nothing is collected until you start the run." />
           )}
           {!plan.busy && plan.result && <Plan plan={plan.result} running={running} onStart={() => onStart(plan.result!.campaign)} go={go} />}
         </Card>

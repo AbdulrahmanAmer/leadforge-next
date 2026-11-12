@@ -65,7 +65,7 @@ export function People({ engine, go, openDialog }: { engine: Engine; go: (s: Scr
       <Card padding="none" className="lf-people" label="Contacts">
         <div className="lf-people__bar">
           <SearchInput label="Search the contacts" placeholder="Search by name, address, business or domain" value={search} onChange={(e) => setSearch(e.target.value)} />
-          {page.state === "done" && <p className="lf-caption">{search ? `${formatCount(page.data.matching)} of ${formatCount(page.data.total)}` : `${formatCount(page.data.total)} contacts`}</p>}
+          {page.state === "done" && page.data.total > 0 && <p className="lf-caption">{search ? `${formatCount(page.data.matching)} of ${formatCount(page.data.total)}` : `${formatCount(page.data.total)} contacts`}</p>}
         </div>
 
         {page.state === "loading" && <div className="lf-people__pad"><Skeleton lines={6} label="Loading the contacts" /></div>}

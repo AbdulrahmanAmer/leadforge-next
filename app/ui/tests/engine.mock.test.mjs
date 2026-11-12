@@ -97,7 +97,7 @@ test("a failing run ends its event stream with one failed event that carries the
   const last = events.at(-1);
   assert.equal(last.type, "failed");
   assert.equal(last.status.state, "failed");
-  assert.equal(last.error.kind, "source");
+  assert.equal(last.error.kind, "environment");
   assert.equal(events.filter((e) => e.type === "failed").length, 1);
   assert.ok(events.some((e) => e.type === "progress" && e.stage === "enrich"));
 });

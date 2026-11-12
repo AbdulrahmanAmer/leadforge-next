@@ -173,7 +173,7 @@ export function App({ engine, scenario }: { engine: Engine; scenario: Scenario |
       </aside>
       <main className="lf-app__main" data-screen={screen}>
         {screen === "campaign" && <NewCampaign engine={engine} run={run} onStart={(campaign) => startRun(campaign, false)} go={setScreen} autoPlan={scenario?.plan ?? false} />}
-        {screen === "run" && <Run run={run} onStop={stopRun} onResume={() => run.campaign && startRun(run.campaign, true)} go={setScreen} />}
+        {screen === "run" && <Run run={run} onStop={stopRun} onResume={() => run.campaign && startRun(run.campaign, true)} onRetry={() => run.campaign && startRun(run.campaign, false)} go={setScreen} />}
         {screen === "results" && <Results engine={engine} go={setScreen} />}
         {screen === "people" && <People engine={engine} go={setScreen} openDialog={scenario?.dialog ?? null} />}
         {screen === "data" && <Data engine={engine} go={setScreen} openDialog={scenario?.dialog ?? null} />}

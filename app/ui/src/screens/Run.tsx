@@ -13,7 +13,7 @@ const STAGE_NAME: Record<StageId, [name: string, doing: string]> = {
   export: ["Write the sheet", "Writing the sheet"],
 };
 
-export function Run({ run, onStop, onResume, go }: { run: RunView; onStop: () => void; onResume: () => void; go: (s: ScreenId) => void }) {
+export function Run({ run, onStop, onResume, onRetry, go }: { run: RunView; onStop: () => void; onResume: () => void; onRetry: () => void; go: (s: ScreenId) => void }) {
   if (run.phase === "idle") {
     return (
       <div className="lf-screen">
@@ -45,6 +45,9 @@ export function Run({ run, onStop, onResume, go }: { run: RunView; onStop: () =>
         )}
         {(run.phase === "stopped" || run.phase === "failed") && run.runId && (
           <Button variant="primary" size="lg" leadingIcon="play" onClick={onResume}>Continue the run</Button>
+        )}
+        {run.phase === "failed" && !run.runId && (
+          <Button variant="primary" size="lg" leadingIcon="refresh" onClick={onRetry}>Try again</Button>
         )}
         {run.phase === "finished" && <Button variant="primary" size="lg" leadingIcon="results" onClick={() => go("results")}>Open the results</Button>}
       </header>

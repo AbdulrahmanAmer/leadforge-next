@@ -34,8 +34,7 @@ export function Results({ engine, go }: { engine: Engine; go: (s: ScreenId) => v
       {campaigns.state === "error" && <Card><ErrorBanner error={campaigns.error} onRetry={campaigns.reload} /></Card>}
       {campaigns.state === "done" && campaigns.data.length === 0 && (
         <Card>
-          <EmptyState icon="results" title="No campaigns yet" detail="When a run finishes, its sheet is listed here with the day its records will be deleted."
-            action={<Button variant="primary" leadingIcon="campaign" onClick={() => go("campaign")}>New campaign</Button>} />
+          <EmptyState icon="results" title="No campaigns yet" detail="When a run finishes, its sheet is listed here with the day its records will be deleted." />
         </Card>
       )}
       {campaigns.state === "done" && campaigns.data.length > 0 && (
