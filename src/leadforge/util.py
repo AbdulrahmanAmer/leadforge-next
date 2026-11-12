@@ -124,6 +124,11 @@ def site_key(url: str) -> str:
 
 
 # --- small utilities ------------------------------------------------------------------------
+def utcnow() -> datetime:
+    """The one clock the retention code reads; tests replace it instead of waiting."""
+    return datetime.now(UTC)
+
+
 def now_iso() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 

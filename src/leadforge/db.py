@@ -19,6 +19,7 @@ import json
 import shutil
 import sqlite3
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 from leadforge.models import Business, Contact, EnrichmentObservation, Evidence, Person, Score
@@ -159,32 +160,58 @@ def _version_of(conn: sqlite3.Connection) -> tuple[bool, str | None]:
     return True, (None if row is None else str(row[0]))
 
 
-def peek_schema_version(db_path: Path) -> tuple[bool, str | None]:
-    """Read the stored schema version without changing one byte of the workspace (L6, ADOPT risk 11).
+@contextmanager
+def readonly_view(db_path: Path):
+    """A connection that cannot change the workspace (L6, ADOPT risk 11).
 
     `?immutable=1` takes no lock and writes no `-shm`/`-wal`, but it also ignores a `-wal` file; so when a non-empty
     one sits beside the database the file and its side files are copied to a temp folder and read there."""
     db_path = Path(db_path)
     wal = db_path.with_name(db_path.name + "-wal")
+    td = None
     try:
         if wal.exists() and wal.stat().st_size > 0:
-            with tempfile.TemporaryDirectory(prefix="lf-peek-") as td:
-                copy = Path(td) / "db.sqlite3"
-                for src in (db_path, wal, db_path.with_name(db_path.name + "-shm")):
-                    if src.exists():
-                        shutil.copyfile(src, Path(td) / src.name.replace(db_path.name, "db.sqlite3"))
-                conn = sqlite3.connect(copy)
-                try:
-                    return _version_of(conn)
-                finally:
-                    conn.close()
-        conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?immutable=1", uri=True)
+            td = tempfile.TemporaryDirectory(prefix="lf-peek-")
+            for src in (db_path, wal, db_path.with_name(db_path.name + "-shm")):
+                if src.exists():
+                    shutil.copyfile(src, Path(td.name) / src.name.replace(db_path.name, "db.sqlite3"))
+            conn = sqlite3.connect(Path(td.name) / "db.sqlite3")
+        else:
+            conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?immutable=1", uri=True)
+        conn.row_factory = sqlite3.Row
         try:
-            return _version_of(conn)
+            yield conn
         finally:
             conn.close()
+    finally:
+        if td is not None:
+            td.cleanup()
+
+
+def peek_schema_version(db_path: Path) -> tuple[bool, str | None]:
+    """The stored schema version, read without changing one byte of the workspace."""
+    try:
+        with readonly_view(db_path) as conn:
+            return _version_of(conn)
     except sqlite3.DatabaseError as e:
-        raise InputError(f"{db_path.name} is not a database this LeadForge can read ({e}); nothing was changed.") from e
+        raise InputError(f"{Path(db_path).name} is not a database this LeadForge can read ({e}); nothing was changed.") from e
+
+
+def schema_gaps(db_path: Path) -> list[str]:
+    """Tables and columns this version expects that the file lacks (a half-upgraded workspace), read-only."""
+    expected = sqlite3.connect(":memory:")
+    expected.executescript(_DDL)
+    want = {r[0]: [c[1] for c in expected.execute(f"PRAGMA table_info({r[0]})")]
+            for r in expected.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
+    expected.close()
+    gaps: list[str] = []
+    with readonly_view(db_path) as conn:
+        for table, cols in want.items():
+            have = [c[1] for c in conn.execute(f"PRAGMA table_info({table})")]
+            if not have:
+                gaps.append(f"table {table} is missing")
+            gaps += [f"{table}.{c} is missing" for c in cols if c not in have]
+    return gaps
 
 
 def check_schema_before_write(db_path: Path) -> None:
@@ -575,7 +602,10 @@ def merge_business_into(conn: sqlite3.Connection, keep_id: str, drop_id: str) ->
 
 # ------------------------------------------------------------------ contacts / people / evidence / scores
 def add_contact(conn: sqlite3.Connection, c: Contact) -> int:
-    """Insert or refresh; returns the contact row id (so evidence can reference it)."""
+    """Insert or refresh; returns the contact row id (so evidence can reference it). A suppressed email is not
+    stored again (returns 0): forgotten people are not collected twice."""
+    if c.kind == "email" and is_suppressed(conn, c.value):
+        return 0
     conn.execute(
         """INSERT INTO contacts(business_id,kind,value,label,tier,verified_at,meta_json,affinity,phone_type,email_stage)
            VALUES(?,?,?,?,?,?,?,?,?,?)
@@ -593,10 +623,17 @@ def add_contact(conn: sqlite3.Connection, c: Contact) -> int:
 
 
 def contacts_for(conn: sqlite3.Connection, business_id: str) -> list[sqlite3.Row]:
-    return conn.execute("SELECT * FROM contacts WHERE business_id=?", (business_id,)).fetchall()
+    """The business's contacts, minus email addresses on the suppression list: an objection is absolute (C7), so
+    every reader behaves as if such an address did not exist."""
+    return conn.execute(
+        """SELECT * FROM contacts WHERE business_id=?
+           AND NOT (kind='email' AND lower(value) IN (SELECT value FROM suppression WHERE kind='email'))""",
+        (business_id,)).fetchall()
 
 
 def add_person(conn: sqlite3.Connection, p: Person) -> None:
+    if conn.execute("SELECT 1 FROM suppression WHERE kind='name' AND value=?", (p.name.strip().lower(),)).fetchone():
+        return  # a forgotten name is not collected again
     conn.execute(
         """INSERT INTO people(business_id,name,title,source_url,snippet,dm_confidence,is_dm,labeled_by,labeled_at,origin)
            VALUES(?,?,?,?,?,?,?,?,?,?)
