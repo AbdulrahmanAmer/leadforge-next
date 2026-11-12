@@ -473,3 +473,18 @@ its own files). The in-house `scripts/mutation_trial.py` stays as the Windows-si
 The suppression list holds the forgotten identifier in clear (`suppression`, `db.suppress`), so that the objection can be honoured on the next run (`is_suppressed` and the four SQL sub-selects compare the value). A hashed list would change the tables and those
 lookups, which this slice's row forbids ("no change to the tables"). So the byte scan of C4 finds the identifier in that one row and nowhere else (the copy-without-that-row test proves it). Written as an open decision of the owner in this file (also in "Plan and code
 disagree" 1 and "Open" above) and in the CHANGELOG entry of 0.8.0; no code for it was written in this run.
+
+## Gates and hosted CI of Build 2 (commit c5c5963, the last code commit)
+
+- `node check.mjs` on that tree, once at the end (below-normal priority): `901 passed, 7 skipped in 225.80s (0:03:45)` and `CHECK PASS sha=c5c5963 tree=clean steps=6 skipped=0 secs=230` (the 7 skipped are the suite's own; the reader's run had 884 passed: this run adds 17 tests).
+- `python scripts/e2e_fake_campaign.py` (G2) on f07f5b8 (the later commits changed only a test, the slice file and a clean-up in `_scrub_file`, which the campaign does not reach): `PASS - result equals tests/fixtures/e2e/expected.json (3 refused-call entries, as saved)`; the raw guard log of an earlier run on this laptop had 32 entries
+  (1.1.1.1 x10, 8.8.8.8 x10, four own resolvers x3), which is now the same three. No digest cell moved (the file numbers appear in the run digest only above 0).
+- `ruff check src tests`: `All checks passed!`. `python .github/scripts/check_versions.py`: all six copies `0.8.0` (not touched). `gitleaks detect --log-opts "origin/master..HEAD"`: `no leaks found` (22 commits at f07f5b8; again clean at c5c5963).
+- Hosted CI, run 43173321150 on c5c5963, read from GitHub: completed, success, **13 of 13 jobs success**: claude plugin validate · Validate plugin manifests · Version strings agree · fake campaign ubuntu-latest · fake campaign windows-latest · ubuntu-latest py3.11 / py3.12 / py3.13 /
+  py3.14 · windows-latest py3.11 / py3.12 / py3.13 / py3.14. No job re-run. The mutation trial did not start for that commit (it starts only when its own files change). Run 43171742261 (f07f5b8): the same 13 of 13 success; the fake campaign windows job that was red on fc52926 is green on both.
+- Not run on STRIKERFORCE: Linux, and anything that needs a browser (none touched). A real "held open" log was only tried on Windows (item 2).
+
+## Open (after Build 2)
+- The owner's decision on a literal "finds nothing" (hashed suppression list): not built.
+- UNPROVEN: the time to read a very large `exports` folder at the start of every run; the other 252 mutation survivors (names in the log only), settled by one more run that prints `mutmut show` for them.
+- Not merged: an independent reader follows this run.
