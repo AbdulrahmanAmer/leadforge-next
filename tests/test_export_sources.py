@@ -109,17 +109,16 @@ def _check_pair(source, date):
 def test_c12_every_exported_email_and_phone_has_a_source_and_a_date(export):
     cfg, conn, rid = export
     rows = _rows(export_run(conn, _icp(), rid, cfg.exports_dir, ["csv"], cfg=cfg))
-    seen = 0
-    for name, r in rows.items():
-        if "@" in r["Email"]:
-            _check_pair(r["Email Source"], r["Email Date"]); seen += 1
-        if "@" in r["Email (Inferred)"]:
-            _check_pair(r["Email (Inferred) Source"], r["Email (Inferred) Date"]); seen += 1
-        if len(re.sub(r"\D", "", r["Phone"])) >= 9:
-            _check_pair(r["Phone Source"], r["Phone Date"]); seen += 1
-        if len(re.sub(r"\D", "", r["DM Phone"])) >= 9:
-            _check_pair(r["DM Phone Page"], r["DM Phone Date"]); seen += 1
-    assert seen == 11   # 4 e-mails + 1 inferred + 5 phones + 1 DM phone: nothing skipped by an unexpected placeholder
+    paired = []   # (value cell, its source cell, its date cell) for every value that is really an e-mail or a phone number
+    for r in rows.values():
+        for value, source, date in (("Email", "Email Source", "Email Date"),
+                                    ("Email (Inferred)", "Email (Inferred) Source", "Email (Inferred) Date"),
+                                    ("Phone", "Phone Source", "Phone Date"), ("DM Phone", "DM Phone Page", "DM Phone Date")):
+            if "@" in r[value] or len(re.sub(r"\D", "", r[value])) >= 9:
+                paired.append((r[value], r[source], r[date]))
+    for _value, source, date in paired:
+        _check_pair(source, date)
+    assert len(paired) == 11  # 4 e-mails + 1 inferred + 5 phones + 1 DM phone: nothing skipped by an unexpected placeholder
 
 
 def test_c12_where_each_value_came_from(export):
