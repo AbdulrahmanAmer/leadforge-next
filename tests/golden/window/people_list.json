@@ -1,0 +1,32 @@
+{
+  "matching": 2,
+  "people": [
+    {
+      "business": "Harbourside Motors",
+      "campaign": "bristol-mot-garage",
+      "domain": "harbourside-motors.example",
+      "email": "priya@harbourside-motors.example",
+      "foundAt": "2026-11-01T09:10:00Z",
+      "id": "1",
+      "name": "Priya Nair",
+      "phone": null,
+      "role": "Owner",
+      "source": "https://harbourside-motors.example/contact",
+      "suppressed": false
+    },
+    {
+      "business": "Clifton Down Garage",
+      "campaign": "bristol-mot-garage",
+      "domain": "cliftondowngarage.example",
+      "email": null,
+      "foundAt": null,
+      "id": "2",
+      "name": "Tomasz Zielinski",
+      "phone": null,
+      "role": "Workshop manager",
+      "source": null,
+      "suppressed": false
+    }
+  ],
+  "total": 2
+}

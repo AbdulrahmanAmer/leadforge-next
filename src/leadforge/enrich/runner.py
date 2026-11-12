@@ -38,7 +38,7 @@ from leadforge.enrich.extract import (
 from leadforge.enrich.validate import validate_email, validate_emails_parallel
 from leadforge.models import Contact, EnrichmentObservation, Evidence, Person
 from leadforge.normalize import COUNTRY_TO_REGION, to_e164
-from leadforge.util import LOG, HostThrottle, emit_progress, now_iso
+from leadforge.util import LOG, HostThrottle, RunStopped, check_stop, emit_progress, now_iso, progress_in_pool
 
 
 def _record_observation(conn: sqlite3.Connection, observation: EnrichmentObservation, *, fresh_days: int) -> None:
@@ -164,6 +164,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
         # U4.7: GLiNER zero-shot people extraction when the [ner] extra is installed, else heuristic.
         people_fn = _people_fn(cfg)
         for page in res.pages:
+            check_stop()  # one page's people extraction (NER) at most after a window run's stop
             for email, label in extract_emails(page.html, page.text, cfg.crawl.decode_protected_emails).items():
                 out["emails"].setdefault(email, {"label": label, "url": page.url,
                                                   "context": _email_evidence(page.html, page.text, email)})
@@ -187,6 +188,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
             urls = [p.url for p in res.pages[:rendered_cap]] or [b["website"]]
             rendered_any = False
             for url in urls:
+                check_stop()
                 if not crawler._allowed(url):
                     continue
                 rendered = browser.fetch_rendered(url, cfg, throttle)
@@ -392,6 +394,8 @@ def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: d
                 if any(getattr(reg, "disabled", False) for reg in registries):
                     LOG.warning("registry disabled mid-stage (rate limit); stopping registry backlog")
                     return
+        except RunStopped as e:   # the window asked the run to stop: not a failure
+            errors.append(e)
         except Exception as e:  # noqa: BLE001 — a driver thread must never hang the run silently
             LOG.exception("registry driver failed")
             errors.append(e)
@@ -406,9 +410,12 @@ def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: d
                 for fut in as_completed(futures):
                     done_n += 1
                     b = futures[fut]
-                    emit_progress("enrich", done_n, len(futures), b["name"] or "")
+                    progress_in_pool(pool, "enrich", done_n, len(futures), b["name"] or "")
                     try:
                         res = fut.result()
+                    except RunStopped:   # the window's stop, seen inside the site's crawl: not a failed site
+                        pool.shutdown(wait=False, cancel_futures=True)
+                        raise
                     except Exception as e:  # noqa: BLE001 — one bad site never kills the batch
                         msg = str(e)[:200]
                         LOG.warning("enrich failed for %s: %s", b["id"], msg)
@@ -424,6 +431,8 @@ def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: d
                         if res["needs_browser"] and not browser_ok:
                             counts["needs_browser"] += 1
                     wq.put(_do_persist)
+        except RunStopped as e:
+            errors.append(e)
         except Exception as e:  # noqa: BLE001
             LOG.exception("crawl driver failed")
             errors.append(e)
@@ -579,10 +588,13 @@ def _crawl_stage(conn: sqlite3.Connection, cfg: Config, limit: int, counts: dict
         done_n = 0
         for fut in as_completed(futures):
             done_n += 1
-            emit_progress("enrich", done_n, len(futures), futures[fut]["name"] or "")
+            progress_in_pool(pool, "enrich", done_n, len(futures), futures[fut]["name"] or "")
             b = futures[fut]
             try:
                 res = fut.result()
+            except RunStopped:   # the window's stop, seen inside the site's crawl: not a failed site
+                pool.shutdown(wait=False, cancel_futures=True)
+                raise
             except Exception as e:  # noqa: BLE001 — one bad site never kills the batch
                 LOG.warning("enrich failed for %s: %s", b["id"], e)
                 db.update_enrich(conn, b["id"], {"attempted_at": now_iso(), "error": str(e)[:200]})

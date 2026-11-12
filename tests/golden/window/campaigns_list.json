@@ -1,0 +1,40 @@
+[
+  {
+    "businesses": 2,
+    "keptUntil": "2027-11-01",
+    "kinds": [
+      "MOT garage"
+    ],
+    "name": "bristol-mot-garage",
+    "places": [
+      "Bristol"
+    ],
+    "runId": "run_20261101_090000_ab12",
+    "sheet": {
+      "files": [
+        {
+          "kind": "csv",
+          "path": "<ws>/leadforge_data/exports/run_20261101_090000_ab12/bristol-mot-garage.csv"
+        }
+      ],
+      "highlights": [
+        "2× no online booking"
+      ],
+      "leads": 2,
+      "runId": "run_20261101_090000_ab12",
+      "tabs": [],
+      "writtenAt": "<time>"
+    },
+    "source": "dvsa",
+    "stage": "export",
+    "startedAt": "2026-11-01T09:00:00Z",
+    "state": "finished",
+    "tiers": {
+      "a": 1,
+      "b": 1,
+      "c": 0
+    },
+    "withEmail": 2,
+    "withPhone": 1
+  }
+]

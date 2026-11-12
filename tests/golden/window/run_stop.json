@@ -1,0 +1,17 @@
+{
+  "campaign": "bristol-mot-garage",
+  "counts": {
+    "businesses": 2,
+    "contacts": 2,
+    "expiringIn30Days": null,
+    "purged": null
+  },
+  "done": null,
+  "etaSeconds": null,
+  "reason": null,
+  "runId": "run_20261101_090000_ab12",
+  "stage": "enrich",
+  "startedAt": "2026-11-01T09:00:00Z",
+  "state": "running",
+  "total": null
+}

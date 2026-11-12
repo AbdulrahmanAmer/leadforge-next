@@ -18,7 +18,7 @@ import httpx
 from selectolax.parser import HTMLParser
 
 from leadforge.config import Config
-from leadforge.util import LOG, HostThrottle, site_key
+from leadforge.util import LOG, HostThrottle, check_stop, site_key
 
 PAGE_KEYWORDS = re.compile(
     r"(about|team|staff|people|leadership|founders?|management|meet|contact|reach[\s-]?us|"
@@ -426,6 +426,7 @@ class SiteCrawler:
         if not self._allowed(website):
             result.error = "robots-disallowed"  # the site said no — the browser must not go either
             return result
+        check_stop()  # a window run's stop is seen between two page fetches, not only between two businesses
         resp = self._get(website)  # home page: client default timeout (cfg.crawl.timeout_s)
         if resp is None:
             # v0.3 speed unit (2026-09-02, build item 1c): a block-shaped status or a connection error
@@ -473,6 +474,7 @@ class SiteCrawler:
             if time.monotonic() - start > self.cfg.crawl.site_budget_s:
                 result.signals["budget_exhausted"] = True
                 break
+            check_stop()
             sub = self._get(link, timeout=self.cfg.crawl.page_timeout_s)
             if sub is None:
                 continue

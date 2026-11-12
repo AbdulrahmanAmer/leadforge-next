@@ -28,9 +28,11 @@ from leadforge.util import (
     LOG,
     ProviderDegraded,
     ProviderFailed,
+    check_stop,
     emit_progress,
     open_artifact,
     open_progress_window,
+    progress_in_pool,
     set_progress_file,
 )
 
@@ -294,7 +296,7 @@ def _run_discover_parallel(conn, cfg: Config, icp: ICP, run_id: str, chain, prov
                     fut = ex.submit(_fetch_with_chain, worker_chain, pq, limit, warns)
                     inflight[fut] = (q, pq, borrowed)
                     qi_submit += 1
-                    emit_progress("discover", done_count, len(queue), q["query_text"])
+                    progress_in_pool(ex, "discover", done_count, len(queue), q["query_text"])
 
             submit_next()
             while inflight:
@@ -305,7 +307,7 @@ def _run_discover_parallel(conn, cfg: Config, icp: ICP, run_id: str, chain, prov
                 listings, status, tiled_honoured = fut.result()
                 _apply_query_result(conn, cfg, icp, run_id, q, pq, listings, status, tiled_honoured, ctx)
                 done_count += 1
-                emit_progress("discover", done_count, len(queue), f"{ctx['processed']} unique leads so far")
+                progress_in_pool(ex, "discover", done_count, len(queue), f"{ctx['processed']} unique leads so far")
                 submit_next()
 
         if qi_submit < len(queue) and ctx["processed"] >= ctx["hard_cap"]:
@@ -466,6 +468,8 @@ def run_pipeline(cfg: Config, icp: ICP, icp_path: Path, resume: bool = False,
         stage = "enriched"
         db.set_stage(conn, run_id, "enriched", **ecounts)
 
+    check_stop()   # a window run asked to stop: between stages, the stage already saved
+
     # DM gate — autopilot continues into unattended labeling; otherwise the original agent pause
     if stage == "enriched":
         pending = len(db.dm_pending(conn, 10_000))
@@ -511,6 +515,7 @@ def run_pipeline(cfg: Config, icp: ICP, icp_path: Path, resume: bool = False,
     elif stage == "dm_pending" and skip_dm:
         stage = "scoring"
 
+    check_stop()
     # SCORE
     if stage in ("scoring", "enriched"):
         from leadforge.score import score_run
@@ -518,6 +523,7 @@ def run_pipeline(cfg: Config, icp: ICP, icp_path: Path, resume: bool = False,
         db.set_stage(conn, run_id, "scored", **scounts)
         stage = "scored"
 
+    check_stop()
     # DRAFT (autopilot only; re-entered idempotently on resume — auto_draft skips targets already
     # drafted). Lazy-imported below; degrades to a skip warning rather than block export when
     # draft.service (or the agent runner) fails to import or start in this environment.
@@ -542,6 +548,7 @@ def run_pipeline(cfg: Config, icp: ICP, icp_path: Path, resume: bool = False,
                      draft_author=dcounts.get("author", "none"))
         stage = "scored"
 
+    check_stop()
     # EXPORT
     if stage == "scored":
         from leadforge.export import export_run, summarize_for_digest, top_hooks
