@@ -179,7 +179,7 @@ def _apply_query_result(conn, cfg: Config, icp: ICP, run_id: str, q, pq, listing
             getattr(sys.modules.get(cls_.__module__), "enrich_for", None) if cls_ else None)  # module-level fallback
         if enrich_fn:
             biz.enrich.update(enrich_fn(raw.data))
-        if db.is_suppressed(conn, biz.domain, biz.place_id):
+        if db.is_suppressed(conn, biz.domain, biz.place_id, biz.name):   # a business forgotten by name is not collected again
             continue
         _bid, created = db.upsert_business(conn, biz)
         per_query_new += int(created)
