@@ -318,6 +318,27 @@ CHECK PASS sha=740433a tree=dirty steps=6 skipped=0 secs=264
 `gitleaks` on every commit of the branch (`gitleaks detect --log-opts="origin/master..HEAD"`): no leaks (after the rewrite noted in
 item 2). `python .github/scripts/check_versions.py`: all six copies `0.7.3` (unchanged, as the correction asks).
 
+## Hosted CI
+
+PR 11, commit f7c2f75 (the last commit with code and tests), run 43174815361 (`pull_request`): conclusion `success`, 13 of 13 jobs:
+```
+Version strings agree: success
+fake campaign · windows-latest: success
+claude plugin validate: success
+windows-latest · py3.12: success
+fake campaign · ubuntu-latest: success
+ubuntu-latest · py3.14: success
+ubuntu-latest · py3.13: success
+Validate plugin manifests: success
+windows-latest · py3.14: success
+ubuntu-latest · py3.12: success
+windows-latest · py3.11: success
+ubuntu-latest · py3.11: success
+windows-latest · py3.13: success
+```
+Both campaign jobs' logs: `fake-key scan: clean (27 files: ...)` and `PASS - result equals tests/fixtures/e2e/expected.json (21
+refused-call entries, as saved)`. On Ubuntu the shim test (item 4) is skipped by design (Windows only).
+
 ## Plan and code disagree
 
 None. `registry.py:207` held the token in `params` as the plan says. Two notes that are not disagreements: the plan's pass line "the
