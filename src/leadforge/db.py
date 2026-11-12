@@ -16,7 +16,9 @@ so an exported sheet can show provenance for a draft nobody reviewed with an LLM
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
+import tempfile
 from pathlib import Path
 
 from leadforge.models import Business, Contact, EnrichmentObservation, Evidence, Person, Score
@@ -146,7 +148,72 @@ CREATE TABLE IF NOT EXISTS outcomes (
 );
 """
 
+def _version_of(conn: sqlite3.Connection) -> tuple[bool, str | None]:
+    """(file holds any table, the stored schema_version text or None). Reads only."""
+    names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if not names:
+        return False, None
+    if "meta" not in names:
+        return True, None
+    row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+    return True, (None if row is None else str(row[0]))
+
+
+def peek_schema_version(db_path: Path) -> tuple[bool, str | None]:
+    """Read the stored schema version without changing one byte of the workspace (L6, ADOPT risk 11).
+
+    `?immutable=1` takes no lock and writes no `-shm`/`-wal`, but it also ignores a `-wal` file; so when a non-empty
+    one sits beside the database the file and its side files are copied to a temp folder and read there."""
+    db_path = Path(db_path)
+    wal = db_path.with_name(db_path.name + "-wal")
+    try:
+        if wal.exists() and wal.stat().st_size > 0:
+            with tempfile.TemporaryDirectory(prefix="lf-peek-") as td:
+                copy = Path(td) / "db.sqlite3"
+                for src in (db_path, wal, db_path.with_name(db_path.name + "-shm")):
+                    if src.exists():
+                        shutil.copyfile(src, Path(td) / src.name.replace(db_path.name, "db.sqlite3"))
+                conn = sqlite3.connect(copy)
+                try:
+                    return _version_of(conn)
+                finally:
+                    conn.close()
+        conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?immutable=1", uri=True)
+        try:
+            return _version_of(conn)
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError as e:
+        raise InputError(f"{db_path.name} is not a database this LeadForge can read ({e}); nothing was changed.") from e
+
+
+def check_schema_before_write(db_path: Path) -> None:
+    """Refuse a workspace of another schema before anything is written to it. A missing or empty file, or one
+    with no table, is new and passes."""
+    db_path = Path(db_path)
+    if not db_path.exists() or db_path.stat().st_size == 0:
+        return
+    has_tables, version = peek_schema_version(db_path)
+    if not has_tables:
+        return
+    if version is None:
+        raise InputError(f"{db_path.name} holds tables but no schema version, so it cannot be told which LeadForge "
+                         "made it; it was not opened for writing and nothing was changed.")
+    try:
+        number = int(version)
+    except ValueError:
+        number = None
+    if number != SCHEMA_VERSION:
+        raise InputError(
+            f"this database was created by an older LeadForge (schema_version={version}, "
+            f"current is {SCHEMA_VERSION}). Old workspaces are read-only statistics, not "
+            "auto-upgraded — start a new workspace for a live run, or query this one directly "
+            "for historical numbers. Nothing was changed."
+        )
+
+
 def connect(db_path: Path) -> sqlite3.Connection:
+    check_schema_before_write(db_path)  # first: the refusal must not have written anything
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")

@@ -43,11 +43,20 @@ class ProviderDegraded(Exception):
 
 
 # --- logging --------------------------------------------------------------------------------
+class _LazyFileHandler(RotatingFileHandler):
+    """The log folder and file appear at the first record, not at start-up: a command that is refused (an old
+    workspace) must leave the workspace as it found it (L6)."""
+
+    def _open(self):
+        Path(self.baseFilename).parent.mkdir(parents=True, exist_ok=True)
+        return super()._open()
+
+
 def setup_logging(logs_dir: Path, verbose: bool = False) -> None:
     if LOG.handlers:
         return
     LOG.setLevel(logging.DEBUG)
-    fh = RotatingFileHandler(logs_dir / "leadforge.log", maxBytes=5_000_000, backupCount=3, encoding="utf-8")
+    fh = _LazyFileHandler(logs_dir / "leadforge.log", maxBytes=5_000_000, backupCount=3, encoding="utf-8", delay=True)
     fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
     fh.setLevel(logging.DEBUG if verbose else logging.INFO)
     LOG.addHandler(fh)

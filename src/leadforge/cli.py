@@ -50,7 +50,7 @@ def _root(
         ctx.obj = {"cfg": None, "json_only": json_only,
                    "cfg_error": f"leadforge.yaml invalid: {type(e).__name__}: {str(e)[:100]}"}
         return
-    setup_logging(cfg.logs_dir, verbose=verbose)
+    setup_logging(Path(cfg.workspace) / cfg.data_dir / "logs", verbose=verbose)  # not cfg.logs_dir: that creates the folder
     ctx.obj = {"cfg": cfg, "json_only": json_only}
 
 

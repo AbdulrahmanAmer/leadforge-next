@@ -93,3 +93,12 @@ was opened for writing: no `PRAGMA journal_mode=WAL`, no `-wal`/`-shm`, no creat
 that check either: the log file and the log folder are created at the first log record, not at start-up (`util.setup_logging`).
 **Pass line:** a workspace of schema 4 with rows, in WAL mode with a live `-wal`, refused by `status`, `suppress list`, `run`, `export`, `forget` and
 `purge`; the SHA-256 of every file under the workspace and the list of files are equal before and after.
+
+**Check by reading, after.** `db.connect` now calls `check_schema_before_write` first (db.py); `peek_schema_version` opens `?immutable=1`, or a temp copy
+when a non-empty `-wal` exists, and `_version_of` only runs `SELECT`s. New file / zero bytes / no table: passes. Tables without a version row, a
+non-integer or a different version: `InputError`, before `PRAGMA journal_mode=WAL` and before `_DDL`. `migrate` keeps its own check (second line of
+defence for a caller that bypasses `connect`). `util.setup_logging` uses a handler that makes the folder and file at the first record (`delay=True`);
+`cli._root` no longer touches `cfg.logs_dir` (that property creates the folder).
+**Seen red first (right reasons).** Before the change: `db.sqlite3-wal` and `db.sqlite3-shm` appeared, the `-shm` hash changed, the DDL raised
+`no such column: domain` on a file with tables and no version; after the DB fix alone, `leadforge_data/logs/leadforge.log` (empty) appeared. With the
+temp-copy branch disabled the live-`-wal` case fails (an immutable read ignores the log), restored.
