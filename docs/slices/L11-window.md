@@ -3,7 +3,9 @@
 ## Starting list
 - From L10: the shell (`app/src-tauri`, PR 11's branch `slice/L10-shell`, install proven with a normal token at ee17ca4) and the
   screens (`app/ui`, branch `slice/L10-ui` at 5e341be). This branch merges both on top of `master`; the only conflict was the
-  changelog's Unreleased block (both lines kept).
+  changelog's Unreleased block (both lines kept). `master` moved to 0.8.0 (the delete side, ece4c8d) during the build and was merged
+  in (changelog only); the window's crate follows the engine's version (`Cargo.toml` 0.8.0, `tests/version_agrees.rs`), and the
+  bundled engine was rebuilt at 0.8.0.
 - The seam (agreed for the engine side, built on the other laptop): one command group `leadforge window <name>`; one JSON document
   on stdin (the arguments object, `{}` when none); one JSON document on stdout and exit 0; on an error a non-zero exit and
   `{"kind","message","details":[...],"next":null|string}` on stdout; nothing else on stdout, logs on stderr; arguments never in
@@ -143,21 +145,24 @@ Not watched failing (carried over).
 
 Under the `heavy` lock, measured by `packaging/run-measured.ps1` (after `npm ci --ignore-scripts` of the Tauri CLI, 2 packages):
 `node_modules\@tauri-apps\cli\tauri.js build --config tauri.bundle.conf.json --bundles nsis -- --locked`
+First build (0.7.3): `exit 0; duration 169 s; peak working set of the build's process tree 816 MB` (with the screens' Vite build
+run by `beforeBuildCommand`: `dist/assets/index-Dtgfbd67.js 291.63 kB`). After the merge of `master` 0.8.0 and the engine rebuilt
+by `packaging/build-engine-embed.ps1` (`leadforge 0.8.0`), and a fix to the log (two threads could interleave inside one line:
+`... dropped=01794471459 leadforge-core: cmd=run_stop ...`; now one write per line), the last build:
 ```
-exit 0; duration 169 s; peak working set of the build's process tree 816 MB; free RAM before 2569 MB
-dist/assets/index-Dtgfbd67.js   291.63 kB │ gzip: 89.75 kB          (the screens' Vite build, run by beforeBuildCommand)
-    Finished `release` profile [optimized] target(s) in 1m 21s
-        D:\LeadForge\wt\target\release\bundle\nsis\LeadForge_0.7.3_x64-setup.exe (34.75 MiB)
+exit 0; duration 151 s; peak working set of the build's process tree 814 MB; free RAM before 1930 MB
+        D:\LeadForge\wt\target\release\bundle\nsis\LeadForge_0.8.0_x64-setup.exe (34.78 MiB)
 ```
-(the release dependencies were already built in the shared target folder by L10; a cold build took 404 s and 2,399 MB there.)
-The engine is L10's embeddable Python build, copied from `D:\LeadForge\wt\shell\build\engine-embed` (same lock, same engine
-0.7.3), plus the stand-in as `engine/standin/`. The release app from `target\release` (resources beside it) passed the same
-self-test on the bundled engine: every command `origin=bundled`, 10 of 10 pictures in `window-shots\release\`, probe clean,
-`SELFTEST PASS`. (Its Keys step saved nothing: the workspace kept the earlier run's state, both keys already saved.)
+sha256 `0d9863773390ecfe3d282dac540fe49b3a99982917b6361cf4960777d010807b`. (The release dependencies were already built in the
+shared target folder by L10; the cold build there took 404 s and 2,399 MB.) The release app from `target\release` (resources
+beside it) passed the same self-test on the bundled engine 0.8.0 and the bundled stand-in: every command `origin=bundled`, the
+log lines whole, 10 of 10 pictures in `window-shots\release\`, `selftest: probe "{\"violations\":[],\"errors\":[]}"`,
+`key marker in this run's log: False`, `SELFTEST PASS`. (Its Keys step saved nothing: the workspace kept an earlier run's state,
+both keys already saved; the debug run above saved one.)
 
 **The install: for the coordinator to run** (this session is elevated; the script refuses an elevated shell, seen:
 `REFUSED: this PowerShell is elevated; open an ordinary one`). From an ordinary PowerShell:
-`powershell -NoProfile -ExecutionPolicy Bypass -File D:\LeadForge\wt\window\app\src-tauri\packaging\install-proof.ps1 -Setup D:\LeadForge\wt\target\release\bundle\nsis\LeadForge_0.7.3_x64-setup.exe`
+`powershell -NoProfile -ExecutionPolicy Bypass -File D:\LeadForge\wt\window\app\src-tauri\packaging\install-proof.ps1 -Setup D:\LeadForge\wt\target\release\bundle\nsis\LeadForge_0.8.0_x64-setup.exe`
 It installs to `D:\Temp\lf-install\LeadForge` with `/S /NS`, runs the installed app's self-test (a window for about 40 s; its
 smoke step of L10 is replaced, since `engine_version` is gone), uninstalls, and prints `PASS` only if the self-test passed and no
 process or file is left in `D:\Temp\lf-install`.

@@ -78,7 +78,8 @@ impl Core {
         let path = self.log.lock().ok().and_then(|p| p.clone());
         if let Some(path) = path {
             if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
-                let _ = writeln!(f, "{line}");
+                // one write per line: two threads logging at once must not interleave inside a line
+                let _ = f.write_all(format!("{line}\n").as_bytes());
             }
         }
     }
