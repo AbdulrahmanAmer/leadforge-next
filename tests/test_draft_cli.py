@@ -41,7 +41,7 @@ def _seed(tmp_path, *, business=None, person=None, contact=None, tier="A", ident
     conn = db.connect(cfg.db_path)
     rid = db.create_run(conn, "icp.yaml", "h")
     base = dict(id="b1", name="Acme Garage", category="Car repair", address_city="Leeds",
-               source="gosom", dedupe_key="dk-b1")
+               source="fakelist", dedupe_key="dk-b1")
     base.update(business or {})
     db.upsert_business(conn, Business(**base))
     if person:

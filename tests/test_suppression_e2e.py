@@ -13,18 +13,18 @@ def patched(monkeypatch):
 
     def fake_fetch(self, query, limit=None):
         return [
-            RawListing(provider="gosom", fetched_at=now_iso(), data={
+            RawListing(provider="fakelist", fetched_at=now_iso(), data={
                 "title": "Blocked Garage", "address": "1 A St, Houston, TX 77001",
                 "phone": "713-555-0100", "web_site": "http://blocked-garage.test",
                 "review_rating": "4.0", "review_count": "20", "place_id": "PID_BLOCK"}),
-            RawListing(provider="gosom", fetched_at=now_iso(), data={
+            RawListing(provider="fakelist", fetched_at=now_iso(), data={
                 "title": "Kept Garage", "address": "2 B St, Houston, TX 77002",
                 "phone": "713-555-0200", "web_site": "http://kept-garage.test",
                 "review_rating": "4.5", "review_count": "30", "place_id": "PID_KEEP"}),
         ]
 
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.available", lambda self: (True, "mock"))
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.fetch", fake_fetch)
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.available", lambda self: (True, "mock"))
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.fetch", fake_fetch)
     from leadforge.enrich.crawler import CrawlResult, Page, SiteCrawler
     monkeypatch.setattr(SiteCrawler, "crawl", lambda self, website: CrawlResult(
         ok=True, pages=[Page(website, "<html><body>hi</body></html>", "hi")], signals={"https": True}))

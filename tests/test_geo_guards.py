@@ -217,9 +217,9 @@ def test_max_leads_is_a_hard_stop(cfg, sample_icp, monkeypatch, tmp_path):
     from leadforge.models import RawListing
     from leadforge.util import now_iso
     monkeypatch.setattr("leadforge.pipeline.ensure_ready", lambda c: None)
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.available", lambda self: (True, "mock"))
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.fetch", lambda self, q, limit=None: [
-        RawListing(provider="gosom", fetched_at=now_iso(), data={
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.available", lambda self: (True, "mock"))
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.fetch", lambda self, q, limit=None: [
+        RawListing(provider="fakelist", fetched_at=now_iso(), data={
             "title": f"Shop {i}", "address": f"{i} A St, Houston, TX 77001",
             "phone": f"713-555-0{i:03d}", "place_id": f"PID_{i}"}) for i in range(10)])
     sample_icp.caps.max_leads = 3
@@ -241,10 +241,10 @@ def test_duplicate_listings_do_not_consume_max_leads(cfg, sample_icp, monkeypatc
     from leadforge.models import RawListing
     from leadforge.util import now_iso
     monkeypatch.setattr("leadforge.pipeline.ensure_ready", lambda c: None)
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.available", lambda self: (True, "mock"))
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.available", lambda self: (True, "mock"))
     # every query returns the SAME 5 businesses -> duplicates across queries
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.fetch", lambda self, q, limit=None: [
-        RawListing(provider="gosom", fetched_at=now_iso(), data={
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.fetch", lambda self, q, limit=None: [
+        RawListing(provider="fakelist", fetched_at=now_iso(), data={
             "title": f"Shop {i}", "address": f"{i} A St, Houston, TX 77001",
             "phone": f"713-555-0{i:03d}", "place_id": f"PID_{i}"}) for i in range(5)])
     sample_icp.caps.max_leads = 8

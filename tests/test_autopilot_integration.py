@@ -36,7 +36,7 @@ def _seed_discovery(conn, cfg, sample_icp, run_id):
     """Insert a minimal discovered business that will pass through enrich -> DM -> draft."""
     from leadforge.normalize import to_business
     biz = to_business(
-        RawListing(provider="gosom", fetched_at=now_iso(), data={
+        RawListing(provider="fakelist", fetched_at=now_iso(), data={
             "title": "Alpha Auto Repair",
             "category": "auto repair shop",
             "address": "1 A St, Houston, TX 77001",
@@ -65,7 +65,7 @@ def patched(monkeypatch):
 
     def fake_fetch(self, query, limit=None):
         return [
-            RawListing(provider="gosom", fetched_at=now_iso(), data={
+            RawListing(provider="fakelist", fetched_at=now_iso(), data={
                 "title": "Alpha Auto Repair", "category": "auto repair shop",
                 "address": "1 A St, Houston, TX 77001",
                 "complete_address": {"street": "1 A St", "city": "Houston", "state": "TX",
@@ -75,8 +75,8 @@ def patched(monkeypatch):
             }),
         ]
 
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.available", fake_available)
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.fetch", fake_fetch)
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.available", fake_available)
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.fetch", fake_fetch)
 
     # 3) crawler: a reachable site with an owner + email
     from leadforge.enrich.crawler import CrawlResult, Page, SiteCrawler
@@ -182,7 +182,7 @@ def test_draft_retry_includes_rejected_attempt_context(cfg, sample_icp, tmp_path
     from leadforge.models import Business, Person
     biz_id = "retry_biz"
     db.upsert_business(conn, Business(id=biz_id, name="Retry Biz", name_norm="retry biz",
-                                      dedupe_key="dk:retry_biz", source="gosom"))
+                                      dedupe_key="dk:retry_biz", source="fakelist"))
     db.add_person(conn, Person(business_id=biz_id, name="Jane Smith", title="Owner",
                                snippet="Jane Smith founded the shop."))
 
@@ -239,11 +239,11 @@ def test_auto_label_fallback_to_heuristics_on_runner_failure(cfg, sample_icp):
     # Seed: one that heuristic CAN resolve, one it CAN'T
     from leadforge.models import Business, Person
     db.upsert_business(conn, Business(id="biz_heuristic", name="Heuristic Biz", name_norm="heuristic biz",
-                                      dedupe_key="dk:heuristic", source="gosom"))
+                                      dedupe_key="dk:heuristic", source="fakelist"))
     db.add_person(conn, Person(business_id="biz_heuristic", name="Jane Smith", title="Owner",
                                snippet="Jane Smith founded the shop."))
     db.upsert_business(conn, Business(id="biz_unlabeled", name="Unlabeled Biz", name_norm="unlabeled biz",
-                                      dedupe_key="dk:unlabeled", source="gosom"))
+                                      dedupe_key="dk:unlabeled", source="fakelist"))
     db.add_person(conn, Person(business_id="biz_unlabeled", name="X", title="Mechanic",
                                snippet="Just a mechanic."))
 
@@ -281,7 +281,7 @@ def test_auto_draft_fallback_to_templates_on_runner_failure(cfg, sample_icp, mon
     from leadforge.models import Business
     bid, created = db.upsert_business(conn, Business(id="template_fallback_biz", name="Template Biz",
                                           name_norm="template biz", dedupe_key="dk:template",
-                                          source="gosom", domain="template-biz.test",
+                                          source="fakelist", domain="template-biz.test",
                                           website="http://template-biz.test"))
 
     # Add a score so ensure_targets will pick it up
@@ -389,7 +389,7 @@ def test_auto_label_agent_failed_caught_and_fallback(cfg, sample_icp):
 
     from leadforge.models import Business, Person
     db.upsert_business(conn, Business(id="biz_fail", name="Fail Biz", name_norm="fail biz",
-                                      dedupe_key="dk:fail", source="gosom"))
+                                      dedupe_key="dk:fail", source="fakelist"))
     db.add_person(conn, Person(business_id="biz_fail", name="Jane Smith", title="Owner",
                                snippet="Jane Smith founded the shop."))
 

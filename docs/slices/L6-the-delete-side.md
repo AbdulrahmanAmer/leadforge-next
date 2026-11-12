@@ -1,0 +1,540 @@
+# L6 The delete side (C4 to C7)
+
+# Spec
+
+Quoted, not reworded. Sources: `L4-ONWARD.md` (the plan) and `LEADFORGE-ADOPTION.md` (ADOPT), as read by run `l6-build` on 2026-11-12.
+
+## The plan's paragraph (L4-ONWARD.md, section 2)
+
+> **L6 The delete side (C4 to C7).** As ADOPT row L3a: the `first_run_id` count first; the schema version read before any write; `forget`,
+> `purge` with its three protections, raw scrapes not kept, a suppressed address in no export; the mutation trial result written down. Leaves out:
+> the window (L11). Pass lines: ADOPT's C4 to C7 tests (planted person in eight places, byte scan finds nothing); a refused old workspace is
+> byte-for-byte unchanged (hash before and after); the first run after the upgrade deletes nothing; G2 still matches. Fakes: injected clock;
+> fixture workspaces of invented people. Risk: a purge bug deletes an upgrading user's data with no undo; hence report-only first run and the
+> half-workspace stop, each with its own test. Size: 14 h.
+
+## Gate row G2 (L4-ONWARD.md, section 1)
+
+> - G2 Fake campaign [brief; ADOPT section 3]. `python scripts/e2e_fake_campaign.py` on both runners: new campaign file, discovery from the two UK
+>   registers and a user list (recorded fixtures of invented data), enrichment against a loopback server of invented `.example` sites, scoring,
+>   export of the four tabs, CSV and `report.json`. Every socket to a non-loopback address is refused inside the run; one attempted outside call fails it.
+>   The digest and sheet match the goldens.
+
+## ADOPT section 5, rows C4 to C7
+
+| # | Requirement | Today | Task | Test (a planted bad case) | Slice |
+|---|---|---|---|---|---|
+| C4 | A person can be forgotten | none | `forget <email, domain or name>`: removes them from every table, the cache, the logs, the progress file, the outbox and inbox, the hand-off files (`dm_batch*`, `dm_labels*`), the draft packets and the sheets in the tool's own `exports` folder; adds a suppression row; then cleans the database file so the rows do not stay readable inside it; says plainly that sheets already handed out cannot be reached | a planted person sits in eight places; afterwards a byte scan of the database file, its side files and the data folder finds nothing; a new run does not collect them again | L3a |
+| C5 | Data is not kept without limit | a "Stale?" flag only | A business and everything attached to it expires 12 months after the business first entered the workspace. A refresh does not renew. `purge` runs at the start of every `run`, with three protections: the first run after the upgrade only reports; every run prints how many records expire in the next 30 days; an automatic purge never deletes more than half a workspace, it stops and names the explicit command. `purge --everything` deletes the files without opening the database, so it works on a workspace of any age. The user can shorten the period | a 13-month record is gone, an 11-month one stays, a refreshed 13-month one is still gone; the first run after the upgrade deletes nothing; a clock set a year ahead deletes nothing and stops; an old-format workspace is wiped | L3a |
+| C6 | Raw scrapes with reviewers' names are not kept | kept for good | Raw scraper output is deleted once parsed (or cut down to business facts, if resuming needs it) | after a fixture run, a file scan finds no reviewer name | L3a |
+| C7 | An objection is absolute | address still in the sheet | A suppressed address is absent from every export and every tab | a planted suppressed email is in no output file | L3a |
+
+## ADOPT section 9, row L3a
+
+| Slice | What it does | Proof (each can fail) | Marks | Size |
+|---|---|---|---|---|
+| **L3a The delete side** (0.8.0) | First step, before any code: does every way of adding a business set `first_run_id`? Count the empty ones on fixtures. (A later merge never changes it: `db.py:362-408`, checked.) If all paths set it: no change to the tables. If not: set it at insert from now on, and treat an empty one as the workspace's first run. A new table, if one is ever needed, is created by the existing create-if-missing script and needs no version change. Then: the version is read before anything is written; C4, C5, C6, C7 | The tests of C4 to C7. An existing workspace still opens after the upgrade. A refused old workspace is byte-for-byte unchanged. Goldens change only where the slice says so, each change listed. The Python mutation trial runs on these modules and its keep-or-cut result is written down. **Undo is not complete:** a revert brings the code back, not records a purge deleted. That is why the first run only reports | guardrail; **owner's word** (it deletes users' data) | about 1,300 lines; 2 days |
+
+## ADOPT section 4, risks 2, 9 and 11
+
+| 1 | **Autopilot.** LeadForge starts the operator's `claude -p` with scraped text in the prompt. Nothing limits its tools. Hooks are switched off for that call, which also switches off the shell guard of the new setup. It runs in the workspace folder and inherits every environment variable; on the other laptop those include two master keys (F12). The prompt says "do not use any tools"; nothing enforces it. Even without bypass mode, a `-p` run may read files in its folder without asking, and `leadforge.yaml` there holds keys in plain text. Whether bypass mode applies to a `-p` run is not clear on the vendor's page: likely, not proven | `agent_runner.py:79-90`, `155-172` (checked) | L2 |
+
+| 9 | **An email opt-out does not hide the address.** The suppression check only feeds the "eligible" label; the row and its address still print | `export.py:310-314` (checked) | L3a |
+
+| 11 | **The schema refuses any other version, and writes before it checks.** A change to the tables locks every existing workspace out, and a workspace the tool cannot open is one it cannot purge. On every open it switches the file to WAL mode and creates missing tables first, and only then reads the version. So even a refused old workspace is written to | `db.py:25`, `149-177` (checked) | L3a, first step |
+
+
+# Build (0.8.0)
+
+Run `l6-build`, 2026-11-12, one builder, no helpers. Per item: what the change must do, written before the code; the check of the code against that
+text by reading, after it. Tests are one per pass line; each was seen failing for the right reason before the line is claimed (the delete commands
+also have the "what must stay" test). Clock: every age is computed from a `now` argument (`retention.py`), never from `time.sleep`; the CLI takes
+it from one function, `leadforge.util.utcnow()`, which tests patch.
+
+## Item 1 — the `first_run_id` count (before any code)
+
+**Question.** Does every way of adding a business set `first_run_id`?
+
+**Ways of adding a business, read from the code (not from the fixtures).** `INSERT INTO businesses` exists in exactly one place,
+`db.upsert_business` (db.py, the `existing is None` branch). It has exactly one production caller, `pipeline._apply_query_result`
+(pipeline.py), which feeds it `normalize.to_business(raw, run_id, ...)`; that sets `first_run_id=run_id` (normalize.py). Every provider
+(Maps list, the Maps scraper helper, DVSA, Companies House, the user list) reaches the database only through that call. `run_id` there is the id
+of a row `db.create_run` wrote into `runs` first. No other statement inserts into `businesses` (`grep -rn "INSERT INTO businesses\|INSERT OR.*businesses"`).
+A merge (`upsert_business` merge branch, `merge_business_into`, `merge_phone_duplicates`) never writes `first_run_id`: a merged row keeps the
+keeper's value (the keeper is the Maps row, which can be younger than the register row folded into it: see "Decisions").
+
+Measured on the invented workspaces (read-only SQL, `first_run_id IS NULL OR = ''`):
+- fake campaign workspace (`scripts/e2e_fake_campaign.py`, sources `gosom` 7 and `dvsa` 3): **0 of 10** empty; 0 name a run that is not in `runs`.
+- `tests/golden/workspace_current.sqlite3`: **1 of 1** empty. That row is not a way the product adds a business: `tests/fixtures/make_workspace_golden.py`
+  calls `db.upsert_business` with a `Business(...)` that carries no `first_run_id`. It shows `upsert_business` itself accepts none.
+
+**Answer.** Ways of adding a business that leave `first_run_id` empty in the product: **0**. All paths set it, so, as the adoption row says, no change to
+the tables. Because `upsert_business` accepts an empty one (fixtures, a database written by other tooling), the expiry rule treats an empty or
+dangling `first_run_id` as "the workspace's first run" (the earliest `runs.started_at`), the row's own wording; with no run at all nothing is old
+enough to expire. No "plan and code disagree" entry from this item; C5 is not held back.
+
+**Baseline of the fake campaign (G2) before any change, on this laptop, at 1050687.** `python scripts/e2e_fake_campaign.py` (below-normal priority):
+```
+FAIL - differs from expected.json in: refused  (full result: D:\homelab-work\l6\baseline\run1\result.json)
+  .refused: expected 21 entries, got 20
+```
+The only difference is one entry fewer of `["sendto", "1.1.1.1", 53, "dns"]` (9 against 10): the number of DNS retries the email-validity step makes
+inside the resolver's time limit, which depends on timing and on this laptop's resolver (94.140.14.14, not the one in the saved result). It does not
+come from this slice. Rule for item 8: the final run is compared cell by cell with this baseline `result.json`; every cell other than that count must be equal.
+
+## Item 2 — the schema version is read before any write
+
+**Must do (written before the code).** Opening a workspace database (`db.connect`) reads `meta.schema_version` first, from a read-only view that
+cannot change one byte: `?immutable=1` when no non-empty `-wal` file exists; when one exists, from a throw-away copy of the file and its side files
+in a temp folder (an immutable open would ignore the log). Only after that: a file that does not exist or holds no table is new, so `connect`
+proceeds as today (WAL, create tables, stamp). A version equal to `SCHEMA_VERSION` proceeds as today. Any other version, a non-integer, a file
+that holds tables but no version row, or a file SQLite cannot read: `InputError` (exit 4, the message of today for the version case), and nothing
+was opened for writing: no `PRAGMA journal_mode=WAL`, no `-wal`/`-shm`, no create-if-missing. The CLI must not write into the workspace before
+that check either: the log file and the log folder are created at the first log record, not at start-up (`util.setup_logging`).
+**Pass line:** a workspace of schema 4 with rows, in WAL mode with a live `-wal`, refused by `status`, `suppress list`, `run`, `export`, `forget` and
+`purge`; the SHA-256 of every file under the workspace and the list of files are equal before and after.
+
+**Check by reading, after.** `db.connect` now calls `check_schema_before_write` first (db.py); `peek_schema_version` opens `?immutable=1`, or a temp copy
+when a non-empty `-wal` exists, and `_version_of` only runs `SELECT`s. New file / zero bytes / no table: passes. Tables without a version row, a
+non-integer or a different version: `InputError`, before `PRAGMA journal_mode=WAL` and before `_DDL`. `migrate` keeps its own check (second line of
+defence for a caller that bypasses `connect`). `util.setup_logging` uses a handler that makes the folder and file at the first record (`delay=True`);
+`cli._root` no longer touches `cfg.logs_dir` (that property creates the folder).
+**Seen red first (right reasons).** Before the change: `db.sqlite3-wal` and `db.sqlite3-shm` appeared, the `-shm` hash changed, the DDL raised
+`no such column: domain` on a file with tables and no version; after the DB fix alone, `leadforge_data/logs/leadforge.log` (empty) appeared. With the
+temp-copy branch disabled the live-`-wal` case fails (an immutable read ignores the log), restored.
+
+## Items 3 and 4 — `forget` (C4) and `purge` (C5): what each must do (written before the code)
+
+Where a person's detail can land (read from the code; the plan counts eight): 1 the database tables (`people`, `contacts`, `evidence`,
+`enrichment_observations`, `outcomes`, `messages`, `events`, `outreach_targets`, `scores`, `businesses.enrich_json` and the business's own name,
+address and web columns); 2 the cache (`gosom_*.json`, `geocode.json`, the DVSA register copy); 3 the logs (`leadforge.log` and its 3 rotated
+copies, `agent_runner.log`, `<run>.detach.log`); 4 the progress feed (`progress.jsonl`, `pace.json`); 5 the outbox (`.eml`) and the inbox (webhook
+spool `.json`); 6 the hand-off files in the workspace folder (`dm_batch*`, `dm_labels*`); 7 the draft packets (`drafts_packets*.ndjson`, `drafts/*.txt`);
+8 the sheets in the tool's own `exports` folder (`.xlsx`, `.csv`, `report.json`). The database file itself also keeps deleted rows readable
+until it is rewritten (free pages, `-wal`).
+
+**`leadforge forget <email | domain | name>`.** The value is classified: contains `@` = email; no space and a dot = domain; else a name. The match is
+case-insensitive with word edges (an email does not match inside a longer address, a name not inside a longer word); in JSON text the
+escaped spelling is tried too.
+- Database: every row that holds the value in a scanned column is deleted (people, contacts, evidence, observations, outcomes, messages, events,
+  scores, targets), together with what hangs on it (a deleted person takes their observations, a deleted contact takes its outcomes, targets and
+  messages). A business whose own name, address or web columns hold the value (a sole trader named after themself; every business at a forgotten
+  domain) is deleted with everything attached. A value found only inside a business's `enrich_json` / `hours_json` is replaced there by
+  `[forgotten]`. Not touched: the user's own `sending_identities` and `mailboxes`; the `suppression` table, which must keep the identifier or the objection is
+  lost (see "Plan and code disagree").
+- A `suppression` row is added (kind `email`, `domain` or `name`) with a blank reason; `add_contact`, `add_person` and discovery then skip a
+  suppressed email, name or domain, so a new run does not collect them again.
+- Files: under `leadforge_data/` (except `bin/` and the live database) and the hand-off and packet files and `drafts/` of the workspace folder: a
+  line-oriented file (`*.log*`, `*.jsonl`, `*.ndjson`, `*.tsv`) loses the lines that hold the value, every other file that holds it (also inside an
+  `.xlsx`) is deleted. The command lists the files changed and removed by relative path, never their content.
+- Then the database file is cleaned: `secure_delete` on for the deletes, commit, `wal_checkpoint(TRUNCATE)`, `VACUUM`, checkpoint again.
+- It says plainly that sheets already handed out cannot be reached. What must stay: another person's row, line and file are untouched.
+
+**Expiry (`purge`).** Age of a business = now minus the `started_at` of its `first_run_id` run (item 1: empty or dangling = the earliest run; no
+run = no age = never expires). A business expires when that age is 12 calendar months or more (`retention.months`, 1 to 12; the user can shorten,
+not lengthen). A refresh (`last_seen_at`, a merge) never renews. Expiry removes the business and everything attached (same cascade as `forget`).
+Protections of the automatic purge, which runs at the start of every `run` (also `run --detach` and `--resume`):
+1. **First run after the upgrade only reports.** A workspace without the `retention_armed_at` marker in `meta` gets the marker and a report of what *would*
+   expire; nothing is deleted. The explicit command follows the same rule on an unarmed workspace.
+2. **Every run prints how many records expire in the next 30 days** (human line and digest `expiring_30d`).
+3. **Never more than half.** If the expired businesses are more than half of all businesses the automatic purge deletes nothing, the run stops with exit 4,
+   and the message names `leadforge purge --apply` (a clock a year ahead lands here).
+4. **A half-upgraded workspace stops the command.** Before anything is deleted the file is checked against the tables and columns this version expects
+   (read-only); a missing table or column, or an unreadable marker: the command stops, exit 4, the file unchanged.
+`leadforge purge` alone only reports. `purge --apply` is the explicit command (no half limit; same protections 1 and 4). `purge --everything --yes` deletes the
+files of the workspace's own data folder without opening the database (any age, any schema); `bin/` (the pinned helper program) stays.
+Time comes only from `util.utcnow()` and the `now` argument: tests never sleep.
+
+## Item 5 — raw scrapes (C6): what it must do (written before the code)
+The raw file of the Maps scraper (`cache/gosom_*.json`, its `.queries.txt`) is deleted as soon as it was parsed, also when the run stalls and the
+parse salvages part of it, and also when nothing could be parsed. Resuming does not need it: a finished query's listings are already rows in the
+database. Reviewers' own names and review texts are in that file only; the database keeps the staff first names the owner signs with or customers
+credit (business facts the decision-maker step uses).
+
+## Item 6 — a suppressed address is in no export and no tab (C7): what it must do (written before the code)
+`db.contacts_for(..., hide_suppressed=True)` leaves out email contacts that are suppressed; the two readers in `export.py` ask for it, so the Leads tab and CSV
+`Email` and `Email (Inferred)` columns and the Drafts fallback address behave as if the address did not exist. (First version: the filter was always on. See "Findings of the
+one full run".) A last net in `export_run`: any cell of any tab or CSV, and any Drafts-tab
+row, that still holds a suppressed address (a draft body, a `To`) has it replaced by `[suppressed]`, and a Drafts row addressed to it is dropped.
+Domain-suppressed businesses are already out of the sheet (`scores_for_run`); unchanged.
+
+## Items 3 to 6 — check of the code against the text above, by reading (after the code)
+
+- **`forget`** (`retention.py`, `cli.forget`): `make_needle` classifies by `@` / dot-without-space / else, lower-cases an email or domain, builds a
+  pattern with word edges (an address is not matched inside a longer address, a name not inside a longer word) over the raw and the JSON-escaped
+  spelling. `forget_in_database` deletes by `ROW_RULES` and `BUSINESS_IDENTITY`, with dependents in `_delete_everything_on` (person → observations,
+  contact → outcomes, targets → messages → events), redacts `enrich_json`/`hours_json`, adds the suppression row, then `_scrub_database_file`
+  (checkpoint truncate, `VACUUM`) with `secure_delete` on for the deletes. `forget_in_files` walks `leadforge_data/` minus `bin/`, the stamp and the live
+  database, plus the hand-off and packet files and `drafts/` of the workspace folder; line files lose lines, everything else (also a sheet whose text is
+  compressed inside) is deleted. `db.add_contact` returns 0 for a suppressed email, `db.add_person` skips a suppressed name; a domain was already skipped by
+  discovery and enrichment. The value is never printed or logged: the human line and the digest carry kind and counts, the digest lists relative paths.
+- **`purge`**: `classify` ages from `runs.started_at` of `first_run_id` (empty/dangling = earliest run; none = never), `due <= now` expires, `due <= now+30d`
+  counts as soon. `purge()` order: no database → `no_workspace`; `check_schema_before_write` (old schema stops); `schema_gaps` + marker readable (half upgraded
+  stops); marker absent → write it and report only; nothing expired → `nothing`; `auto` and more than half → `stopped_over_half`; else delete and scrub.
+  `cli._start_of_run_purge` runs before `--detach` and before `run_pipeline`, prints the 30-day line to stderr, and puts `purged` and `expiring_30d` in the digest.
+  `purge --everything --yes` never opens the database (the test makes both `db.connect` and `sqlite3.connect` raise).
+- **C6** (`providers/gosom.py`): `fetch` is a wrapper whose `finally` deletes `out_path` and the `.queries.txt` after `_fetch` returned or raised.
+- **C7** (`db.contacts_for(hide_suppressed=True)`, `export.py`): see the item text; the draft columns and the Drafts tab drop a draft whose target contact is suppressed; `_masker` replaces a
+  suppressed address anywhere in any cell, in any case.
+
+## Tests of this slice (each seen failing for the right reason first)
+
+| File | Pass line it carries | Seen red because |
+|---|---|---|
+| `tests/test_l6_schema_first.py` | old workspace refused, every file's hash equal (with and without a live `-wal`); tables without a version refused; new, zero-byte and hollow files open | `-wal`/`-shm` appeared and changed, the DDL ran first, the log file appeared; with the temp-copy branch off the live-`-wal` case failed |
+| `tests/test_l6_forget.py` | C4: planted person in tables, cache, logs (also rotated), progress, outbox, inbox, hand-off files, packets, sheets (`.xlsx` read inside), exports; the scan finds the value only in the suppression row; a bystander's rows, lines and files byte for byte; look-alike address and name stay; not collected again | each of: line-edit off, zip read off, word edges off, suppression off, secure-delete and VACUUM both off made it fail (removing only one of the last two does not: they back each other up) |
+| `tests/test_l6_purge.py` | C5: 13 months gone, 11 stay, refreshed 13 gone; first run only reports; the 30-day line; a clock a year ahead deletes nothing and stops (exit 4; `purge --apply` is what deletes); half-upgraded stops with the file unchanged; old schema refused unchanged; `--everything` without opening the database; period shortened, never lengthened; boundaries | six changes to `retention.py` (first-run report, half rule, half-upgrade check, refresh renews, empty `first_run_id`, 30 days) each failed it |
+| `tests/test_l6_raw_scrapes.py` | C6: raw file gone after parse, after a salvage, after nothing parsed, after a failure that wrote no file; the reviewer's name in no file of the workspace | with the old `fetch` the two raw files stayed |
+| `tests/test_l6_suppressed_export.py` | C7: suppressed address in no file of the export, also inside the sheet; its draft off the sheet; other rows stay; a quoted address masked | the address was in the Leads tab, the Drafts tab and the CSV |
+
+## Plan and code disagree
+
+1. **C4's own two sentences.** The row says `forget` "adds a suppression row", and its test says a byte scan of the database file, its side files and the data
+   folder "finds nothing". A suppression row must hold the identifier, or the objection cannot be honoured on the next run. *Plan:* both. *Code:* the
+   identifier is stored once, in clear, in `suppression` (`db.py`, `db.suppress`); the test proves nothing else holds it (a copy with that row deleted and
+   rewritten has zero hits). Not built: a hashed suppression list (`is_suppressed` and four SQL sub-selects would change). **Owner's decision needed** if
+   "finds nothing" is to be literal.
+2. **"first entered the workspace" (C5).** *Plan:* the 12 months run from when the business first entered. *Code:* `businesses.first_run_id` is the run that created
+   the row it sits in; `db.merge_phone_duplicates` keeps the Maps row and folds the register row into it, so a business first found through a register can carry its
+   younger twin's `first_run_id`. Not changed (the plan says no change to the tables); the expiry can come later than 12 months after the very first sighting in that case.
+3. **G2 is red before this slice on this laptop** (Item 1's baseline): the saved result has 21 refused DNS entries, this laptop produces 20 at 1050687. *Plan:* "the digest
+   and sheet match the goldens". *Code:* the refused list's count depends on DNS retries. Not changed by this slice.
+4. **ADOPT section 3 and SPEC 3.4 name a Linux CI trial of the mutation tool; mutmut does not run on Windows.** A small in-house trial (`scripts/mutation_trial.py`) was run here
+   instead; the Linux CI trial is NOT DONE.
+5. **The plan counts "eight" places; the row lists more** (tables, cache, logs, progress file, outbox and inbox, hand-off files, packets, sheets). The test plants 14 files and a dozen
+   rows and asserts the scan sees the value in at least 12 places before the command and only in the suppression row after.
+
+## Decisions taken on my own
+
+- A stop of the automatic purge for more than half stops the whole `run` (exit 4) and names `purge --apply`; the plan says "it stops and names the explicit command".
+- `leadforge purge` alone only reports and never writes (not even the marker); `--apply` is the explicit command and follows protections 1 and 4 but not 3.
+- Half-upgraded = a table or column this version expects is missing, or the retention marker is unreadable. Checked read-only before connecting.
+- `forget` in an old-schema workspace is refused like every command (nothing changed); `purge --everything --yes` is the way out for such a workspace.
+- Files `forget` and `purge --everything` leave alone: `bin/` and the doctor stamp (not personal data), and anything written outside the data folder by `--out`.
+- Exports: purge does not delete old export folders (C5's row names the business and what is attached); `forget` does remove sheets that hold the person.
+- Sole-trader rule: a business whose name, address or web columns hold the forgotten value is deleted whole. `scores` rows that quote the value are deleted (recomputed by `score`).
+- `retention.months` is 1 to 12 (shorten only); `leadforge.example.yaml` lists it.
+- The log folder and file are created at the first record, so a refused command leaves the workspace unchanged.
+- `uv.lock`'s own entry still says 0.6.14 (an L4 debt that `check_versions.py` does not read); left as is.
+
+## Item 8 — the fake campaign (G2): prediction written before the run
+
+At the end of items 1 to 7, before `scripts/e2e_fake_campaign.py` is run on the finished code. Compared cell by cell with the baseline `result.json` of Item 1 (not with
+`expected.json`, which this laptop already misses by the DNS-retry count).
+- Predicted to move: the count of `["sendto", "1.1.1.1", 53, "dns"]` entries (timing), as in the baseline, in either direction by one or two; nothing else in `refused`.
+- Predicted to move: in the digest of each `run` step that finds an existing database, `counts` gains two keys, `purged` (0) and `expiring_30d` (0), because `run` now
+  starts with the retention check (`cli._start_of_run_purge`). The first `run` step, which creates the database, gets none.
+- Predicted NOT to move: the request log, the four tabs, the CSV, `report.json`, the digest numbers of every other step. A schema is unchanged (SCHEMA_VERSION stays 7, no
+  table or column added), so the workspace golden stays; no `first_run_id` is touched.
+
+## Item 8 — result
+
+`python scripts/e2e_fake_campaign.py` on the finished code (below-normal priority):
+```
+FAIL - differs from expected.json in: steps  (full result: D:\homelab-work\l6\after\run1\result.json)
+.steps[7].digest.counts.expiring_30d: only in got
+.steps[7].digest.counts.purged: only in got
+```
+Exactly the two cells predicted above, and no other cell: this run's `refused` list had the saved 21 entries (the baseline's 20 was therefore timing, not this laptop's resolver:
+it is one run at below-normal priority each, so the DNS-retry count is UNPROVEN as stable on this laptop; plan-and-code-disagree entry 3 stands as "the count varies between runs").
+`tests/fixtures/e2e/expected.json` was changed in those two cells only (`steps[7].digest.counts`: `expiring_30d: 0`, `purged: 0`); the script that did it asserted that, with
+those two cells set, the file equals the run's `result.json` everywhere. G2 on the version-bumped commit is written under "Last gates" below.
+
+## Findings of the one full run (`node check.mjs`, e5e9f86 tree, before the fix below)
+
+```
+FAILED tests/test_golden_contracts.py::test_golden_agent_contract
+FAILED tests/test_outreach_plan.py::test_plan_suppressed_and_already_enrolled_excluded
+FAILED tests/test_outreach_send.py::test_suppressed_address_never_sent_even_if_approved
+3 failed, 877 passed, 7 skipped in 172.56s (0:02:52)
+CHECK FAIL sha=ee5e9f86 tree=clean steps=5 skipped=0 secs=175
+```
+Causes, written before any change:
+1. `test_golden_agent_contract` pins the list of commands; this slice adds `forget` and `purge`. Deliberate: the golden was re-recorded (`LF_UPDATE_GOLDEN=1`, this one
+   test) and its diff is exactly those two names.
+2. and 3. The two outreach tests plan and send to a suppressed address and assert that it is *counted as suppressed* (`excluded.suppressed`, `skipped_suppressed`).
+   My first version of C7 made `db.contacts_for` hide suppressed emails for every reader, so the planner and the sender no longer saw the address and counted it
+   as "no sendable email" instead. The mail was still not sent, but the reason and the counter those guardrail tests pin had changed, and the send-time re-check
+   must keep seeing the address. The wrong side was the code: the filter moved from `contacts_for` (default off) to the export's two calls (`hide_suppressed=True`).
+   The tests were not touched.
+
+## Item 7 — the mutation trial: result
+
+Tool: `scripts/mutation_trial.py` (in-house; changes one thing at a time in a temp copy of the package, never in `src/`; see its docstring). Targets: all of `retention.py`, the new part of
+`db.py` (lines 152-250) and `add_contact`/`add_person` (604-645), `export.py` 92-108 (the masker), `providers/gosom.py` 43-54 (the raw-file wrapper), each against the tests meant to cover it.
+
+| Round | Changes | Killed | Survived | Minutes (this laptop, below-normal priority) |
+|---|---|---|---|---|
+| 1, before the extra tests | 223 | 145 | 78 | 12.2 |
+| 2, after them | 223 | 172 | 51 | 11.4 |
+| 3, lines 55-70 of `retention.py` only | 13 | 12 | 1 | 0.7 |
+
+**Real gaps it found (each now has a test, round 2 and 3 show them killed):** the day of expiry and the 30-day edge were not pinned (`<=` against `<`); "exactly half may go, more
+than half may not" was not pinned; a workspace with no run (no age) was untested; January plus 12 months (the year carry) was untested; the kind of a value (`Cher` is a name, not a domain)
+and the recorded suppression kind were untested; an accented name in its JSON spelling (`ë`) was untested; a look-alike address after a dot was untested; remaining lines of a line
+file lost their line ends unnoticed (`keepends`); the reported file lists were unchecked; `--everything` did not check empty folders or its count; an empty file with no table (not zero bytes)
+was untested; `missing_ok=False` in the raw-file clean-up would have hidden the scraper's own error behind a `FileNotFoundError`.
+
+**The 51 that remain, read one by one:** equivalent or outside this slice's code. The two disk-rewrite steps (`secure_delete` and the checkpoint + `VACUUM`) back each other, so removing either alone
+changes nothing observable (removing both fails the test, shown earlier); chunk sizes 500 against 501 and `1 -> 2` in counters; `close()` of a log handler (needed on Windows for a file this
+process holds open: UNPROVEN, no test holds a log file open in the same process); dedupe guards in `candidate_files` (a directory or a duplicate is caught by the `OSError` handler);
+`rollback` on an error path; `text.lower()` (the pattern is case-insensitive and `suppress` lower-cases); the `frozen=True` of a dataclass; lines of `db.py` 604-645 and 247 that predate this slice
+(`PRAGMA foreign_keys`, `p.origin or p.labeled_by`, `else 0`); the hash length in the raw file's name.
+
+**Keep or cut (SPEC 3.4: it stays only if it finds a real gap and runs under 20 minutes in CI).** Found real gaps: yes (the list above). Run time: 11 to 12 minutes here for these modules; the Linux CI
+time is NOT MEASURED. Verdict: KEEP the script as a trial that is run by hand on the delete-side modules; NOT added to CI. The vendor tool (mutmut) was not run (it needs Linux): UNPROVEN.
+
+## Last gates, on commit 0005d4f
+
+- `node check.mjs`: `880 passed, 7 skipped in 183.28s` and `CHECK PASS sha=0005d4f tree=clean steps=6 skipped=0 secs=187`. The 7 skipped are the suite's own skips (the first run had the same 7).
+- `python scripts/e2e_fake_campaign.py`: `PASS - result equals tests/fixtures/e2e/expected.json (21 refused-call entries, as saved)`.
+- `ruff check src tests scripts/mutation_trial.py`: `All checks passed!`. `python .github/scripts/check_versions.py`: all six copies `0.8.0`.
+- `gitleaks detect --log-opts "origin/master..HEAD"` (on the 13 commits before the last two): `no leaks found`.
+- Not run on STRIKERFORCE: a test that needs a real browser (none touched by this slice); Linux; hosted CI is read below.
+
+## Hosted CI, read from GitHub (`gh pr checks 6`), commit 44d07cb (run 43165231460, status completed, conclusion success)
+
+13 of 13 jobs pass, no job re-run: Validate plugin manifests · Version strings agree · claude plugin validate · fake campaign ubuntu-latest · fake campaign windows-latest ·
+ubuntu-latest py3.11 / py3.12 / py3.13 / py3.14 · windows-latest py3.11 / py3.12 / py3.13 / py3.14 (all `pass`). This table was added in a later commit that changes only this file; that
+commit's own run is read and written in the report.
+
+# Review (0.8.0)
+
+Independent reader (run `l6-read`), fresh clone, the whole diff `master...fc52926` read line by line before anything was run.
+
+Verdict: PARTIAL dc02236 - holds as far as it goes: C4 (forget, after the reader's fix 3), C6, C7 (after the reader's fix 2), C5 for the database records with all four protections (after the reader's fix 1); missing: C5's "a business and everything attached to it expires" for the sheets in the tool's own `exports` folder (the pull request lists "deleting old export folders at expiry" as NOT DONE, so old sheets keep people's details without a time limit), and the Linux CI mutation trial (NOT DONE, entry 4)
+
+## What was checked, by reading first
+1. **`forget`.** Every place a detail can land: all tables (the row rules, the business identity and JSON columns, and the reader's own pass over the other tables), the whole
+   data folder except `bin/` and the live database, the hand-off, packet and `drafts/` files of the workspace. The test's byte scan is over the WHOLE workspace
+   (`root.rglob("*")`, also inside zip members), then over a copy without the suppression row, which must be empty: not over a list the builder chose.
+   Planted in a place the test does not name (`queries.query_text`, `runs.stats_json`): **left behind** (`{'db.sqlite3': 2}` on the copy). Fixed, fix 3.
+2. **`purge`.** Protection 1 holds for `purge`, `purge --apply` and a foreground `run`. **It failed for `run --detach`**, the skill's way to start a run: the parent made the
+   pass (armed), and the child it starts (`leadforge --json run --resume`) made a second pass seconds later that deleted. Seen: the new test, unfixed, left
+   `{'B','E','N…'}` (A, C, D deleted) after the parent had reported "nothing deleted". Fixed, fix 1. A half-upgraded workspace (missing column, unreadable marker) stops before
+   `db.connect`; a missing table is created empty by any other command first, which cannot cause a delete (no runs table means no age). The clock: `classify` and the marker
+   use only the `now` handed in; the CLI reads `util.utcnow()` once. An empty or dangling `first_run_id` counts as the workspace's first run (the plan's rule); no run at all
+   means no age, nothing expires (tested).
+3. **The refused old workspace.** `snapshot()` hashes every file under the workspace (`rglob`), before and after, with and without a live `-wal`.
+4. **C6 and C7.** A raw scrape: `gosom.fetch` deletes the output file and its query file in a `finally`; the stderr file is deleted after reading. A suppressed address: the
+   sheet, CSV, report and Drafts tab hide it (`contacts_for(hide_suppressed=True)`, the masker, the draft skip). **`draft render` still wrote it** as the To: line of
+   `drafts/<t>_<m>.txt` (probe: `HOLDS SUPPRESSED: drafts/1_1.txt`). Fixed, fix 2. `draft export` packets: the probe found no suppressed address in them.
+5. **What must not be deleted.** The forget test keeps a bystander byte for byte and the look-alikes; the purge test keeps the 11-month and the refreshed-but-young businesses.
+   Broken in the reader's clone: protection 1 (`if marker is None:` made `if False:`) turned `test_first_run_only_reports_then_13_months_go_11_stay_refresh_does_not_renew`
+   red (`assert ('purged' == 'armed')`), restored.
+6. **G2.** Prediction before the run: the reader's fixes move no cell (the fake campaign uses neither `--detach` nor `draft render`). Result on dc02236:
+   `PASS - result equals tests/fixtures/e2e/expected.json (21 refused-call entries, as saved)`. The builder's two predicted cells (`purged`, `expiring_30d`) are the only golden change.
+7. `check_versions.py`: all six copies `0.8.0`. No new package (`pyproject.toml` dependencies unchanged). `gitleaks git --log-opts="master..HEAD"`: `18 commits scanned … no leaks found`.
+   Fixtures: invented names and `.example` domains only.
+8. **Plan and code disagree.** 1 (suppression row vs "finds nothing"): real; nothing else holds the value (the copy test); the hashed list is not built. Owner's decision stays open.
+   2 (merge keeps the Maps row's `first_run_id`): real, not changed. 3 (G2 count of refused DNS entries): this laptop gave 21, as saved. 4 (Linux CI mutation trial): real,
+   NOT DONE; the in-house trial's KEEP is written down. 5 (eight places): real, the test plants more.
+
+## The reader's fixes (commit dc02236, each test seen failing first for the right reason)
+1. `run --detach`: the child carries a hidden `--retention-checked` and makes no second pass. Test `test_a_detached_run_makes_one_retention_pass_not_two`.
+2. `draft render`: no file for a draft whose To: is a suppressed address; a suppressed address quoted in another draft is masked. Test
+   `test_draft_render_writes_no_file_to_a_suppressed_address`.
+3. `forget`: `queries.query_text` and `runs.stats_json` are redacted in place (rows kept: a run row dates its businesses). Test
+   `test_forget_reaches_the_query_text_and_run_stats_and_keeps_their_rows`.
+
+## Gates on dc02236
+- `node check.mjs`: `884 passed, 6 skipped in 217.87s` and `CHECK PASS sha=dc02236 tree=clean steps=6 skipped=0 secs=222`.
+- Hosted CI, run 43168530001, read from GitHub: completed, success, **13 of 13 jobs green**: claude plugin validate · Validate plugin manifests · Version strings agree ·
+  fake campaign ubuntu-latest · fake campaign windows-latest · ubuntu-latest py3.11 / py3.12 / py3.13 / py3.14 · windows-latest py3.11 / py3.12 / py3.13 / py3.14.
+
+## Open
+- C5 for the `exports` folder (and, not examined by the reader, other cached pages under `cache/`): UNPROVEN that anything there ever expires. Needs a decision of what
+  "attached" covers, then a slice part that deletes or rewrites old sheets.
+- The owner's decision on a literal "finds nothing" (hashed suppression list).
+- The Linux CI mutation trial: NOT DONE.
+- Not merged: PARTIAL.
+
+# Build 2 (0.8.0)
+
+Run `l6-finish`, 2026-11-12, one builder, no helpers, on top of the reader's dc02236. Per item: what the change must do, written before the code; the check of the code against that
+text by reading, after it. Spec, Build and Review above are not rewritten.
+
+## Item 0 — the fake campaign's refused-call compare must not depend on DNS retries
+
+**Cells of the saved result that move (written before the change).** In `tests/fixtures/e2e/expected.json` only `refused`. Today it holds 21 entries: `["sendto","1.1.1.1",53,"dns"]` x10,
+`["sendto","8.8.8.8",53,"dns"]` x10 (leadforge's two fixed fallback resolvers; the email-validity step retries them as long as its time limit lets it), and one
+`["sendto","<system resolver>",53,"dns"]`. After: the same three entries, once each (the distinct outside calls refused). `steps`, `tabs`, `csv`, `report`, `requests` do not move.
+
+**Must do.** `normalized()` in `scripts/e2e_fake_campaign.py` records `refused` as the sorted set of distinct `[kind, host, port, caller]` entries (the machine's own resolvers still folded into
+`<system resolver>`). So the compare is over WHICH outside calls were refused. A refused call of a kind, host or port not in the saved set still fails the compare (a new host, a new kind, a
+connect where there was a sendto), and a saved one that no longer happens still fails it. The number of retries of one of them does not matter.
+**Test (`tests/test_e2e_refused_compare.py`).** Fed raw guard entries: one extra retry of a known call gives the same normalized `refused` (red on the old code: 21 against 20 entries); a new
+host, a new port and a new kind each give a different one (these must stay red-able: they prove the compare is not blind); the real `expected.json` `refused` equals the normalized form of a
+guard log with 10, 1 and 15 retries.
+
+**Check of item 0 by reading, after.** `normalized()` now builds `folded`, a set of `(kind, host, port, caller)` tuples (own-resolver packets folded into `<system resolver>` first), and sorts it: a retry cannot add an entry. A refused call
+of any other kind, host, port or caller is a different tuple, so the compare fails; a call that stopped happening drops a tuple, so it fails too. `expected.json` differs in `refused` only (18 repeated entries removed; `git diff` shows deletions only,
+nothing else moved). `scripts/e2e_compare.py` (a side-by-side of two results, separate tool) reads `refused` as before; its per-host counts are now 1, which it prints as such.
+**Seen red.** `test_one_more_retry_of_a_known_call_changes_nothing` on the old `normalized()`: `Right contains 10 more items, first extra item: ['sendto', '1.1.1.1', 53, 'dns']`. After the change all 4 tests pass; the planted-bad-case tests
+(new host, port, kind, caller; a missing call) are the ones that keep the compare from going blind. G2 on this tree (below-normal priority, raw guard log 32 entries: 1.1.1.1 x10, 8.8.8.8 x10, four own resolvers x3):
+`PASS - result equals tests/fixtures/e2e/expected.json (3 refused-call entries, as saved)`.
+
+## Item 1 — C5 for files: what the change must do (written before the code)
+
+"A business and everything attached to it expires." Decision (Jay, 2026-11-12): at expiry, every file under the workspace's own `leadforge_data/exports` and `leadforge_data/cache` that holds an expired business is deleted whole, under the
+same four protections as the records.
+- **Which file holds a business.** Before any record is deleted, each business gets its identifying strings from the database: name, domain, the host of its website, its maps address, every contact value (email, phone) and every person's
+  name; strings under 4 characters are dropped. A string that a business that is NOT in the group also carries (a chain's name, a person at two businesses) cannot prove that a file holds the expired one, so it is not used. A file holds an expired
+  business when any remaining string of an expired business is found in it, with the same word edges as `forget` (an address not inside a longer address, a name not inside a longer word), in the raw bytes or, for a sheet (`.xlsx`, a zip),
+  inside any of its members. A file that cannot be read is not guessed about: it counts as a file that could not be cleaned.
+- **Deleted whole**, never edited. Only regular files that really sit under those two folders (a link that points elsewhere is skipped). Anything else is untouched: the user's own files written with `--out`, logs, `bin/`, the database.
+- **Protection 1 (first run after the upgrade only reports):** while the workspace is not armed, no file is deleted; `purge` and the first pass report how many files would go (and name them by relative path in `purge`).
+- **Protection 2 (30-day warning):** the count of files that hold a business expiring within 30 days (and no expired one) is reported next to the record count: digest `files_expiring_30d` on `purge`; a second stderr line at the start of a run when it is above 0.
+- **Protection 3 (more than half):** the automatic purge stops, deleting nothing (no record, no file), when more than half of the businesses OR more than half of the files under `exports` and `cache` are past the limit; the message names `purge --apply`.
+- **Protection 4 (half-upgraded):** unchanged, it stops before any of this.
+- **Order, and a file that cannot be deleted:** files go first, then the records. If any file cannot be deleted (Windows keeps a file open in another program), no record is deleted: state `files_locked`, the files named, `purge --apply` exits 4,
+  and the start-of-run pass prints the names and goes on with the run; the next pass tries again (the identifying strings come from the records, which are still there). A file is never reported deleted unless it is gone.
+- The cache of a public register (DVSA copy) that holds an expired business's name is deleted too, and fetched again at the next discovery: it is a cache. A business that comes back then is a new row with a new `first_run_id`.
+- The run digest keeps its numbers (`purged`, `expiring_30d`): file numbers appear in it only when above 0, so G2 does not move.
+**Pass lines (tests, each seen red first; what must stay is asserted in the same tests):** a workspace with a 13-month run's sheet and cache file, `purge` twice, a scan finds the expired businesses' invented person nowhere in the workspace;
+the 11-month run's files and a file of another business stay; the first pass after the upgrade deletes no file and reports them; files count in the 30-day line; files count in the half stop; a file written with `--out` stays; a file that cannot be
+deleted keeps the records and names itself; a name shared with a surviving business does not condemn a file.
+
+**Check of item 1 by reading, after.** `retention.classify_files` (read-only) lists, for the files under `exports` and `cache` (`expiring_candidates`: regular files, no links, really inside the folder), those that hold an expired business, then those that
+hold only a business due within 30 days; `_identifiers` takes name, domain, website host, maps address, contact values and people names (4 characters or more); `_patterns_for` removes every string a business outside the group also carries; the search
+is `make_needle`'s word-edged pattern, over the raw bytes and the members of a zip (`_holds_any`, the old `_holds` now calls it). `purge()` calls it before the mode is looked at, so `report` and the first pass report the files; the half rule is
+`2 * expired businesses > total or 2 * expired files > total files`; files go first (`_delete_files`), and any file left (or unreadable) returns `files_locked` before a single record is touched. The run digest gets `files_deleted` and
+`files_expiring_30d` only when above 0 (G2 digest unchanged). `purge --apply` with a locked file: exit 4, files named by relative path, no content. README gets the part "Deleting data (0.8.0)" (it had none): `--out` files are not touched.
+Reading found no way a file outside the two folders is reached (`candidate_files` of `forget` is a different list; `purge_everything` unchanged).
+**Seen red first (right reasons).** `tests/test_l6_purge_files.py`, before any code: 8 of 9 failed with `KeyError: 'files_deleted'` / `'files_expired'` (no file handling existed). The ninth, "a name a surviving business also carries
+condemns no file", passed on the old code (no file was ever touched), so it was broken on purpose: with `shared = set()` it fails at `assert only_shared.exists()` (`assert False`), restored. The unreadable-file test, with the line that adds unreadable files to the
+failures removed: `assert 'purged' == 'files_locked'`, restored.
+**What the tests keep:** the 11-month, newer and the user's `--out` file all still exist after the purge, and the scan of the whole data folder finds the other businesses' people (`Person B`, `Person N0`) still there.
+**UNPROVEN:** the time it takes to read a very large `exports` folder at the start of every run (it is read only when something is expired or due within 30 days); a sheet in the old binary `.xls` form (the tool writes `.xlsx` and `.csv`).
+
+## Item 2 — `forget` must not report success when a file could not be scrubbed: what the change must do (written before the code)
+
+Today `forget_in_files` ends a file's turn with `except OSError: continue`: a log that a detached run holds open on Windows cannot be replaced, the value stays in it, and the command prints "forgot" and exits 0.
+- For a file that holds the value: first the old way (write the kept lines to a side file, replace). If that fails with `OSError`, rewrite the file in place (open for writing, write the kept lines, cut the rest off): another process that holds
+  the file open for appending does not stop that. A file that is deleted whole (a sheet) that cannot be deleted is emptied in place the same way and listed as edited. Only when the file can neither be replaced nor rewritten, or cannot be read, it is
+  a file that "still holds the value" (or cannot be checked): `forget_in_files` returns it in a third list, and `forget` never says it forgot without it.
+- `leadforge forget`: if that list is not empty the command exits 4 with `ok: false`, the digest names the files by relative path (never the value), says what was done (database rows, files cleaned), and tells the user to close what holds them and run the same
+  command again (it is repeatable: the database part finds nothing more). The human text must not say "forgot".
+- What must stay: a file that holds only a bystander is neither read for write nor changed; `forget` on a workspace where nothing is held behaves exactly as before.
+**Pass lines:** (a) a second process holds a log file open with the value in it; `forget` runs; either the file no longer holds the value (exit 0) or the output names that file and the exit is not 0 (never exit 0 with the value still in it).
+(b) with both ways of writing refused (patched), exit 4, the file named, the value not in the output, `ok: false`, and the rows of the database part are done.
+
+**Check of item 2 by reading, after.** `retention._scrub_file` does one file: a line file is rewritten without the lines that hold the value (side file + `os.replace`; on `OSError` the side file is removed and `_rewrite_in_place` writes the kept
+bytes over the file and cuts it); anything else is unlinked, or emptied in place and counted as edited if it cannot be unlinked. `forget_in_files` now returns `(edited, removed, failed)`; a file that cannot be read or neither replaced nor rewritten
+goes to `failed` (it used to be skipped by `except OSError: continue`). `forget` carries `files_failed`; `cli.forget` with any of them emits `ok: false`, names them by relative path, reports the rows done, exits 4 and never prints "forgot that". The only
+caller of `forget_in_files` is `retention.forget` (grep). A file that holds only a bystander is read, not written (unchanged branch).
+**Seen red first (right reason).** Before the code, test (a) on this laptop with a real second process holding the log open for appending: `AssertionError: INFO a Zora Quillfeather <zora.quillfeather@quillfeather-plumbing.example> ...`
+(exit 0, the value still in the held file: the defect itself). Test (b) failed on the missing `_rewrite_in_place`. Afterwards a probe with a spy on `os.replace` showed what happens with the real held file here: `replace failed: PermissionError`, the in-place
+rewrite took over, `exit 0 ... value still in file: False bystander kept: True`. With the in-place write broken on purpose (test (a), line replaced by `raise PermissionError`) the command exits 4 and names the file and test (a) still holds on its other
+side; restored. On Linux a held file can be replaced, so (a) passes there by the first way; (b) is the platform-independent proof of the failure path.
+
+## Item 3 — the mutation trial on hosted Linux: what it must do (written before the workflow was started)
+
+`.github/workflows/mutation-trial.yml` runs mutmut once on Linux against the delete-side modules; it is never on every push: `workflow_dispatch` (only usable from the Actions tab once the file is on the default branch) and `push` limited to commits
+that change the workflow or `.github/mutation/**` (so the 13 jobs of every other commit stay 13; the one commit that adds the file shows 14). The tool is installed only inside that job, from a hashed file made with
+`uv pip compile --generate-hashes --exclude-newer 2026-11-05` (mutmut 3.8.1, uploaded 2026-10-28 = 15 days old, publisher boxed / Anders Hovmöller; the wheel's SHA-256 downloaded here equals the one in the lock; `osv-scanner` on the file: no issues;
+the 21 resolved packages are all older than 2026-11-05; none is on the never-install list). It reads its settings from `[tool.mutmut]` in `pyproject.toml` (mutmut 3.8.1's own `configuration.py` read for the key names: `source_paths`, `only_mutate`,
+`pytest_add_cli_args_test_selection`; and `utils/file_utils.py` for how it puts `mutants/src` before the editable install). Job limit: 25 minutes (`timeout-minutes`); the unmutated tests run first, so a red suite cannot pass as "all killed".
+Scope asked for: all of `retention.py`, the schema check of `db.py` (`check_schema_before_write`, `peek_schema_version`, `_version_of`, `schema_gaps`) and `export._masker`; NOT in this trial (mutmut names a class method or a nested function differently, and I could not
+test the names on Windows): the raw-file wrapper in `providers/gosom.py` and `db.add_contact` / `add_person`; they stay with the in-house trial. Summary of the log per module and outcome: `.github/mutation/summarize.py` (tried here on a made-up
+results file, including the "nothing matched" exit 1). Keep-or-cut rule (SPEC 3.4): keep only if it found a real gap the in-house trial did not, and ends under 20 minutes in CI.
+If it cannot be started from the branch, or does not end in 25 minutes: NOT DONE, with the reason.
+
+## Item 3 — result (hosted Linux, read from GitHub)
+
+Started once, by pushing commit f07f5b8 (the commit that adds the workflow; the push trigger fired, no hand start was needed): run 43171737338, `Mutation trial (Linux)`, status completed, conclusion **success**,
+job `mutmut on the delete modules · ubuntu-latest`, 06:57:22Z to 07:02:56Z = **5 min 34 s** including the install (limit 25). The unmutated tests passed first (`46 passed in 2.64s`). The existing `CI` run of the same commit:
+13 of 13 jobs success (the mutation trial is a separate workflow, so those stay 13). Result table, as the workflow's own summary step printed it (I counted the per-mutant lines of the log again with a script: the same 1197 / 934 / 252 / 7 / 4):
+
+| module | mutants | killed | survived | no tests | timeout |
+|---|---|---|---|---|---|
+| `leadforge.retention` (all of it) | 1082 | 853 | 218 | 7 | 4 |
+| `leadforge.db` (schema check: `check_schema_before_write`, `peek_schema_version`, `_version_of`, `schema_gaps`) | 83 | 58 | 25 | 0 | 0 |
+| `leadforge.export` (`_masker`) | 32 | 23 | 9 | 0 | 0 |
+| all | 1197 | 934 | 252 | 7 | 4 |
+
+Not covered by the vendor tool (see the item text): the raw-file wrapper of `providers/gosom.py`, `db.add_contact` / `add_person`; they were only in the in-house trial.
+
+**Real gaps it showed (not seen by the in-house trial), each now closed:**
+1. `retention._rewrite_in_place`: all 7 mutants "no tests". On Linux a held-open file can simply be replaced, so no test reached the in-place rewrite that item 2 added (on Windows only the real held-file test reaches it). New test
+   `test_the_in_place_rewrite_cleans_a_file_that_can_be_neither_replaced_nor_deleted`; with `fh.truncate()` replaced by `pass` it fails (`assert ... == other.encode()`), restored. Writing it also showed a real fragility: if the side file's own clean-up
+   raised, the in-place fallback was never reached; that clean-up is now best effort.
+2. New code of this run: `_identifiers` (25 of 57 survived), `_patterns_for` (10 of 40), `_scrub_file` (23 of 43). The tests used names, people and emails only; domain, website host, maps address and phone were each unpinned, and so was the 4-character minimum.
+   New test `test_each_kind_of_identifier_finds_its_file_and_a_short_one_does_not`; with `domain` dropped from the columns, or the minimum lowered to 1, it fails; restored.
+**Not read one by one (UNPROVEN equivalent):** the other survivors, mostly `make_needle` (26), `_delete_everything_on` (26), `purge` (23), `forget_in_database` (22), `classify` (13), `peek_schema_version` (11 of 13), `masker` (9). The in-house trial's reading of the same code
+said equivalent or outside the slice (chunk sizes, error-path `rollback`, back-up steps); mutmut makes finer changes (text of messages, each argument), so its counts are higher and are not comparable to the in-house 223. The log has only names, not the changes; a next run can print
+`mutmut show <name>` for them (not done: the brief says once).
+
+**Keep or cut (SPEC 3.4: keep only if it finds a real gap and ends under 20 minutes in CI): KEEP.** It found real gaps (two, above), it ends in 5.5 minutes, and it is not on every push (it starts by hand once the file is on the default branch, or when a commit changes
+its own files). The in-house `scripts/mutation_trial.py` stays as the Windows-side trial.
+
+## Item 4 — not built: the hashed suppression list (the owner's open decision)
+
+The suppression list holds the forgotten identifier in clear (`suppression`, `db.suppress`), so that the objection can be honoured on the next run (`is_suppressed` and the four SQL sub-selects compare the value). A hashed list would change the tables and those
+lookups, which this slice's row forbids ("no change to the tables"). So the byte scan of C4 finds the identifier in that one row and nowhere else (the copy-without-that-row test proves it). Written as an open decision of the owner in this file (also in "Plan and code
+disagree" 1 and "Open" above) and in the CHANGELOG entry of 0.8.0; no code for it was written in this run.
+
+## Gates and hosted CI of Build 2 (commit c5c5963, the last code commit)
+
+- `node check.mjs` on that tree, once at the end (below-normal priority): `901 passed, 7 skipped in 225.80s (0:03:45)` and `CHECK PASS sha=c5c5963 tree=clean steps=6 skipped=0 secs=230` (the 7 skipped are the suite's own: the builder's runs had 7, the reader's 6, so one existing test skips in some runs, not found which: UNPROVEN). Tests collected: 889 at eb79a28, 907 now (`pytest --collect-only -o addopts=""`): this run adds 18 (4 + 12 + 2), none of them skipped.
+- `python scripts/e2e_fake_campaign.py` (G2) on f07f5b8 (the later commits changed only a test, the slice file and a clean-up in `_scrub_file`, which the campaign does not reach): `PASS - result equals tests/fixtures/e2e/expected.json (3 refused-call entries, as saved)`; the raw guard log of an earlier run on this laptop had 32 entries
+  (1.1.1.1 x10, 8.8.8.8 x10, four own resolvers x3), which is now the same three. No digest cell moved (the file numbers appear in the run digest only above 0).
+- `ruff check src tests`: `All checks passed!`. `python .github/scripts/check_versions.py`: all six copies `0.8.0` (not touched). `gitleaks detect --log-opts "origin/master..HEAD"`: `no leaks found` (22 commits at f07f5b8; again clean at c5c5963).
+- Hosted CI, run 43173321150 on c5c5963, read from GitHub: completed, success, **13 of 13 jobs success**: claude plugin validate · Validate plugin manifests · Version strings agree · fake campaign ubuntu-latest · fake campaign windows-latest · ubuntu-latest py3.11 / py3.12 / py3.13 /
+  py3.14 · windows-latest py3.11 / py3.12 / py3.13 / py3.14. No job re-run. The mutation trial did not start for that commit (it starts only when its own files change). Run 43171742261 (f07f5b8): the same 13 of 13 success; the fake campaign windows job that was red on fc52926 is green on both.
+- Not run on STRIKERFORCE: Linux, and anything that needs a browser (none touched). A real "held open" log was only tried on Windows (item 2).
+
+## Open (after Build 2)
+- The owner's decision on a literal "finds nothing" (hashed suppression list): not built.
+- UNPROVEN: the time to read a very large `exports` folder at the start of every run; the other 252 mutation survivors (names in the log only), settled by one more run that prints `mutmut show` for them.
+- Not merged: an independent reader follows this run.
+
+# Review 2 (0.8.0)
+
+Independent reader (run `l6-finish-read`), fresh clone, read the contracts, this whole file and the diff `dc02236..b15ef7a` line by line (`retention.py`, `cli.py`,
+`e2e_fake_campaign.py`, README, CHANGELOG, the new tests and the mutation workflow) before running anything. Read as the person whose data it deletes.
+
+Verdict: PASS 29430d0
+
+## What was checked, by reading first
+1. **C5 for files.** `expiring_candidates` lists only regular files, not links, whose real path is inside `leadforge_data/exports` or `leadforge_data/cache`;
+   `--out` files, logs, `bin/` and the database are never in the list. Protection 1: `purge()` returns `armed` before `_delete_files` (and `report` before that),
+   so the first pass after the upgrade deletes no file. Protection 2: `soon` counts files that hold a business due within 30 days and no expired one. Protection 3:
+   `2 * expired files > total files` stops the automatic pass, deleting nothing. Files go before records; a file left or unreadable returns `files_locked` before a
+   record is touched. **A file of a business that has not expired can go:** (a) a sheet that also lists an expired business is deleted whole, with the live
+   rows; (b) word edges match a name inside a longer name: probe `_patterns_for({"old"}, ..., {"old": {"brindlewick motors"}, "live": {"brindlewick motors ltd"}})`
+   on a sheet naming only the live one printed `live-only sheet matched as expired: True`. The live business's records stay in the database. The README
+   said only "a sheet is deleted whole"; the reader's commit 29430d0 says it plainly (live rows go with the sheet, the look-alike case, records stay,
+   `leadforge export` writes the latest run's sheet again, `leadforge purge` lists the files first). Docs only, no test.
+2. **The detached run.** File deletion lives inside `retention.purge`, the one pass `cli._start_of_run_purge` makes; the child carries `--retention-checked` and
+   skips it (`cli.py` 429, 503). The child cannot delete a file.
+3. **`forget` on a held file.** `_scrub_file`: replace, else rewrite in place (`r+b`, write, truncate), else the file goes to `files_failed`; `cli.forget` then
+   exits 4, `ok: false`, names the file, never prints "forgot that". `test_l6_forget_held.py` holds a real second process on the log (Windows) and patches both
+   ways off (any platform).
+4. **The refused-call compare.** `normalized()` keeps the set of distinct (kind, host, port, caller). Broken in this clone: `maps_listings.json` site 1 pointed at
+   `http://www.harbourmotors-garage.co.uk/` (the guard refuses the lookup inside the process; nothing left the laptop). Result: `FAIL - differs ...` with the new
+   entry `dns,www.harbourmotors-garage.co.uk,80,httpcore` beside the three saved ones; restored. A call that disappears: `test_a_saved_call_that_no_longer_happens_is_a_different_result`.
+5. **One delete test broken on purpose.** `purge()`: `_delete_files(cfg, files["expired"])` inserted in the `marker is None` branch.
+   `test_expired_businesses_files_go_with_them_and_the_rest_stays` -> `E  assert False ... all(<generator ...>)` at the "first pass deletes no file" line,
+   `1 failed`; restored, `1 passed`.
+6. **The first reader's open list.** C5 for `exports` and `cache`: closed (above). Linux mutation trial: closed (run 43171737338, 5 min 34 s, KEEP). Hashed
+   suppression list: open, the owner's decision, written here and in the CHANGELOG (not blocking). UNPROVEN list of the pull request: a log held open by the same
+   process is now also covered by the in-place rewrite; the cost of the copy-based schema read under a live `-wal` stays UNPROVEN.
+7. Versions: all six copies `0.8.0`. No new package in the product (`pyproject.toml` gains only `[tool.mutmut]`); mutmut lives only in its workflow (hashed file,
+   actions pinned to commit ids, `contents: read`, starts by hand or when its own files change). Fixtures: `.example` addresses, Ofcom drama numbers
+   (`+447700900123`, `0113 496 0000`).
+
+## Gates on 29430d0 (this laptop, one process at a time)
+- `node check.mjs` stopped at `lint` because this reader's venv had no ruff (`No module named ruff`: the lock carries no dev tools); the steps were then run by hand:
+  versions, skill frontmatter, skill references `ok`; `ruff check src tests` (ruff 0.15.13): `All checks passed!`; `python -m pytest` (serial, below normal):
+  `1 failed, 901 passed, 6 skipped in 675.92s` - the failure `test_ner_worker.py::test_worker_shutdown_leaves_no_live_process` ("worker did not become ready within
+  10.0s", code this slice does not touch), run once more alone at normal priority: `1 passed in 5.75s`; `check_digest.py`: exit 0.
+- `gitleaks git --log-opts="origin/master..HEAD"`: `28 commits scanned ... no leaks found`.
+- Outside the gate: `ruff check scripts` finds `B905` in `scripts/e2e_compare.py:28`, a file this slice does not touch (last change 614cb5f on master).
+
+## Open (not blocking)
+- The owner's decision on the hashed suppression list.
+- In a workspace that re-runs the same searches, new sheets list refreshed old businesses, so once those pass the limit most files may hold one and the
+  automatic pass stops the run (file half rule) until `purge --apply`: by reading, UNPROVEN in use. Under `--json` a `files_locked` start-of-run pass puts no
+  file name and no warning in the digest (records are kept, the next pass retries).
+- UNPROVEN as before: reading a very large `exports` folder at each run; the 252 mutation survivors not read one by one.

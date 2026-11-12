@@ -18,7 +18,7 @@ HARD_PREFIXES = ("competitor:", "existing_client:")
 SOFT_QUALIFIERS = {
     "website_missing", "website_no_ssl", "stale_site", "low_rating_high_volume",
     "few_reviews", "weak_social_presence", "phone_only_booking", "hiring",
-    # social/video presence signals (U4.8, providers/social.py; on by default, degrade silently).
+    # social/video presence signals (no provider sets these any more: the social provider left in slice L8).
     # no_social_presence = the site links no profile at all; weak_social_presence = crawler found none.
     # active_social is a NEGATIVE need signal (they post recently) — no hook template on purpose.
     "stale_social", "no_social_presence", "no_video_presence", "active_social",

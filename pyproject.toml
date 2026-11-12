@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "leadforge"
-version = "0.7.3"
+version = "0.9.0"
 description = "Internal B2B lead-generation engine: OSS scraping, website deep-crawl, DM discovery, ICP scoring, XLSX export. Built to be driven by AI agent harnesses (Claude Code / Codex) at minimal token cost."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,7 +25,6 @@ classifiers = [  # advertise exactly what CI tests (3.11-3.14, win+linux)
 # Core stays pure-python-wheel only — no compilers ever (ADR-008).
 dependencies = [
   "typer>=0.12",
-  "rich>=13.7",
   "pydantic>=2.7",
   "PyYAML>=6.0",
   "httpx>=0.27",
@@ -36,7 +35,6 @@ dependencies = [
   "dnspython>=2.6",
   "disposable-email-domains>=0.0.90",
   "pyap>=0.3.1",
-  "tenacity>=8.3",
   "openpyxl>=3.1",
 ]
 
@@ -45,9 +43,7 @@ browser = ["crawl4ai>=0.9.2"]          # JS-rendered site escalation (Playwright
 ner = ["gliner>=0.2"]                  # optional local zero-shot person/title extraction
 addressing = ["usaddress>=0.5.10"]     # better US address splitting (compiled wheel; optional)
 keyring = ["keyring==25.7.0"]          # registry keys from the OS keyring (L9); without it, the environment only
-social = ["yt-dlp>=2024.1.0"]          # youtube presence probe backend; without it every network reports "unknown"
 dev = ["pytest>=8.2", "ruff>=0.5", "pytest-timeout>=2.3", "pytest-xdist>=3.5"]
-codeindex = ["faiss-cpu", "sentence-transformers", "numpy"]  # local semantic code search (scripts/code_index.py)
 
 [project.scripts]
 leadforge = "leadforge.cli:main"
@@ -72,4 +68,14 @@ addopts = "-q"
 timeout = 60
 markers = [
     "gpu: real-GPU smoke test (loads real GLiNER on cuda); skipped unless LF_GPU_TESTS=1 (see tests/test_ner_worker.py)",
+]
+
+# The Linux mutation trial (.github/workflows/mutation-trial.yml): mutmut changes one thing at a time in the delete-side modules
+# and the tests listed here are what has to notice. Not run by `node check.mjs` and not part of the product.
+[tool.mutmut]
+source_paths = ["src"]
+only_mutate = ["src/leadforge/retention.py", "src/leadforge/db.py", "src/leadforge/export.py"]
+pytest_add_cli_args_test_selection = [
+    "tests/test_l6_forget.py", "tests/test_l6_forget_held.py", "tests/test_l6_purge.py", "tests/test_l6_purge_files.py",
+    "tests/test_l6_schema_first.py", "tests/test_l6_suppressed_export.py",
 ]

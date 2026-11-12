@@ -444,7 +444,7 @@ def test_a3_stopped_exactly_at_cap_stays_stopped_on_resume(cfg, monkeypatch):
     conn = db.connect(cfg.db_path)
     run_id = db.create_run(conn, str(icp_path), icp.icp_hash())
     for i in range(2):  # credited == cap
-        biz = to_business(RawListing(provider="gosom", fetched_at=now_iso(), data={
+        biz = to_business(RawListing(provider="fakelist", fetched_at=now_iso(), data={
             "title": f"Capped Shop {i}", "place_id": f"PID_STOPPED_{i}"}), run_id, icp, "GB")
         db.upsert_business(conn, biz)
     db.add_queries(conn, run_id, [("still pending", None)])
@@ -483,7 +483,7 @@ def test_a3_reenters_when_cap_was_raised_past_what_is_credited(cfg, monkeypatch)
     conn = db.connect(cfg.db_path)
     run_id = db.create_run(conn, str(icp_path), icp.icp_hash())
     for i in range(2):
-        biz = to_business(RawListing(provider="gosom", fetched_at=now_iso(), data={
+        biz = to_business(RawListing(provider="fakelist", fetched_at=now_iso(), data={
             "title": f"Old Capped Shop {i}", "place_id": f"PID_OLDCAP_{i}"}), run_id, icp, "GB")
         db.upsert_business(conn, biz)
     db.add_queries(conn, run_id, [("still pending", None)])
@@ -498,28 +498,28 @@ def test_a3_reenters_when_cap_was_raised_past_what_is_credited(cfg, monkeypatch)
 
 
 # --------------------------------------------------------------------------------------- A5
-_GBP_FIXTURE = Path(__file__).parent / "fixtures" / "gosom_gbp_sample.ndjson"
+_GBP_FIXTURE = Path(__file__).parent / "fixtures" / "profile_sample.ndjson"
 
 
 def _gbp_rows():
     return [json.loads(ln) for ln in _GBP_FIXTURE.read_text(encoding="utf-8").splitlines() if ln.strip()]
 
 
-def test_gbp_facts_extracted_from_gosom_raw_payload():
+def test_gbp_facts_extracted_from_raw_listing_payload():
     icp = ICP.model_validate({
         "campaign": "t", "offer": {"what": "x"},
         "target": {"categories": ["auto repair shop"], "geography": {"areas": ["Manchester"], "country": "GB"}},
     })
     rows = _gbp_rows()
     assert len(rows) == 2
-    biz = to_business(RawListing(provider="gosom", fetched_at=now_iso(), data=rows[0]), "run_x", icp, "GB")
+    biz = to_business(RawListing(provider="fakelist", fetched_at=now_iso(), data=rows[0]), "run_x", icp, "GB")
     assert biz is not None
     gbp = biz.enrich["gbp"]
     assert gbp["appointments"] == "recommended"
     assert gbp["booking_links"] == [
         "https://riverside-auto.example/book", "https://wa.me/447700900123",
     ]
-    # A5 review (minor): gosom v1.17.4 emits '' for the overwhelming majority of live places (the
+    # A5 review (minor): the live source emitted '' for the overwhelming majority of live places (the
     # 'OPERATIONAL' the pre-fix fixture used was invented, not observed) — the fixture reflects that.
     assert gbp["status"] == ""
     assert gbp["owner_name"] == "Riverside Auto Repair (Owner)"
@@ -579,7 +579,7 @@ def test_appointments_from_about_respects_explicit_enabled_false():
     about = [{"id": "planning", "name": "Planning",
               "options": [{"name": "Appointment required", "enabled": False}]}]
     assert _appointments_from_about(about) == "none"
-    # absent 'enabled' still counts (gosom's own default for a listed option)
+    # absent 'enabled' still counts (the source's own default for a listed option)
     about2 = [{"id": "planning", "name": "Planning", "options": [{"name": "Appointment required"}]}]
     assert _appointments_from_about(about2) == "required"
 
@@ -590,7 +590,7 @@ def test_gbp_facts_default_to_empty_never_none_when_absent():
         "target": {"categories": ["auto repair shop"], "geography": {"areas": ["Manchester"], "country": "GB"}},
     })
     rows = _gbp_rows()
-    biz = to_business(RawListing(provider="gosom", fetched_at=now_iso(), data=rows[1]), "run_x", icp, "GB")
+    biz = to_business(RawListing(provider="fakelist", fetched_at=now_iso(), data=rows[1]), "run_x", icp, "GB")
     assert biz is not None
     gbp = biz.enrich["gbp"]
     assert gbp == {
@@ -605,7 +605,7 @@ def test_gbp_facts_default_to_empty_never_none_when_absent():
 def test_normalize_dispatches_on_provider_field_map_without_place_id():
     """A provider with no place_id (e.g. a future registry provider) must still phone-merge: its
     field map is honored via get_field_map(raw.provider), and the dedupe key stays 'na:'-prefixed."""
-    register_field_map("faketest_a6", {"phone": ["tel"]})  # only override what differs from gosom
+    register_field_map("faketest_a6", {"phone": ["tel"]})  # only override what differs from the default map
     raw = RawListing(provider="faketest_a6", fetched_at=now_iso(), data={
         "title": "Acme Registry Co", "tel": "01483 970410",
         "address": "1 High St, Guildford, United Kingdom",

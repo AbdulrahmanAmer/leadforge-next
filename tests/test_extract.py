@@ -28,7 +28,7 @@ def test_cfemail_decode_roundtrip():
     hexstr = encoded.hex()
     assert decode_cfemail(hexstr) == email
     html = f'<span data-cfemail="{hexstr}">[email protected]</span>'
-    assert email in extract_emails(html, "")
+    assert email in extract_emails(html, "", decode_protected=True)  # C11: decoding is on request only
 
 
 def test_junk_emails_filtered():
@@ -93,7 +93,7 @@ def test_two_cfemail_spans_on_one_page():
     assert decode_cfemail(a) == "one@shop.test"
     html = (f'<span class="__cf_email__" data-cfemail="{a}"></span>'
             f'<span class="__cf_email__" data-cfemail="{b}"></span>')
-    out = extract_emails(html, "")
+    out = extract_emails(html, "", decode_protected=True)
     assert "one@shop.test" in out and "two@shop.test" in out
 
 

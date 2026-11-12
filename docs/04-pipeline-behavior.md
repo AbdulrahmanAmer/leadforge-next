@@ -1,5 +1,7 @@
 # Pipeline Behavior — end to end
 
+> **Slice L8 note:** Google Maps and the social provider left this repository (they live in a private add-on). Where this page names them it describes the earlier design; slice L12 rewrites these pages.
+
 > 🖼️ **Rendered images:** [`diagrams/03-pipeline-sequence.png`](diagrams/03-pipeline-sequence.png) (the timeline)
 > and [`diagrams/04-run-states.png`](diagrams/04-run-states.png) (the state machine).
 
@@ -82,8 +84,8 @@ latest run for the same ICP hash; every stage is idempotent (upserts, per-tile /
 - Query plan = tiles × category variants. Estimate shown in digest (`tiles`, `queries`, `est_max_results` = queries × 120).
 
 ### 3.2 discover
-- Provider order from config (`providers.discovery: [gosom]`). Per query: provider `fetch()` with retry/backoff
-  (tenacity: 3 tries, expo 2–30 s).
+- Provider order from config (`providers.discovery: [gosom]`). Per query: provider `fetch()` (gosom keeps its own
+  cooldown between attempts; there is no generic retry library: `tenacity` was declared but never imported and was dropped).
 - gosom invocation (subprocess mode): input file of queries (one per line, gosom `-input`), flags:
   `-json -results <out.ndjson> -depth <cfg> -c <cfg,default 2> -lang <cfg> [-proxies <cfg>] -exit-on-inactivity 3m`; grid runs use
   `-grid-bbox`/`-grid-cell`/`-zoom` per tile instead of plain text queries. Timeout per batch: `discovery.timeout_min` (default 30).
@@ -99,7 +101,7 @@ latest run for the same ICP hash; every stage is idempotent (upserts, per-tile /
   `LeadForgeBot/<ver> (internal lead research; +contact-in-repo)`; hard per-page timeout 15 s; max `crawl.pages_per_site` (default 6).
 - Page selection: `/` always; then discovered nav links matching (about|team|staff|people|leadership|contact|impress|imprint|legal
   |meet) up to cap; sitemap.xml probe if nav yields < 2 targets.
-- Extraction per page (`extract.py`): mailto + email regex + cfemail decode + at/dot normalization; tel: links + phone regex →
+- Extraction per page (`extract.py`): mailto + email regex + cfemail decode (off unless `crawl.decode_protected_emails`, C11) + at/dot normalization; tel: links + phone regex →
   phonenumbers; social links (allowlist hosts); copyright-year → `stale_site` signal if < current_year − 2; person+title candidates:
   lines/headings where a Title keyword (Owner, CEO, Founder, GM, Manager, Director, Principal, Broker, …) sits within 60 chars of a
   Capitalized-Name pattern → snippet (≤300 chars) + source URL stored on `people`.

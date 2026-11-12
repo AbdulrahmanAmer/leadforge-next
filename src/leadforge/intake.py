@@ -113,7 +113,7 @@ def _warnings(icp: ICP) -> list[str]:
                      "`keyring set leadforge registry.companies_house_key`")
     if icp.target.mode == "company":
         w.append("company mode: set discovery.providers: [companies_house] in leadforge.yaml so "
-                 "discovery uses the Companies House advanced-search provider (not gosom/Maps)")
+                 "discovery uses the Companies House advanced-search provider (not a listing source)")
         excluded = [c for c in icp.target.sic_codes if c == "82200"]
         if excluded:
             w.append("target.sic_codes includes 82200 (call centres) — owner decision 7 excludes it "

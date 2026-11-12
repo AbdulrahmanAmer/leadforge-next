@@ -38,12 +38,21 @@ COLUMNS = [
     "Rating", "Reviews", "Likely Need (Hook)", "Why This Score", "Maps", "Source", "Verified On", "Stale?",
     "Opening Hours", "Company No", "Incorporated", "Company Status", "SIC Codes", "Call Readiness",
 ]
+# C12: where each exported e-mail and phone came from (page address) and when. Appended at the END of both profiles so that no
+# existing column changes position. "-" = there is no such value in the row; the two NOT_RECORDED words say a value exists and
+# the workspace holds no record of its origin.
+SOURCE_COLUMNS = [
+    "Email Source", "Email Date", "Email (Inferred) Source", "Email (Inferred) Date", "Phone Source", "Phone Date",
+    "DM Phone Page", "DM Phone Date",
+]
+NOT_RECORDED_SOURCE = "source not recorded"
+NOT_RECORDED_DATE = "date not recorded"
 # account_fit profile appends the account-intel columns
 ACCOUNT_COLUMNS = COLUMNS + [
     "Employees", "Employee Range", "Revenue", "Departments", "Microsoft 365", "CRM", "ERP",
     "Other Systems", "Trigger", "Trigger Strength", "LinkedIn", "Contactability", "Data Confidence",
     "Status",
-]
+] + SOURCE_COLUMNS
 # v0.4 autopilot (ADR-015): the drafted-message columns, default profile only — a human reviews the
 # newest non-rejected drafted message right on the Leads row. Nothing here is ever sent; sending stays
 # behind `leadforge outreach approve` / `--live`.
@@ -55,7 +64,7 @@ DEFAULT_EXTRA_COLUMNS = [
     "Registry Name", "Registry Match", "Chain", "Site Status", "Email Confidence", "All Hooks",
     *DRAFT_COLUMNS,
 ]
-DEFAULT_COLUMNS = COLUMNS + DEFAULT_EXTRA_COLUMNS
+DEFAULT_COLUMNS = COLUMNS + DEFAULT_EXTRA_COLUMNS + SOURCE_COLUMNS
 _TIER_FILL = {
     "A": PatternFill("solid", fgColor="C6EFCE"),
     "B": PatternFill("solid", fgColor="FFEB9C"),
@@ -71,6 +80,9 @@ _REGION_REMINDER = {
     "eu": "EU/GDPR: legitimate-interest basis; keep the campaign LIA note; honor objections immediately; store source per contact.",
 }
 
+
+# the Open Government Licence v3.0 asks for this sentence wherever the DVSA list's information is used (L7 terms finding)
+_DVSA_NOTICE = "Contains public sector information licensed under the Open Government Licence v3.0 (DVSA active MOT stations list)."
 
 # chars openpyxl refuses (IllegalCharacterError) — scraped text can contain them
 _ILLEGAL_XLSX_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -89,6 +101,23 @@ def _safe_cell(v):
     return v
 
 
+def _masker(conn: sqlite3.Connection):
+    """C7, the last net: a function that replaces any suppressed email address inside a string (whatever the case) by
+    '[suppressed]'. `db.contacts_for` already leaves such contacts out; this catches an address quoted in a draft."""
+    addresses = [r[0] for r in conn.execute("SELECT value FROM suppression WHERE kind='email'")]
+    if not addresses:
+        return lambda v: v
+    rx = re.compile("|".join(re.escape(a) for a in sorted(addresses, key=len, reverse=True)), re.IGNORECASE)
+    return lambda v: rx.sub("[suppressed]", v) if isinstance(v, str) else v
+
+
+def _addressed_to_suppressed(conn: sqlite3.Connection, target_id: int) -> bool:
+    """True when the outreach target's own contact is a suppressed address: its draft is not exported."""
+    row = conn.execute("SELECT c.value FROM outreach_targets t JOIN contacts c ON c.id=t.contact_id WHERE t.id=?",
+                       (target_id,)).fetchone()
+    return bool(row) and db.is_suppressed(conn, row["value"])
+
+
 def _display_phone(e164: str | None) -> str:
     """"+44 1483 456363", not "+441483456363": Excel coerces a leading-+ digit run to a number
     (4.41483E+11); the spaced international format survives as text in both XLSX and CSV."""
@@ -102,15 +131,49 @@ def _display_phone(e164: str | None) -> str:
         return e164
 
 
-def _best_dm_phone(conn: sqlite3.Connection, business_id: str, dm, contacts) -> tuple[str, str, str]:
+def _day(ts: str | None) -> str:
+    """'2026-11-12T09:04:01Z' -> '2026-11-12'; '' when the value is not a date."""
+    return ts[:10] if ts and re.match(r"\d{4}-\d\d-\d\d", ts) else ""
+
+
+def _contact_origin(conn: sqlite3.Connection, business_id: str, field: str, contact) -> tuple[str, str]:
+    """(page address, date) where this e-mail or phone contact was found (C12). Newest observation of the very value first; a page
+    address beats a source name (an imported list has no page); then the `*_found` evidence of the contact; then what the contact
+    row itself dates; else the NOT_RECORDED words."""
+    obs = conn.execute("SELECT source, source_url, observed_at FROM enrichment_observations WHERE business_id=? AND field=? "
+                       "AND value_json=? ORDER BY id DESC", (business_id, field, json.dumps(contact["value"]))).fetchall()
+    ev = conn.execute("SELECT url, observed_at FROM evidence WHERE ref_table='contacts' AND ref_id=? AND url!='' ORDER BY id DESC",
+                      (contact["id"],)).fetchall()
+    with_page = next((o for o in obs if o["source_url"]), None)
+    if with_page is not None:
+        source, stamp = with_page["source_url"], with_page["observed_at"]
+    elif ev:
+        source, stamp = ev[0]["url"], ev[0]["observed_at"]
+    elif obs:
+        source, stamp = obs[0]["source"] or NOT_RECORDED_SOURCE, obs[0]["observed_at"]
+    else:
+        source, stamp = NOT_RECORDED_SOURCE, ""
+    return source, _day(stamp) or _day(contact["verified_at"]) or NOT_RECORDED_DATE
+
+
+def _listing_source(s, cfg: Config) -> str:
+    """The address of the list a business's own phone number came from: a Maps row's page, the configured DVSA list, else the provider's name."""
+    if s["maps_url"]:
+        return s["maps_url"]
+    if s["source"] == "dvsa":
+        return cfg.discovery.dvsa.url
+    return s["source"] or NOT_RECORDED_SOURCE
+
+
+def _best_dm_phone(conn: sqlite3.Connection, business_id: str, dm, contacts) -> tuple[str, str, str, str, str]:
     """Return the strongest person-owned phone for the selected DM.
 
     Generic business phones remain in ``Phone``. A DM phone is only selected from an observation
     explicitly attached to this person's row; this prevents a nearby switchboard or another
-    employee's line from being presented as the DM route.
+    employee's line from being presented as the DM route. Returns (number, type, source, page address, date).
     """
     if dm is None:
-        return "", "", ""
+        return "", "", "", "", ""
     contact_types = {
         c["value"]: (c["phone_type"] or "unknown")
         for c in contacts if c["kind"] == "phone"
@@ -132,12 +195,13 @@ def _best_dm_phone(conn: sqlite3.Connection, business_id: str, dm, contacts) -> 
         candidates.append((
             state_rank.get(obs["verification_state"], 0), type_rank.get(phone_type, 0),
             provider_rank.get(obs["provider"], 0), float(obs["confidence"] or 0),
-            value, phone_type, obs["source"],
+            value, phone_type, obs["source"], obs["source_url"] or NOT_RECORDED_SOURCE,
+            _day(obs["observed_at"]) or NOT_RECORDED_DATE,
         ))
     if not candidates:
-        return "", "", ""
-    _state, _type, _provider, _confidence, value, phone_type, source = max(candidates)
-    return _display_phone(value), phone_type, source
+        return "", "", "", "", ""
+    _state, _type, _provider, _confidence, value, phone_type, source, page, day = max(candidates)
+    return _display_phone(value), phone_type, source, page, day
 
 
 def _site_status(enrich: dict) -> tuple[str, bool]:
@@ -189,8 +253,8 @@ def _row_for(conn: sqlite3.Connection, s, staleness_days: int = 90, *,
     profile = icp.scoring.profile if icp else "default"
     people = db.people_for(conn, s["business_id"])
     dm = next((p for p in people if p["is_dm"] == 1), None)
-    contacts = db.contacts_for(conn, s["business_id"])
-    dm_phone, dm_phone_type, dm_phone_source = _best_dm_phone(conn, s["business_id"], dm, contacts)
+    contacts = db.contacts_for(conn, s["business_id"], hide_suppressed=True)
+    dm_phone, dm_phone_type, dm_phone_source, dm_phone_page, dm_phone_day = _best_dm_phone(conn, s["business_id"], dm, contacts)
     # Affinity MUST be backfilled BEFORE ranking (docs/09 §D fix): every pre-v0.3 row stores
     # affinity is written at insert time for every email contact (crawl and infer), so ranking and
     # grading always use the real value — Email / Email Confidence / Lawful Basis / contactability
@@ -253,6 +317,22 @@ def _row_for(conn: sqlite3.Connection, s, staleness_days: int = 90, *,
                                    if conf else inferred["value"])
     else:
         row["Email (Inferred)"] = "not inferred"
+    # C12: the origin of every e-mail and phone in the row, computed before the placeholders below replace the blanks
+    if best_row is not None:
+        row["Email Source"], row["Email Date"] = _contact_origin(conn, s["business_id"], "email", best_row)
+    if inferred is not None:
+        inferred_basis = (json.loads(inferred["meta_json"]) if inferred["meta_json"] else {}).get("basis", "pattern")
+        row["Email (Inferred) Source"] = f"inferred, not published: {inferred_basis}"
+        row["Email (Inferred) Date"] = _day(inferred["verified_at"]) or NOT_RECORDED_DATE
+    phone_contact = next((c for c in contacts if c["kind"] == "phone"), None)
+    if _display_phone(s["phone_e164"]) or s["phone_raw"]:
+        row["Phone Source"], row["Phone Date"] = _listing_source(s, cfg), _day(s["last_seen_at"]) or NOT_RECORDED_DATE
+    elif phone_contact is not None:
+        row["Phone Source"], row["Phone Date"] = _contact_origin(conn, s["business_id"], "phone", phone_contact)
+    if dm_phone:
+        row["DM Phone Page"], row["DM Phone Date"] = dm_phone_page, dm_phone_day
+    for col in SOURCE_COLUMNS:
+        row.setdefault(col, "-")
     # No unresolved cells: a blank is replaced by WHY it is blank, so callers know what they hold.
     if not row["Email"]:
         row["Email"] = "none published" if crawled else ("no website to crawl" if not row["Website"] else "site not crawled")
@@ -348,6 +428,8 @@ def _row_for(conn: sqlite3.Connection, s, staleness_days: int = 90, *,
         "WHERE t.business_id=? AND t.campaign=? AND m.state!='rejected' ORDER BY m.id DESC LIMIT 1",
         (s["business_id"], icp.campaign if icp else ""),
     ).fetchone() if icp is not None else None
+    if msg is not None and _addressed_to_suppressed(conn, msg["target_id"]):
+        msg = None   # C7: no draft for an address that objected
     row["_has_draft"] = msg is not None
     if msg is not None:
         row["_draft_author"] = msg["author"] or "no draft"
@@ -372,6 +454,8 @@ def export_run(conn: sqlite3.Connection, icp: ICP, run_id: str, out_dir: Path, f
     rows_raw = db.scores_for_run(conn, run_id)
     chain = db.chain_map(conn) if profile != "account_fit" else {}
     rows = [_row_for(conn, s, staleness_days, icp=icp, cfg=cfg, chain=chain) for s in rows_raw]
+    mask = _masker(conn)
+    rows = [{k: mask(v) for k, v in r.items()} for r in rows]
     rows.sort(key=lambda r: (-r["Score"], r["Tier"]))
     columns = ACCOUNT_COLUMNS if profile == "account_fit" else DEFAULT_COLUMNS
     run_dir = out_dir / run_id
@@ -452,7 +536,7 @@ def _draft_to_address(conn: sqlite3.Connection, business_row: sqlite3.Row, targe
         crow = conn.execute("SELECT value FROM contacts WHERE id=?", (t["contact_id"],)).fetchone()
         if crow and crow["value"]:
             return crow["value"]
-    contacts = db.contacts_for(conn, business_row["id"])
+    contacts = db.contacts_for(conn, business_row["id"], hide_suppressed=True)
     ranked = rank_email_contacts(contacts)
     sendable = [c for c in ranked if c["tier"] not in ("invalid", "inferred")]
     return sendable[0]["value"] if sendable else ""
@@ -464,7 +548,7 @@ def _drafts_sheet(wb: Workbook, conn: sqlite3.Connection, rows_raw: list, icp: I
     `leadforge outreach approve`. Nothing here is ever sent by this sheet existing."""
     ws = wb.create_sheet("Drafts")
     headers = ["Business", "DM Name", "To", "Subject", "Body", "Grade", "Used Fact", "Author",
-               "State", "Created"]
+               "State", "Created", "To Source", "To Date"]
     ws.append(headers)
     for ci in range(1, len(headers) + 1):
         c = ws.cell(row=1, column=ci)
@@ -472,6 +556,7 @@ def _drafts_sheet(wb: Workbook, conn: sqlite3.Connection, rows_raw: list, icp: I
         c.font = _HEADER_FONT
         c.alignment = Alignment(vertical="center")
     wrap = Alignment(wrap_text=True, vertical="top")
+    mask = _masker(conn)
     for s in rows_raw:
         bid = s["business_id"]
         b = conn.execute("SELECT * FROM businesses WHERE id=?", (bid,)).fetchone()
@@ -488,15 +573,19 @@ def _drafts_sheet(wb: Workbook, conn: sqlite3.Connection, rows_raw: list, icp: I
         dm = next((p for p in people if p["is_dm"] == 1), None)
         dm_name = dm["name"] if dm else "not identified - ask for owner/manager"
         for m in msgs:
+            if _addressed_to_suppressed(conn, m["target_id"]):
+                continue   # C7: a draft to an address that objected is not on the sheet
             to_addr = _draft_to_address(conn, b, m["target_id"])
+            to_contact = conn.execute("SELECT * FROM contacts WHERE business_id=? AND kind='email' AND value=?",
+                                      (bid, to_addr)).fetchone() if to_addr else None
+            to_source, to_date = _contact_origin(conn, bid, "email", to_contact) if to_contact else ("-", "-")
             author = m["author"] or "agent"
-            ws.append([_safe_cell(b["name"]), _safe_cell(dm_name), _safe_cell(to_addr or "-"),
-                      _safe_cell(m["subject"] or "-"), _safe_cell(m["body_text"] or "-"),
-                      _safe_cell(m["grade"] or "-"), _safe_cell(m["used_fact"] or "-"),
-                      _safe_cell(author), _safe_cell(m["state"]), _safe_cell(m["created_at"] or "-")])
+            ws.append([_safe_cell(mask(v)) for v in (
+                b["name"], dm_name, to_addr or "-", m["subject"] or "-", m["body_text"] or "-", m["grade"] or "-",
+                m["used_fact"] or "-", author, m["state"], m["created_at"] or "-", to_source, to_date)])
             ws.cell(row=ws.max_row, column=5).alignment = wrap
     for col, width in (("A", 24), ("B", 20), ("C", 28), ("D", 32), ("E", 80), ("F", 8),
-                       ("G", 16), ("H", 10), ("I", 12), ("J", 20)):
+                       ("G", 16), ("H", 10), ("I", 12), ("J", 20), ("K", 40), ("L", 14)):
         ws.column_dimensions[col].width = width
     ws.freeze_panes = "A2"
 
@@ -553,6 +642,8 @@ def _summary_sheet(wb: Workbook, rows: list[dict], icp: ICP, run_id: str) -> Non
                 na_counts[na] = na_counts.get(na, 0) + 1
         for na, n in sorted(na_counts.items(), key=lambda x: -x[1]):
             lines.append((f"  {n}×", na))
+    if any(r.get("Source") == "dvsa" for r in rows):
+        lines += [("", ""), ("Source notice", _DVSA_NOTICE)]
     lines += [("", ""), ("Compliance reminder", _REGION_REMINDER.get(icp.compliance.region_profile, ""))]
     for k, v in lines:
         ws.append([k, v])
@@ -583,7 +674,10 @@ def _about_sheet(wb: Workbook, icp: ICP) -> None:
     ws.append(["DM Conf", "0–1 confidence the agent assigned when labeling the decision maker from site snippets"])
     ws.append(["Likely Need (Hook)", "auto-suggested outreach angle from detected need signals + your offer"])
     ws.append(["Verified On", "timestamp of the newest evidence for the row; older than your staleness window = re-verify"])
-    ws.append(["Source", "which engine discovered the business (gosom = Google Maps)"])
+    ws.append(["Source", "which engine discovered the business"])
+    ws.append(["... Source / ... Date / DM Phone Page", "where each e-mail and phone in the row came from (the page address, or the list's address "
+                                                       "for the business's own number) and the day it was seen; 'source not recorded' means "
+                                                       "the workspace holds no record of it, '-' means the row has no such value"])
     if not account_fit:
         ws.append([])
         ws.append(["v0.3 columns", "fit/contactability are graded separately on purpose — a hot-but-"

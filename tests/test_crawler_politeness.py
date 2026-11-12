@@ -122,7 +122,7 @@ def test_crawl_of_robots_disallowed_home_never_flags_browser(tmp_path, monkeypat
 
 def test_crawl_of_blocked_home_flags_browser(tmp_path, monkeypatch, server):
     base, handler = server
-    handler.page_status = 403  # WAF-style block for the plain HTTP client; robots readable + permissive
+    handler.page_status = 406  # a block-shaped status that is not a refusal (C9: 403 and 429 are final)
     cfg, crawler = _crawler(tmp_path, monkeypatch)
     try:
         res = crawler.crawl(base)
@@ -269,7 +269,7 @@ def test_home_block_status_never_fetches_secondary_pages(tmp_path, monkeypatch, 
     base, handler = server
     links = "".join(f'<a href="/about-{i}">about {i}</a>' for i in range(5))
     handler.home_html = f"<html><body>{links}</body></html>".encode()
-    handler.page_status = 403
+    handler.page_status = 406
     cfg, crawler = _crawler(tmp_path, monkeypatch)
     try:
         res = crawler.crawl(base)
@@ -342,6 +342,7 @@ def test_read_timeout_does_not_mark_host_dead(monkeypatch):
             raise _httpx.ReadTimeout("simulated slow server")
 
         monkeypatch.setattr(crawler.client, "get", slow)
+        monkeypatch.setattr(crawler.client, "stream", slow)  # robots.txt is read through stream() since C8
         crawler.crawl(url)
         crawler.close()
         assert SiteCrawler._host_dead_reason(host) is None

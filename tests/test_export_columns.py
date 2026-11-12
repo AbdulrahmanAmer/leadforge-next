@@ -37,7 +37,7 @@ def _csv_rows(arts):
 
 def test_new_columns_present_and_never_blank(tmp_path, monkeypatch):
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="b1", name="Bare Garage", source="gosom", dedupe_key="dk-b1"))
+    db.upsert_business(conn, Business(id="b1", name="Bare Garage", source="fakelist", dedupe_key="dk-b1"))
     _score(conn, rid, "b1")
     arts = export_run(conn, _icp(), rid, cfg.exports_dir, ["csv"], cfg=cfg)
     row = _csv_rows(arts)[0]
@@ -59,7 +59,7 @@ def test_account_fit_export_unaffected_by_the_new_columns(tmp_path, monkeypatch)
                               "target": {"categories": ["manufacturer"],
                                          "geography": {"areas": ["Dubai"], "country": "AE"}},
                               "scoring": {"profile": "account_fit"}})
-    db.upsert_business(conn, Business(id="b1", name="Acme", source="gosom", dedupe_key="dk-b1"))
+    db.upsert_business(conn, Business(id="b1", name="Acme", source="fakelist", dedupe_key="dk-b1"))
     db.save_score(conn, Score(business_id="b1", run_id=rid, total=70, tier="B",
                               factors=[ScoreFactor(factor="status", group="meta", weight=0, score=0,
                                                    points=0, why="NEW")]))
@@ -73,18 +73,18 @@ def test_account_fit_export_unaffected_by_the_new_columns(tmp_path, monkeypatch)
 
 def test_next_action_is_phone_first(tmp_path, monkeypatch):
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="named", name="Named Garage", source="gosom", dedupe_key="dk-named",
+    db.upsert_business(conn, Business(id="named", name="Named Garage", source="fakelist", dedupe_key="dk-named",
                                       phone_e164="+441483123456"))
     db.add_person(conn, Person(business_id="named", name="Jo Owner", title="Owner", is_dm=1,
                                dm_confidence=0.9, labeled_by="agent"))
     _score(conn, rid, "named")
 
-    db.upsert_business(conn, Business(id="switch", name="Switch Garage", source="gosom",
+    db.upsert_business(conn, Business(id="switch", name="Switch Garage", source="fakelist",
                                       dedupe_key="dk-switch", phone_e164="+441483123457"))
     _score(conn, rid, "switch")
 
-    db.upsert_business(conn, Business(id="mail", name="Mail Garage", source="gosom", dedupe_key="dk-mail",
-                                      domain="mailgarage.example"))
+    db.upsert_business(conn, Business(id="mail", name="Mail Garage", source="fakelist", dedupe_key="dk-mail",
+                                      domain="mailgarage.example", address_country="GB"))
     db.add_contact(conn, Contact(business_id="mail", kind="email", value="info@mailgarage.example",
                                  tier="valid", affinity="own_domain"))
     _score(conn, rid, "mail")
@@ -99,7 +99,7 @@ def test_next_action_is_phone_first(tmp_path, monkeypatch):
 
 def test_export_surfaces_person_owned_dm_phone_separately_from_business_phone(tmp_path, monkeypatch):
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="dm-phone", name="DM Phone Garage", source="gosom",
+    db.upsert_business(conn, Business(id="dm-phone", name="DM Phone Garage", source="fakelist",
                                       dedupe_key="dk-dm-phone", phone_e164="+441483100000"))
     db.add_person(conn, Person(business_id="dm-phone", name="Jo Owner", title="Owner", is_dm=1,
                                dm_confidence=0.95, labeled_by="agent"))
@@ -124,7 +124,7 @@ def test_next_action_shows_outreach_state_when_an_outreach_targets_row_exists(tm
     outreach lifecycle state ('OUTREACH - <state>') instead of the phone-first default — even for a
     business that would otherwise read 'CALL - named contact'."""
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="enrolled", name="Enrolled Garage", source="gosom",
+    db.upsert_business(conn, Business(id="enrolled", name="Enrolled Garage", source="fakelist",
                                       dedupe_key="dk-enrolled", phone_e164="+441483123456"))
     db.add_person(conn, Person(business_id="enrolled", name="Jo Owner", title="Owner", is_dm=1,
                                dm_confidence=0.9, labeled_by="agent"))
@@ -143,7 +143,7 @@ def test_freemail_never_outranks_own_domain_in_the_email_column(tmp_path, monkey
     """The v0.2 sheet exported a font designer's gmail above a real info@ three times — this is the
     regression test for the fix: a freemail 'valid' address must never beat an own-domain 'role' one."""
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="dual", name="Dual Garage", source="gosom", dedupe_key="dk-dual",
+    db.upsert_business(conn, Business(id="dual", name="Dual Garage", source="fakelist", dedupe_key="dk-dual",
                                       domain="dualgarage.example"))
     db.add_contact(conn, Contact(business_id="dual", kind="email", value="jane.font@gmail.com",
                                  tier="valid", affinity="freemail_linked"))
@@ -162,7 +162,7 @@ def test_why_this_score_never_shows_the_contactability_meta_factor(tmp_path, mon
     that can carry up to 98 points, dwarfing every real fit factor (max 25); it must never be able to
     push into the top-3 'Why This Score' drivers just because it happens to score the most points."""
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
-    db.upsert_business(conn, Business(id="whyrow", name="Why Garage", source="gosom", dedupe_key="dk-whyrow"))
+    db.upsert_business(conn, Business(id="whyrow", name="Why Garage", source="fakelist", dedupe_key="dk-whyrow"))
     db.save_score(conn, Score(business_id="whyrow", run_id=rid, total=25, tier="C", factors=[
         ScoreFactor(factor="industry_match", group="fit", weight=25, score=1.0, points=25,
                    why="category matches the ICP"),
@@ -237,19 +237,19 @@ def test_summary_sheet_funnel_and_next_action_breakdown(tmp_path, monkeypatch):
 
     cfg, conn, rid = _bootstrap(tmp_path, monkeypatch)
     # 1) call-ready: named DM + validated phone -> Next Action "CALL - named contact"
-    db.upsert_business(conn, Business(id="named", name="Named Garage", source="gosom",
+    db.upsert_business(conn, Business(id="named", name="Named Garage", source="fakelist",
                                       dedupe_key="dk-named", phone_e164="+441483123456"))
     db.add_person(conn, Person(business_id="named", name="Jo Owner", title="Owner", is_dm=1,
                                dm_confidence=0.9, labeled_by="agent"))
     _score(conn, rid, "named")
     # 2) email-eligible, own-domain, no phone -> Next Action "EMAIL - eligible"
-    db.upsert_business(conn, Business(id="mail", name="Mail Garage", source="gosom", dedupe_key="dk-mail",
-                                      website="https://mailgarage.example", domain="mailgarage.example"))
+    db.upsert_business(conn, Business(id="mail", name="Mail Garage", source="fakelist", dedupe_key="dk-mail",
+                                      website="https://mailgarage.example", domain="mailgarage.example", address_country="GB"))
     db.add_contact(conn, Contact(business_id="mail", kind="email", value="info@mailgarage.example",
                                  tier="valid", affinity="own_domain"))
     _score(conn, rid, "mail")
     # 3) nothing at all -> Next Action "RESEARCH - no reachable channel"
-    db.upsert_business(conn, Business(id="bare", name="Bare Garage", source="gosom", dedupe_key="dk-bare"))
+    db.upsert_business(conn, Business(id="bare", name="Bare Garage", source="fakelist", dedupe_key="dk-bare"))
     _score(conn, rid, "bare")
 
     arts = export_run(conn, _icp(), rid, cfg.exports_dir, ["xlsx"], cfg=cfg)

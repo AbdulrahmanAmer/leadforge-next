@@ -7,7 +7,7 @@ Digest line (always last): `LF_DIGEST {"ok":bool,"cmd":str,"run":str|null,"count
 
 | Command | Purpose | Key flags | Digest counts to watch |
 |---|---|---|---|
-| `doctor` | verify environment (pip deps, pinned gosom binary, optional extras, network, disk); light/read-only by default | `--fix` (installs missing core deps/binary), `--full` (with `--fix`: also NER + browser extras — several hundred MB, get consent first), `--strict` | `checks`, `fixed`, `failed` |
+| `doctor` | verify environment (pip deps, optional extras, network, disk); light/read-only by default | `--fix` (installs missing core deps), `--full` (with `--fix`: also NER + browser extras — several hundred MB, get consent first), `--strict` | `checks`, `fixed`, `failed` |
 | `intake` | compile + validate `answers.yaml` → `icp.yaml` | `--answers F`, `--out F` | `errors` (0 required) |
 | `plan` | show run plan without scraping | `--icp F` | `tiles`, `queries`, `est_max_results`, `est_runtime_min` (discovery), `est_enrich_sites`, `est_enrich_min` (crawl/enrich), `est_total_min` |
 | `discover` | scrape listings → normalize → upsert | `--icp F`, `--limit N`, `--provider NAME` | `businesses`, `new`, `tiles_degraded` |
@@ -50,19 +50,17 @@ Notes
 - `--limit N` caps NEW businesses processed this invocation — use for smoke tests (`--limit 10`); `caps.max_leads` is the
   per-run hard stop across resumes.
 - `--json` may be written before or after the subcommand (v0.3); both spellings work.
-- v0.3 discovery: `discovery.providers: [gosom, dvsa]` adds the DVSA MOT-station register as its own planned query per area
-  (merged into Maps rows by phone); `discovery.grid_mode: auto` tiles areas and splits any tile that returns ≥ `subdivide_at`
+- v0.3 discovery: `discovery.providers: [dvsa]` (the default) runs the DVSA MOT-station register as its own planned query per area; `discovery.grid_mode: auto` tiles areas and splits any tile that returns ≥ `subdivide_at`
   results; `discovery.area_bbox` bypasses the geocoder for a named area; `plan` reports `registry_queries`, `tiled_queries`,
   `est_runtime_min` and a worst-case subdivided estimate.
 - v0.3 company mode (a named provider mode, not a default): `target.mode: company` + `sic_codes` in the ICP and
   `discovery.providers: [companies_house]` discover companies from Companies House by SIC × location; see `icp-guide.md`.
-- speed unit (ADR-014): `discovery.providers: [maps_list]` uses the native list-first Maps engine (plain Playwright, one
-  persistent browser, no place-page visits by default) instead of gosom's per-place subprocess crawl — measured 5-10x
-  faster for the same list coverage; a maps_list row has no `place_id` (dedupe keys on CID instead, merged with any
-  matching gosom row by phone) and lacks full postal address/hours unless `discovery.maps_list.visit_details: true`.
-  `discovery.parallel_queries: N` (any provider) fans discover queries across N provider-chain instances (each its own
+- Provider add-ons: a package that declares an entry point in the group `leadforge.providers` adds provider names to
+  `discovery.providers`; without one installed, asking for such a name prints "not available" and nothing is started.
+  The public tool ships no text-search provider.
+- `discovery.parallel_queries: N` (any provider) fans discover queries across N provider-chain instances (each its own
   browser/subprocess) instead of one query at a time.
 - Optional extras change behavior when installed: `[browser]` auto-covers `needs_browser` sites; configured registry keys add
   officer cross-checks. Digest `warnings` tell you when an extra would have helped.
-- Config file `leadforge.yaml` (workspace, optional): provider order, politeness knobs, proxies passthrough, validation.staleness_days (drives the sheet's Stale? column). Write values with `leadforge config set <dotted.key> <value>`.
+- Config file `leadforge.yaml` (workspace, optional): provider order, politeness knobs, validation.staleness_days (drives the sheet's Stale? column). Write values with `leadforge config set <dotted.key> <value>`.
   Don't edit it unless the user asks; defaults are sane.

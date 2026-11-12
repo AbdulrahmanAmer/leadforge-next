@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from leadforge import send_rules
+
 # --------------------------------------------------------------------------- entity type
 ENTITY_CORPORATE_ACTIVE = "corporate_active"        # registry match, company_status == active
 ENTITY_CORPORATE_INACTIVE = "corporate_inactive"    # registry match, dissolved/liquidation/other
@@ -116,6 +118,16 @@ def email_eligibility(row: Any, contacts: list[Any], entity: str, region_profile
         reasons.append("no_sendable_email")
     elif basis != BASIS_B2B:
         reasons.append(basis)
+    # C13: the business's own country has the last word, and only ever narrows the answer
+    rule = send_rules.check(row["address_country"] if "address_country" in row.keys() else None,
+                            unmatched_entity=entity == ENTITY_UNMATCHED)
+    if rule["outcome"] == "no_send":
+        basis = BASIS_NONE
+        reasons.append(rule["reason"])
+    elif rule["outcome"] == "consent" and basis != BASIS_NONE:
+        basis = BASIS_CONSENT
+        if BASIS_CONSENT not in reasons:
+            reasons.append(BASIS_CONSENT)
     if site_dead:
         reasons.append("site_dead")
     return {"eligible": not reasons, "email": email, "tier": tier, "affinity": affinity,

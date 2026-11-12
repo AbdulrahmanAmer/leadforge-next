@@ -1,9 +1,7 @@
 """C3 (slice L2b): nothing downloaded unchecked.
 
-The helper binary is pinned by version and SHA-256 and a file that does not match is refused and deleted;
-the NER model is pinned by revision; `run` with an old doctor stamp opens no socket. All offline: the
-"download" is served by httpx.MockTransport and every socket call is blocked and recorded."""
-import hashlib
+The NER model is pinned by revision (the helper binary's own pin moved to the Maps add-on, slice L8); `run` with an old doctor stamp opens no socket. All offline: the
+"download" is served by a fake and every socket call is blocked and recorded."""
 import importlib.machinery
 import json
 import os
@@ -13,16 +11,12 @@ import sys
 import time
 import types
 
-import httpx
 import pytest
 from typer.testing import CliRunner
 
 from leadforge import doctor
 from leadforge.cli import app
 from leadforge.config import load_config
-from leadforge.util import EnvError
-
-FAKE_BINARY = b"MZ this is a made-up file, not the pinned gosom release\n"
 
 
 @pytest.fixture
@@ -45,61 +39,6 @@ def no_sockets(monkeypatch):
 
 def _never_run(*a, **k):
     raise AssertionError(f"a binary was executed: {a[:1]}")
-
-
-# ------------------------------------------------------------------ the pinned helper binary
-def test_every_pinned_asset_has_a_sha256():
-    assert doctor.gosom_asset_name() in doctor.GOSOM_SHA256
-    for name, digest in doctor.GOSOM_SHA256.items():
-        assert doctor.GOSOM_VERSION in name
-        assert len(digest) == 64 and int(digest, 16) >= 0
-
-
-def test_doctored_binary_is_refused_deleted_and_never_run(cfg, monkeypatch):
-    path = doctor.gosom_path(cfg)
-    path.write_bytes(FAKE_BINARY)  # right name, wrong bytes
-    monkeypatch.setattr(doctor.subprocess, "run", _never_run)
-
-    assert doctor.gosom_runs(path) is False
-    assert not path.exists(), "a binary with the wrong SHA-256 must be deleted"
-
-    path.write_bytes(FAKE_BINARY)
-    rep = doctor.run_doctor(cfg, network=False)
-    gosom = next(r for r in rep.results if r.name == "gosom-binary")
-    assert gosom.ok is False and "refused and deleted" in gosom.msg
-    assert not path.exists()
-
-
-def _serve(monkeypatch, body: bytes, seen: list):
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(str(request.url))
-        return httpx.Response(200, content=body)
-
-    real_client = httpx.Client
-    monkeypatch.setattr(doctor.httpx, "Client",
-                        lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
-
-
-def test_download_with_wrong_hash_is_refused_and_deleted(cfg, monkeypatch):
-    seen: list[str] = []
-    _serve(monkeypatch, FAKE_BINARY, seen)
-    dest = doctor.gosom_path(cfg)
-
-    with pytest.raises(EnvError, match="refused and deleted"):
-        doctor.download_gosom(cfg)
-    assert seen == [f"https://github.com/{doctor.GOSOM_REPO}/releases/download/v{doctor.GOSOM_VERSION}/"
-                    f"{doctor.gosom_asset_name()}"], "only the pinned release URL, no API lookup"
-    assert not dest.exists()
-    assert list(dest.parent.iterdir()) == [], "no partial file left behind"
-
-
-def test_download_with_the_pinned_hash_is_kept(cfg, monkeypatch):
-    seen: list[str] = []
-    _serve(monkeypatch, FAKE_BINARY, seen)
-    monkeypatch.setitem(doctor.GOSOM_SHA256, doctor.gosom_asset_name(), hashlib.sha256(FAKE_BINARY).hexdigest())
-
-    assert doctor.download_gosom(cfg).read_bytes() == FAKE_BINARY
-    assert len(seen) == 1
 
 
 # ------------------------------------------------------------------ the model file
@@ -289,14 +228,15 @@ def test_doctor_fetch_pins_the_model_and_the_tokenizer(tmp_path, monkeypatch):
 # ------------------------------------------------------------------ nothing downloads inside `run`
 def _old_stamp(cfg):
     (cfg.data_path / doctor.STAMP_NAME).write_text(json.dumps(
-        {"at": "2026-01-01T00:00:00Z", "t": time.time() - 48 * 3600, "gosom": doctor.GOSOM_VERSION}),
+        {"at": "2026-01-01T00:00:00Z", "t": time.time() - 48 * 3600}),
         encoding="utf-8")
 
 
 def test_run_with_old_stamp_makes_no_network_call(tmp_path, monkeypatch, no_sockets):
-    """The real `run` command, its real ensure_ready, an old stamp and no helper binary: it stops with
+    """The real `run` command, its real ensure_ready, an old stamp and a missing dependency: it stops with
     the doctor's fix and never reaches for the network."""
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(doctor, "CORE_IMPORTS", [*doctor.CORE_IMPORTS, "leadforge_made_up_missing_module"])
     (tmp_path / "answers.yaml").write_text(
         "campaign: t\noffer:\n  what: Web redesign\n"
         "target:\n  categories: [auto repair shop]\n"
@@ -311,11 +251,10 @@ def test_run_with_old_stamp_makes_no_network_call(tmp_path, monkeypatch, no_sock
     assert res.exit_code != 0
     digest = json.loads(next(ln for ln in res.output.splitlines() if ln.startswith("LF_DIGEST "))[10:])
     assert digest["ok"] is False
-    assert "gosom-binary (leadforge doctor --fix)" in json.dumps(digest)
+    assert "core-imports (pip install -e <repo-root>)" in json.dumps(digest)
 
 
 def test_old_stamp_with_a_good_install_passes_offline_and_refreshes(cfg, monkeypatch, no_sockets):
-    monkeypatch.setattr(doctor, "gosom_runs", lambda path: True)
     _old_stamp(cfg)
 
     doctor.ensure_ready(cfg)

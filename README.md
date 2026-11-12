@@ -33,7 +33,7 @@ the agent **under ~15k tokens** — the pipeline itself processes hundreds of pa
 Then, once, in the folder where you want your lead data to live:
 
 ```bash
-leadforge doctor --fix --full  # installs deps, pinned scraper binary, AND the quality extras (GLiNER NER + crawl4ai browser + yt-dlp)
+leadforge doctor --fix --full  # installs deps AND the quality extras (GLiNER NER + crawl4ai browser)
 ```
 
 Requires **Python 3.11+**. No compiler needed — every default dependency is a pure-python wheel.
@@ -116,8 +116,8 @@ registry officers, press/speaker pages, and existing lawful Google Business Prof
 typed as `switchboard`, `main_line`, `direct`, `mobile`, or `unknown`; emails retain their stage: published personal,
 published role, inferred pattern, or licensed-provider verification.
 
-The default path remains OSS and keyless. Paid enrichment adapters are optional and disabled unless explicitly
-configured. No LinkedIn scraping or SMTP mailbox probing is used. MX validation confirms that a domain can receive
+The default path remains OSS and keyless; there is no paid-provider code in the tool (the unused adapter hook was removed
+in 0.7.1). No LinkedIn scraping or SMTP mailbox probing is used. MX validation confirms that a domain can receive
 mail; it does not claim that a particular mailbox exists.
 
 For stricter outreach, require confirmation evidence in `leadforge.yaml`:
@@ -197,6 +197,36 @@ Architecture, data model, pipeline behavior and every decision are documented in
 
 See [`docs/07-compliance.md`](docs/07-compliance.md) for the practical GDPR/PECR/CAN-SPAM posture. Not legal advice.
 
+### Deleting data (0.8.0)
+
+- **`leadforge forget <email | domain | name>`** removes a person from every table, the cache, the logs, the progress file, the outbox and
+  inbox, the hand-off and draft files and the sheets in the tool's own `exports` folder, then adds them to the suppression list so a new
+  run does not collect them again. The suppression list holds the identifier itself, in clear: that is how the objection is honoured.
+  A file that could not be cleaned is named and the command exits non-zero. Sheets you already handed to someone, and files you wrote
+  elsewhere with `--out`, cannot be reached from here.
+- **Data expires after 12 months** (`retention.months`, 1 to 12). A business and everything attached to it is deleted when it is 12 months
+  past the run that first found it (a refresh does not renew): its records, and every file under the data folder's own `exports` and `cache`
+  that holds it. A sheet is deleted whole, so the rows it holds of businesses that have **not** expired go with it (also a sheet that
+  only names a business whose name contains an expired one's, such as "Brindlewick Motors Ltd" for "Brindlewick Motors"); their records stay in the
+  workspace, and `leadforge export` writes the latest run's sheet again. `leadforge purge` lists the files before anything goes.
+  Files you wrote **outside** the data folder with `--out` are yours and are never touched.
+- `purge` runs at the start of every `run`, with three protections: the first run after an upgrade only reports (records and files);
+  every run says how many records and files expire in the next 30 days; an automatic purge never deletes when more than half of the
+  businesses, or more than half of the files in `exports` and `cache`, are past the limit (it stops and names `leadforge purge --apply`).
+  `leadforge purge` alone only reports; `purge --apply` deletes; `purge --everything --yes` wipes the data folder without opening the database.
+  If a file cannot be deleted (another program holds it open), no record is deleted either, the file is named, and the next pass tries again.
+
+### The collect side (0.9.0)
+
+- **A refusal is final.** A site that answers 403 or 429 is left alone: no second try in a browser. robots.txt is read in full rules (4xx allows,
+  5xx forbids, up to 24 hours kept, a redirect to another site is checked against that site's file). The browser profile of every browser the product
+  starts is made by one function.
+- **Every exported e-mail and phone says where it came from and when** (columns `... Source` and `... Date`; "source not recorded" when the workspace
+  holds no record). The DVSA list is under the Open Government Licence v3.0; the Summary sheet carries its sentence.
+- **Send rules by country.** The tool e-mails only into countries it has a rule for: the US (opt-out), the UK (companies; a sole trader needs consent)
+  and Germany (consent). Every other country, and a business with no country, shows "not eligible". The tool does not record consent: for a lead that
+  needs it, get it yourself and write to the person by your own means. Not legal advice; the duties are yours (`docs/07-compliance.md`).
+
 ## Outreach and drafting (v0.3)
 
 The sheet's **Next Action** column is phone-first: call rows with a validated phone and a named contact, email
@@ -240,15 +270,14 @@ booking" on sites that were never read); a freemail address never outranks the b
 matches require a name-similarity gate and an active company; Google Business Profile facts (booking links,
 appointment attributes, owner reply signatures) are kept; the DVSA MOT-station register is a discovery provider
 merged into Maps rows by phone; tiled Maps queries subdivide when they saturate and `--resume` finishes a run's
-pending queries; the geocoder resolves bare city names to the city. Release gate: `python scripts/v03_gate.py`.
+pending queries; the geocoder resolves bare city names to the city. Release gate: `node check.mjs --ci`.
 
 **v0.1.4 — shipped and live-validated** with a 709-lead UK auto-repair campaign (2026-08-31). Every ICM unit
 is implemented and tested. Since v0.1.1: a **registry stage** that covers site-less businesses and adds a
 Companies House profile (company number, incorporation, status, SIC codes); a **Call Readiness** column;
 `LF_PROGRESS` heartbeat lines + a live progress bar and `leadforge watch`; and a **browser fallback** for sites
 that bot-wall the plain HTTP client (robots.txt is always honored — disallowed sites never escalate).
-Deferred to v0.2: a grid-tiling live run and real Facebook/Instagram presence probes. gosom serve mode is
-closed by design (resume + a stall watchdog cover it). Previously deferred, shipped in 0.1.4:
+Deferred to v0.2: a grid-tiling live run. Previously deferred, shipped in 0.1.4:
 `claude plugin validate` in CI, TSV dm reconciliation, grid bbox flag-format verification.
 
 ```bash
@@ -256,12 +285,13 @@ pip install -e .[dev] && pytest -q && ruff check src tests   # suite must be ful
 ```
 
 Optional extras: `.[browser]` (JS-rendered + bot-walled sites), `.[ner]` (local zero-shot name/title
-extraction) and `.[social]` (yt-dlp presence probe) are installed automatically by
+extraction) are installed automatically by
 `leadforge doctor --fix --full`; `.[addressing]` (better US address splitting) is available but manual —
 `pip install -e .[addressing]`.
 
+Provider add-ons: the engine finds extra discovery providers through the entry-point group `leadforge.providers`.
+None is built in or published; a provider that is asked for and not installed is reported as "not available".
+
 ## License
 
-MIT — see [LICENSE](LICENSE). Bundled/pinned third-party engines keep their own licenses; the Google Maps
-scraper engine ([gosom/google-maps-scraper](https://github.com/gosom/google-maps-scraper), MIT) is downloaded at
-setup time, not vendored.
+MIT — see [LICENSE](LICENSE). Third-party packages keep their own licenses.

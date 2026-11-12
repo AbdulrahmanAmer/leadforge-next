@@ -164,7 +164,7 @@ def _seeded_conn(tmp_path, monkeypatch, names):
     cfg = load_config(tmp_path)
     conn = db.connect(cfg.db_path)
     from leadforge.models import Business
-    db.upsert_business(conn, Business(id="b1", run_id="r", name="Acme", source="gosom"))
+    db.upsert_business(conn, Business(id="b1", run_id="r", name="Acme", source="fakelist"))
     for n in names:
         db.add_person(conn, _mk_person(n))
     return conn
@@ -349,7 +349,7 @@ def test_registry_stage_covers_siteless_businesses(tmp_path, monkeypatch):
     cfg = load_config(tmp_path)
     cfg.registry.companies_house_key = "k"
     conn = db.connect(cfg.db_path)
-    db.upsert_business(conn, Business(id="b1", run_id="r", name="No Site Garage", source="gosom",
+    db.upsert_business(conn, Business(id="b1", run_id="r", name="No Site Garage", source="fakelist",
                                       address_country="GB"))  # no website/domain
     from leadforge.providers import registry as regmod
 

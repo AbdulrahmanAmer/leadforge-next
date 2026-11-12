@@ -16,7 +16,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 CH_BASE_DEFAULT = "https://api.company-information.service.gov.uk"
 KEY_SETTINGS = ("companies_house_key", "opencorporates_token")  # in the `registry` section
@@ -67,33 +67,14 @@ class CompaniesHouseDiscoveryCfg(BaseModel):
     exclude_sic: list[str] = Field(default_factory=lambda: ["82200"])  # call centres = competitors (owner decision 7)
 
 
-class MapsListCfg(BaseModel):
-    """Native list-first Google Maps provider (`maps_list`, speed unit) — docs/09, ADR-014.
-
-    Measured 2026-09-02 (probe_list2.py, plain Playwright, no stealth): one persistent browser,
-    ~120 cards per search in 25-28s once the browser is up (13s page load + ~15s scrolling);
-    phone on 119-120/120 cards, website on 83-91/120. Defaults below are set from that probe.
-    """
-
-    max_cards: int = 130            # Google Maps list caps out ~120/search server-side regardless
-    search_delay_s: float = 4.0     # politeness gap between searches in one browser; +/-30% jitter applied
-    max_searches_per_hour: int = 120  # token-bucket cap per provider instance
-    visit_details: bool = False     # opt-in place-page visit for full address/hours/plus-code on NEW cards only
-    detail_tabs: int = 3            # pages of the same context cycled (round-robin) for detail visits
-    delay_s: float = 1.5            # politeness gap between detail-page navigations; +/-30% jitter applied
-
-
 class DiscoveryCfg(BaseModel):
-    providers: list[str] = Field(default_factory=lambda: ["gosom"])  # + "dvsa" | "companies_house" per campaign
-    grid_mode: str = "off"  # off | auto — keep off until gosom grid flags are live-verified (U8.2)
+    # Unknown keys under `discovery:` are kept, not dropped: an installed provider add-on reads its own
+    # settings from them (see providers/base.py, the provider seam). Without an add-on they are inert.
+    model_config = ConfigDict(extra="allow")
+
+    providers: list[str] = Field(default_factory=lambda: ["dvsa"])  # + "companies_house", or a name an add-on provides
+    grid_mode: str = "off"  # off | auto — tiled queries; only a provider with supports_tiles uses it
     grid_cell_km: float = 3.0
-    depth: int = 10
-    concurrency: int = 2
-    lang: str = "en"
-    timeout_min: int = 30
-    stall_s: float = 180.0  # kill gosom when results stop growing this long (v1.17.4 hangs after finishing)
-    proxies: list[str] = Field(default_factory=list)
-    email_crawl: bool = False
     # v0.3 coverage: explicit [minLng, minLat, maxLng, maxLat] per area label bypasses the geocoder
     area_bbox: dict[str, list[float]] = Field(default_factory=dict)
     subdivide_at: int = 100        # a tiled query returning >= this many listings is split into 4 child tiles
@@ -104,7 +85,17 @@ class DiscoveryCfg(BaseModel):
     est_min_per_tiled_query: float = 4.0   # measured 2026-08-31: 3.5-4.7 min tiled
     dvsa: DvsaCfg = Field(default_factory=DvsaCfg)
     companies_house: CompaniesHouseDiscoveryCfg = Field(default_factory=CompaniesHouseDiscoveryCfg)
-    maps_list: MapsListCfg = Field(default_factory=MapsListCfg)
+    # C10: the key that once let the helper fetch business sites with no robots.txt check is refused.
+    @model_validator(mode="before")
+    @classmethod
+    def _refuse_email_crawl(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "email_crawl" in data:
+            raise ValueError(
+                "discovery.email_crawl was removed: the helper program's -email switch fetches business sites "
+                "without LeadForge's robots.txt check, so it is never used. Delete the key; LeadForge reads "
+                "e-mail addresses from the sites itself, after the robots.txt check")
+        return data
+
     # speed unit: fan discover queries across N provider-chain instances (each its own browser/subprocess
     # pool); ==1 keeps the original strictly-serial loop. See pipeline.run_discover.
     parallel_queries: int = 1
@@ -125,6 +116,8 @@ class CrawlCfg(BaseModel):
     page_timeout_s: float = 6.0      # secondary/candidate page + sitemap-probe fetch timeout
     site_budget_s: float = 45.0      # per-site wall-clock budget across the whole crawl() call
     max_text_bytes: int = 400_000
+    # C11: Cloudflare's "protected" e-mail addresses are an anti-harvesting measure; they are not decoded unless asked
+    decode_protected_emails: bool = False
 
 
 class PolitenessCfg(BaseModel):
@@ -297,25 +290,15 @@ class PipelineCfg(BaseModel):
     autopilot: bool = True             # run continues through labeling -> score -> draft -> export without pausing
 
 
-class SocialCfg(BaseModel):
-    """Social/video presence signals (U4.8, providers/social.py).
-
-    On by default — is_available() still gates on the tooling actually answering, so absence
-    degrades silently. Public, logged-out, business-owned profiles only — never LinkedIn, never
-    cookie/session auth (see icm/SCOPE.md and the provider module docstring).
-    """
-
-    enabled: bool = True  # auto: is_available() still gates on the agent-reach CLI actually answering
-    networks: list[str] = Field(default_factory=lambda: ["youtube"])  # only youtube has a real logged-out backend today
-    max_networks: int = 3
-    stale_months: int = 6
-    timeout_s: float = 30.0
-    max_calls_per_min: int = 20
-
-
 class ExportCfg(BaseModel):
     formats: list[str] = Field(default_factory=lambda: ["xlsx", "csv"])
     auto_open: bool = True  # open the finished XLSX with the OS default app (skipped in CI)
+
+
+class RetentionCfg(BaseModel):
+    """How long a business and everything attached to it is kept (C5): counted from the run that first found it.
+    The user can shorten the period, never lengthen it."""
+    months: int = Field(12, ge=1, le=12)
 
 
 class Config(BaseModel):
@@ -328,8 +311,8 @@ class Config(BaseModel):
     enrich: EnrichCfg = Field(default_factory=EnrichCfg)
     validation: ValidationCfg = Field(default_factory=ValidationCfg)
     registry: RegistryCfg = Field(default_factory=RegistryCfg)
-    social: SocialCfg = Field(default_factory=SocialCfg)
     export: ExportCfg = Field(default_factory=ExportCfg)
+    retention: RetentionCfg = Field(default_factory=RetentionCfg)
     outreach: OutreachCfg = Field(default_factory=OutreachCfg)
     draft: DraftCfg = Field(default_factory=DraftCfg)
     agent: AgentCfg = Field(default_factory=AgentCfg)
@@ -359,6 +342,10 @@ class Config(BaseModel):
     @property
     def cache_dir(self) -> Path:
         return self._dir("cache")
+
+    @property
+    def browser_profiles_dir(self) -> Path:
+        return self._dir("browser-profiles")
 
     @property
     def exports_dir(self) -> Path:

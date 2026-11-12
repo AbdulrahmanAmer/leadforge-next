@@ -107,7 +107,7 @@ def _region_for_business(b, default_region: str) -> str:
 
 def _jurisdiction(address_country) -> str:
     """ISO-2 for the registry gate. Maps rows say 'GB'; register and list rows say 'United Kingdom' —
-    found 2026-09-03: the raw upper-cased string skipped every DVSA/maps_list business silently."""
+    found 2026-09-03: the raw upper-cased string skipped every register or list-view business silently."""
     raw = (address_country or "").strip()
     return COUNTRY_TO_REGION.get(raw.casefold(), raw.upper())
 
@@ -126,7 +126,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
         if not res.ok:
             # site refused the plain HTTP client: try a real browser (same as a person opening it);
             # robots-disallowed sites never reach here (needs_browser stays False for those)
-            if res.needs_browser and browser.is_available():
+            if res.needs_browser and not res.refused and browser.is_available():  # C9: a refusal is final
                 rendered = browser.fetch_rendered(b["website"], cfg, throttle)
                 if rendered:
                     rendered = rendered[: cfg.crawl.max_text_bytes]  # same bound as the static path
@@ -134,7 +134,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
                     page = Page(b["website"], rendered, text)
                     region = _region_for_business(b, cfg.default_region)
                     people_fn = _people_fn(cfg)
-                    for email, label in extract_emails(rendered, text).items():
+                    for email, label in extract_emails(rendered, text, cfg.crawl.decode_protected_emails).items():
                         out["emails"].setdefault(email, {"label": label, "url": b["website"],
                                                           "context": _email_evidence(rendered, text, email)})
                     for phone in extract_phones(rendered, text, region):
@@ -164,7 +164,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
         # U4.7: GLiNER zero-shot people extraction when the [ner] extra is installed, else heuristic.
         people_fn = _people_fn(cfg)
         for page in res.pages:
-            for email, label in extract_emails(page.html, page.text).items():
+            for email, label in extract_emails(page.html, page.text, cfg.crawl.decode_protected_emails).items():
                 out["emails"].setdefault(email, {"label": label, "url": page.url,
                                                   "context": _email_evidence(page.html, page.text, email)})
             for phone in extract_phones(page.html, page.text, region):
@@ -182,7 +182,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
         except Exception as e:  # noqa: BLE001 — profiling is additive, never blocks enrichment
             LOG.warning("profile build failed for %s: %s", b["id"], type(e).__name__)
         # U4.5: browser escalation — only when static found nothing and the extra is installed.
-        if res.needs_browser and browser.is_available() and not out["emails"] and not out["people"]:
+        if res.needs_browser and not res.refused and browser.is_available() and not out["emails"] and not out["people"]:
             rendered_cap = cfg.enrich.rendered_pages_per_site
             urls = [p.url for p in res.pages[:rendered_cap]] or [b["website"]]
             rendered_any = False
@@ -194,7 +194,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
                     continue
                 rendered_any = True
                 text = SiteCrawler.extract_text(rendered)
-                for email, label in extract_emails(rendered, text).items():
+                for email, label in extract_emails(rendered, text, cfg.crawl.decode_protected_emails).items():
                     out["emails"].setdefault(email, {"label": label, "url": url,
                                                       "context": _email_evidence(rendered, text, email)})
                 for cand in people_fn(text, url):
@@ -354,7 +354,6 @@ def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: d
     (_persist_registry_result, inside the deferred _persist call) still happens on this thread when its
     closure is drained, same as the serial path — that part was never the bottleneck (it's a few
     dict/list writes, not I/O)."""
-    from leadforge.providers import social
     from leadforge.providers.registry import get_registries
 
     browser_ok = browser.is_available()
@@ -374,9 +373,6 @@ def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: d
     registry_backlog.sort(key=lambda r: 0 if not r["domain"] else 1)
 
     registries = get_registries(cfg)  # once per run, shared — a 429 disable (reg.disabled) sticks
-    social_ok, social_msg = social.is_available(cfg)
-    if cfg.social.enabled and not social_ok:
-        LOG.info("social presence skipped: %s", social_msg)
 
     wq: queue.Queue = queue.Queue()
     throttle = HostThrottle(cfg.politeness.delay_s)
@@ -424,7 +420,7 @@ def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: d
                     registry_result = _lookup_registry_for(b, registries) if registries else None
 
                     def _do_persist(b=b, res=res, registry_result=registry_result) -> None:
-                        _persist(conn, cfg, b, res, counts, registries, social_ok, registry_result=registry_result)
+                        _persist(conn, cfg, b, res, counts, registries, registry_result=registry_result)
                         if res["needs_browser"] and not browser_ok:
                             counts["needs_browser"] += 1
                     wq.put(_do_persist)
@@ -578,10 +574,6 @@ def _crawl_stage(conn: sqlite3.Connection, cfg: Config, limit: int, counts: dict
     throttle = HostThrottle(cfg.politeness.delay_s)
     from leadforge.providers.registry import get_registries
     registries = get_registries(cfg)  # once per run so a 429 disable sticks for the whole batch
-    from leadforge.providers import social
-    social_ok, social_msg = social.is_available(cfg)
-    if cfg.social.enabled and not social_ok:
-        LOG.info("social presence skipped: %s", social_msg)
     with ThreadPoolExecutor(max_workers=cfg.politeness.workers) as pool:
         futures = {pool.submit(_process_one, cfg, throttle, b): b for b in biz_queue}
         done_n = 0
@@ -595,14 +587,14 @@ def _crawl_stage(conn: sqlite3.Connection, cfg: Config, limit: int, counts: dict
                 LOG.warning("enrich failed for %s: %s", b["id"], e)
                 db.update_enrich(conn, b["id"], {"attempted_at": now_iso(), "error": str(e)[:200]})
                 continue
-            _persist(conn, cfg, b, res, counts, registries, social_ok)
+            _persist(conn, cfg, b, res, counts, registries)
             if res["needs_browser"] and not browser_ok:
                 counts["needs_browser"] += 1
     conn.commit()
 
 
 def _persist(conn: sqlite3.Connection, cfg: Config, b, res: dict, counts: dict,
-             registries: list | None = None, social_ok: bool = False, registry_result=None) -> None:
+             registries: list | None = None, registry_result=None) -> None:
     """registry_result (v0.3 speed unit, optional): a (people_with_evidence, profile, any_covered) tuple already
     looked up off-thread by the overlapped 'all' stage (_run_overlapped) — when given, _persist writes
     it via _persist_registry_result instead of doing the registry NETWORK call itself (which
@@ -725,16 +717,6 @@ def _persist(conn: sqlite3.Connection, cfg: Config, b, res: dict, counts: dict,
         _registry_cross_check(conn, b, counts, registries or [])
     _apply_gbp(conn, b, res["signals"], counts)
     res["signals"]["phone_confirmed"] = bool(b["phone_e164"]) and any(p == b["phone_e164"] for p in res["phones"])
-    social_presence: dict = {}
-    if social_ok:
-        from leadforge.providers import social
-        social_presence = social.presence(res["socials"], cfg)
-        for sig in social.to_signals(social_presence, cfg):
-            res["signals"][sig] = True
-        for net, p in social_presence.items():
-            db.add_evidence(conn, Evidence(business_id=bid, ref_table="businesses", fact="social_presence",
-                                           url=p["url"], snippet=f"{net}: last post {p['last_post_at'] or 'unknown'}",
-                                           observed_at=now_iso()))
     enrich: dict = {}
     # Layer 4 (2026-09-24): a zero-page "ok" result used to write crawled_at with no error at all — a
     # silent failure indistinguishable from "we looked and there was nothing". Belt-and-suspenders: even
@@ -752,8 +734,6 @@ def _persist(conn: sqlite3.Connection, cfg: Config, b, res: dict, counts: dict,
                    "needs_browser": res["needs_browser"], "registry_checked": bool(registries)})
     if res.get("profile"):
         enrich["profile"] = res["profile"]
-    if social_presence:
-        enrich["social_presence"] = social_presence
     db.update_enrich(conn, bid, enrich)
 
 

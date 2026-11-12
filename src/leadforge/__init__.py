@@ -4,6 +4,4 @@ Architecture: docs/02-architecture.md
 Agent interface (token contract): docs/06-token-contract.md
 """
 
-__version__ = "0.7.3"
-
-GOSOM_VERSION = "1.17.4"  # pinned discovery engine (ADR-001); bump deliberately + re-run fixture tests
+__version__ = "0.9.0"

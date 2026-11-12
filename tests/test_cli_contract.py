@@ -95,9 +95,9 @@ REQUIRED_KEYS = {"ok", "cmd", "run", "counts", "warnings", "artifacts", "next"}
 def offline(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("leadforge.pipeline.ensure_ready", lambda cfg: None)
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.available", lambda self: (True, "mock"))
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.fetch", lambda self, q, limit=None: [
-        RawListing(provider="gosom", fetched_at=now_iso(), data={
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.available", lambda self: (True, "mock"))
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.fetch", lambda self, q, limit=None: [
+        RawListing(provider="fakelist", fetched_at=now_iso(), data={
             "title": "Gamma Garage", "address": "3 C St, Houston, TX 77003", "phone": "713-555-0300",
             "web_site": "http://gamma-garage.test", "review_rating": "4.1", "review_count": "15",
             "place_id": "PID_GAMMA"})])
@@ -225,6 +225,15 @@ def test_intake_warns_uk_without_registry_key(offline):
 def test_version_digest_contract(offline):
     d = _invoke_digest(offline, ["version"])
     assert d["cmd"] == "version" and d["ok"] is True
+
+
+def test_version_flag_prints_package_version(tmp_path):
+    from leadforge import __version__
+
+    r = _run(["--version"], tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.splitlines()[0] == f"leadforge {__version__}"
+    assert _digest(r.stdout)["cmd"] == "version"
 
 
 def test_doctor_digest_contract(offline, monkeypatch):

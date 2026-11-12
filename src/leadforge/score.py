@@ -251,7 +251,7 @@ class Scorer:
             hits.append("phone_only_booking")
         if "hiring" in self.soft and self._has_signal(enrich, "careers") and signals.get("careers"):
             hits.append("hiring")
-        # social/video presence signals (set by the optional Agent-Reach unit U4.8; absent until enabled)
+        # social/video presence signals (nothing sets them since the social provider left in slice L8; kept so older campaign files still load)
         for sig in ("stale_social", "no_social_presence", "no_video_presence"):
             if sig in self.soft and self._has_signal(enrich, sig) and signals.get(sig):
                 hits.append(sig)

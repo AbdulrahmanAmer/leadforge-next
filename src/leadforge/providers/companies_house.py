@@ -8,8 +8,8 @@ registered_office_address{address_line_1, locality, postal_code, region, country
 hits}. Rate limit 600 req / 5 min (shared bucket, providers.registry._CH_BUCKET); paging stops at 10,000.
 
 RawListing.data keys are declared via FIELD_MAP below (providers/base.py's @register decorator picks it
-up automatically, and normalize.to_business merges it over GOSOM_FIELD_MAP for provider="companies_house"
-rows) — "name" and "complete_address"/"category"/"categories" are the same keys GOSOM_FIELD_MAP already
+up automatically, and normalize.to_business merges it over DEFAULT_FIELD_MAP for provider="companies_house"
+rows) — "name" and "complete_address"/"category"/"categories" are the same keys DEFAULT_FIELD_MAP already
 points normalize.split_address()/map_category() at, so this provider's map is a documented passthrough.
 """
 
@@ -42,7 +42,7 @@ class CompaniesHouseDiscovery(DiscoveryProvider):
     supports_tiles = False
 
     # providers/base.py's @register decorator reads this off the class and calls register_field_map()
-    # automatically — normalize.to_business then merges it over GOSOM_FIELD_MAP for provider=name rows.
+    # automatically — normalize.to_business then merges it over DEFAULT_FIELD_MAP for provider=name rows.
     FIELD_MAP = {
         "name": ["name"],
         "address": ["address"],

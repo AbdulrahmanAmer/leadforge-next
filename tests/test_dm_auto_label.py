@@ -15,7 +15,7 @@ from leadforge.models import Business, Contact, EnrichmentObservation, Person
 def _seed_business(conn, biz_id: str, people: list[tuple[str, str, str]]) -> None:
     """people: list of (name, title, snippet)."""
     db.upsert_business(conn, Business(id=biz_id, name=biz_id, name_norm=biz_id.lower(),
-                                      dedupe_key=f"dk:{biz_id}", source="gosom"))
+                                      dedupe_key=f"dk:{biz_id}", source="fakelist"))
     for name, title, snippet in people:
         db.add_person(conn, Person(business_id=biz_id, name=name, title=title, snippet=snippet))
 

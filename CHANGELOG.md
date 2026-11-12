@@ -10,6 +10,67 @@ clears it. `config get` of a key says only whether it is set and where from. Ope
 `registry.opencorporates_enabled`): its API takes the token only in the web address. Agent-call errors and `config get agent` show the
 agent program and its argument count, never the arguments.
 
+Google Maps and the social presence provider are out of the public tool. Extra discovery providers now come through a
+seam: any installed package that declares an entry point in the group `leadforge.providers` is loaded; asking for a provider
+nobody provides prints "provider '<name>' is not available" and starts nothing. The two Maps providers, their settings, the
+helper download and their tests moved to a private add-on repository. The default provider is now the DVSA register; the
+plan holds register queries alone when no text-search provider is configured. `leadforge doctor` no longer downloads or checks a
+helper binary, the social provider and its `[social]` extra and `social:` settings are gone, and unknown keys under `discovery:`
+are kept (an add-on reads its own settings from them).
+
+Clean-up of the plan's debts (docs/slices/debts.md). `leadforge --version` prints the package version. Dropped the never-imported `tenacity` and `rich`
+declarations (the hashed locks are regenerated; `uv.lock` names the real project version), the `codeindex` extra, `scripts/code_index*`,
+`scripts/v03_gate.py` (the one gate is `node check.mjs`) and the code-index git hook. The DVSA test fixture holds invented rows. Paid-adapter
+references in the docs are corrected (the removal of 0.7.1 was checked against 0.6.14: nothing used that code). Behaviour is unchanged.
+
+## [0.9.0] — 2026-11-12
+
+The collect side. A site's robots.txt answer is used for at most 24 hours and at least 500 KiB of the file is read; a redirect to another site
+is checked against that site's robots.txt. A 403 or 429 is final: no browser is started after it, also not with `render-check --force`. The
+config key `discovery.email_crawl` is refused with a message (the helper program's `-email` switch went with the helper, in L8). Protected (Cloudflare) e-mail
+addresses are no longer decoded unless `crawl.decode_protected_emails` is set. Every browser the product starts takes its profile folder from one
+function, which seeds a new folder before the first start.
+
+**Sheet contract change.** Every exported e-mail address and phone number now carries where it came from (the page address, or the list's address
+for the business's own number) and the day it was seen: eight columns at the end of the Leads sheet and the CSV (`Email Source`, `Email Date`,
+`Email (Inferred) Source`, `Email (Inferred) Date`, `Phone Source`, `Phone Date`, `DM Phone Page`, `DM Phone Date`) and `To Source`, `To Date` at the end of
+the Drafts tab. No column moved and no table changed. "source not recorded" / "date not recorded" say that the workspace holds no record. The Summary
+sheet carries the Open Government Licence sentence when a row comes from the DVSA list.
+
+**Send rules by country.** The business's own country now decides whether the tool will e-mail it: `US` as before (opt-out), `GB` corporate
+subscribers as before but a sole trader or partnership (registry looked, no company found) needs consent, `DE` needs consent, any other country and an
+unknown one: no send (reasons `country_no_rule`, `country_unknown`, `consent_required`). The tool records no consent, so those leads show
+"not eligible" on the sheet, in `outreach plan` and in the re-check inside `outreach send`. A business with no country, which was mailable before,
+is not mailable now: add the country to it, or re-run discovery.
+
+## [0.8.0] — 2026-11-12
+
+The delete side. New command `leadforge forget <email | domain | name>` removes a person from the workspace: every table, the cache, the logs,
+the progress file, the outbox and inbox, the hand-off files, the draft packets and the sheets in `exports`; then it rewrites the database file
+so the rows do not stay readable inside it, and puts the value on the suppression list so a new run does not collect it again. Sheets you already
+handed to someone else cannot be reached.
+
+New command `leadforge purge`: a business and everything attached to it expires 12 months after the run that first found it (a refresh does not
+renew; `retention.months` can shorten the period to 1 to 12). `run` checks this at its start and prints how many records expire in the next 30
+days. Three protections: the **first run after this upgrade only reports and deletes nothing**; an automatic purge never deletes more than half
+the workspace (it stops the run and names `leadforge purge --apply`, which a wrong clock also triggers); a half-upgraded workspace stops the
+command. `purge --everything --yes` deletes the data folder's contents without opening the database. A purge cannot be undone.
+
+Also: a workspace made by an older LeadForge is now refused before anything is written to it (before, opening it switched the file to WAL mode
+and created tables first), and stays byte for byte as it was; the log file appears at the first log record. The Maps scraper's raw output file is
+deleted as soon as it is parsed (it holds reviewers' names). A suppressed email address is in no export file and on no tab; a draft addressed to
+it is not exported. A workspace made by 0.7.x opens unchanged (schema 7).
+
+Files expire with the business they hold: at expiry, every file under the workspace's own `exports` and `cache` folders that holds an expired
+business (a sheet, a cached page) is deleted whole, under the same protections as the records (the first run reports them, the 30-day line and the
+more-than-half stop count them). If a file cannot be deleted (another program holds it open), nothing is deleted from the database and the file is
+named. Files you wrote elsewhere with `--out` are yours and are never touched. `forget` now scrubs a log that a running process holds open, in
+place; if a file still holds the value, or cannot be checked, it names the file and exits 4 instead of saying it forgot.
+
+Not built, and left to the owner's decision: the suppression list holds the forgotten identifier in clear, so that the objection can be honoured on
+the next run. A hashed list would change the tables (and four lookups), which this slice's row forbids; until it is decided, a byte scan of the
+database finds the identifier in that one row and nowhere else.
+
 ## [0.7.3] — 2026-11-12
 
 The fake-campaign check runs on Linux too (its network guard now refuses any DNS question, even to a loopback stub resolver) and

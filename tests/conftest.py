@@ -33,6 +33,14 @@ def sample_icp():
 
 
 @pytest.fixture(autouse=True)
+def _made_up_provider_chain(monkeypatch):
+    """The public engine ships no text-search provider, so tests that drive discover patch the made-up one in
+    tests/fakeprov.py and point the default chain at it (env override; leadforge.yaml still wins)."""
+    import tests.fakeprov  # noqa: F401 - registers it
+    monkeypatch.setenv("LEADFORGE_DISCOVERY__PROVIDERS", "[fakelist]")
+
+
+@pytest.fixture(autouse=True)
 def _no_ui(monkeypatch):
     """Tests must never pop Excel or console windows (auto-open features, v0.1.3)."""
     monkeypatch.setenv("LEADFORGE_NO_UI", "1")

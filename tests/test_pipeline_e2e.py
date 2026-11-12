@@ -1,7 +1,7 @@
 """End-to-end pipeline test (offline): mock the discovery provider + doctor + crawler, then drive
 the full run() state machine through discover -> enrich -> dm gate -> resume -> score -> export.
 
-This is the scaffold's proof that all stages wire together without network or the gosom binary.
+This is the scaffold's proof that all stages wire together without network or any provider add-on.
 """
 import json
 
@@ -23,7 +23,7 @@ def patched(monkeypatch):
 
     def fake_fetch(self, query, limit=None):
         return [
-            RawListing(provider="gosom", fetched_at=now_iso(), data={
+            RawListing(provider="fakelist", fetched_at=now_iso(), data={
                 "title": "Alpha Auto Repair", "category": "auto repair shop",
                 "address": "1 A St, Houston, TX 77001",
                 "complete_address": {"street": "1 A St", "city": "Houston", "state": "TX",
@@ -31,15 +31,15 @@ def patched(monkeypatch):
                 "phone": "713-555-0100", "web_site": "http://alpha-auto.test",
                 "review_rating": "3.4", "review_count": "90", "place_id": "PID_ALPHA",
             }),
-            RawListing(provider="gosom", fetched_at=now_iso(), data={
+            RawListing(provider="fakelist", fetched_at=now_iso(), data={
                 "title": "Beta Transmission", "category": "transmission shop",
                 "address": "2 B St, Houston, TX 77002", "phone": "713-555-0200",
                 "review_rating": "4.8", "review_count": "12", "place_id": "PID_BETA",
             }),
         ]
 
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.available", fake_available)
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.fetch", fake_fetch)
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.available", fake_available)
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.fetch", fake_fetch)
 
     # 3) crawler: Alpha has a reachable site with an owner + email; Beta has no site
     from leadforge.enrich.crawler import CrawlResult, Page, SiteCrawler
@@ -127,7 +127,7 @@ def test_degraded_queries_are_retried_on_resume(cfg, sample_icp, patched, monkey
     def degrading_fetch(self, query, limit=None):
         raise ProviderDegraded("captcha")
 
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.fetch", degrading_fetch)
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.fetch", degrading_fetch)
     run_id, counts, warns = run_discover(cfg, sample_icp, icp_path)
     conn = db.connect(cfg.db_path)
     degraded = conn.execute("SELECT COUNT(*) c FROM queries WHERE run_id=? AND status='degraded'",
@@ -135,12 +135,12 @@ def test_degraded_queries_are_retried_on_resume(cfg, sample_icp, patched, monkey
     assert counts["tiles_degraded"] >= 1 and degraded >= 1
 
     def recovered_fetch(self, query, limit=None):
-        return [RawListing(provider="gosom", fetched_at=now_iso(), data={
+        return [RawListing(provider="fakelist", fetched_at=now_iso(), data={
             "title": "Late Arrival Garage", "category": "auto repair shop",
             "phone": "713-555-0300", "review_rating": "4.0", "review_count": "40",
             "place_id": "PID_LATE"})]
 
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.fetch", recovered_fetch)
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.fetch", recovered_fetch)
     r = run_pipeline(cfg, sample_icp, icp_path, resume=True)
     conn = db.connect(cfg.db_path)
     left = conn.execute("SELECT COUNT(*) c FROM queries WHERE run_id=? AND status='degraded'",
@@ -157,7 +157,7 @@ def test_apply_labels_accepts_documented_tsv_variant(cfg, tmp_path):
     from leadforge.models import Business, Person
     conn = db.connect(cfg.db_path)
     rid = db.create_run(conn, "icp.yaml", "h")
-    db.upsert_business(conn, Business(id="b1", run_id=rid, name="Acme", source="gosom", dedupe_key="dk1"))
+    db.upsert_business(conn, Business(id="b1", run_id=rid, name="Acme", source="fakelist", dedupe_key="dk1"))
     db.add_person(conn, Person(business_id="b1", name="Jane Smith", title="Owner"))
     db.add_person(conn, Person(business_id="b1", name="Bob Jones", title="Mechanic"))
     # candidate indexes are defined by the same people_for() enumeration the batch export uses

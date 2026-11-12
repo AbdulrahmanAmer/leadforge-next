@@ -225,7 +225,7 @@ def _dm_workspace(conn):
     rid = db.create_run(conn, "icp.yaml", "h")
     for bid, name, reviews in (("biz_dm_a", "Example Plumbing Co", 30), ("biz_dm_b", "Sample Heating Ltd", 20),
                                ("biz_dm_c", "Demo Drains", 10)):
-        db.upsert_business(conn, Business(id=bid, run_id=rid, name=name, category="plumber", source="gosom",
+        db.upsert_business(conn, Business(id=bid, run_id=rid, name=name, category="plumber", source="fakelist",
                                           dedupe_key=f"dk-{bid}", review_count=reviews))
     db.add_person(conn, Person(business_id="biz_dm_a", name="Alex Example", title="Owner",
                                snippet="Alex Example founded the firm.", origin="heuristic"))
@@ -307,7 +307,7 @@ def test_golden_draft_packet_and_gate(cfg, conn, tmp_path):
     rid = db.create_run(conn, "icp.yaml", "h")
     db.upsert_business(conn, Business(
         id="biz_draft", name="Example Plumbing Co", category="Plumber", address_city="Nottingham",
-        website="https://plumbing-co.example", rating=4.6, review_count=120, source="gosom",
+        website="https://plumbing-co.example", rating=4.6, review_count=120, source="fakelist",
         dedupe_key="dk-biz-draft",
         enrich={"crawled_at": "2026-01-01T00:00:00Z", "pages": 1, "signals": {"careers": True}}))
     db.save_score(conn, Score(business_id="biz_draft", run_id=rid, total=85, tier="A",
@@ -362,11 +362,11 @@ def test_golden_sheet_export(cfg, conn):
                               "target": {"categories": ["plumber"],
                                          "geography": {"areas": ["Nottingham"], "country": "GB"}}})
     rid = db.create_run(conn, "icp.yaml", "h")
-    db.upsert_business(conn, Business(id="full", name="Example Plumbing Co", source="gosom", category="Plumber",
+    db.upsert_business(conn, Business(id="full", name="Example Plumbing Co", source="fakelist", category="Plumber",
                                       website="https://plumbing-co.example", phone_e164="+441154960100",
                                       address_city="Nottingham", rating=4.6, review_count=120,
                                       dedupe_key="dk-full"))
-    db.upsert_business(conn, Business(id="bare", name="Sample Heating Ltd", source="gosom", dedupe_key="dk-bare"))
+    db.upsert_business(conn, Business(id="bare", name="Sample Heating Ltd", source="fakelist", dedupe_key="dk-bare"))
     db.add_person(conn, Person(business_id="full", name="Alex Example", title="Owner", labeled_by="agent",
                                is_dm=1, dm_confidence=0.9))
     db.add_contact(conn, Contact(business_id="full", kind="email", value="alex@plumbing-co.example",
@@ -413,13 +413,13 @@ def offline_pipeline(monkeypatch):
     def fetch(self, query, limit=None):
         calls["fetch"] += 1
         return [
-            RawListing(provider="gosom", fetched_at=now_iso(), data={
+            RawListing(provider="fakelist", fetched_at=now_iso(), data={
                 "title": "Example Plumbing Co", "category": "plumber", "address": "1 Example Street, Nottingham",
                 "complete_address": {"street": "1 Example Street", "city": "Nottingham", "postal_code": "NG1 1AA",
                                      "country": "United Kingdom"},
                 "phone": "0115 496 0100", "web_site": "https://plumbing-co.example",
                 "review_rating": "4.6", "review_count": "120", "place_id": "PID_GOLDEN_A"}),
-            RawListing(provider="gosom", fetched_at=now_iso(), data={
+            RawListing(provider="fakelist", fetched_at=now_iso(), data={
                 "title": "Sample Heating Ltd", "category": "plumber", "address": "2 Sample Road, Nottingham",
                 "phone": "0115 496 0200", "review_rating": "4.1", "review_count": "15",
                 "place_id": "PID_GOLDEN_B"}),
@@ -435,8 +435,8 @@ def offline_pipeline(monkeypatch):
         return CrawlResult(ok=False, error="unreachable")
 
     monkeypatch.setattr("leadforge.pipeline.ensure_ready", lambda cfg: None)
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.available", lambda self: (True, "offline"))
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.fetch", fetch)
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.available", lambda self: (True, "offline"))
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.fetch", fetch)
     monkeypatch.setattr(SiteCrawler, "crawl", crawl)
     monkeypatch.setattr("leadforge.providers.registry.get_registries", lambda cfg: [])
     monkeypatch.setattr("leadforge.enrich.runner.validate_email",
