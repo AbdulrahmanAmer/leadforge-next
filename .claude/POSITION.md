@@ -51,3 +51,9 @@ with bounded NER, then re-labels/scores/drafts/exports); restore draft.auto_max 
 - slice/L2 = the above + slice/L2-ner (part C, merged 139ddef). Proof: docs/slices/L2-pins-and-safety-floor.md (Review of part C).
 - Check: `CHECK PASS sha=7d5a2b1 tree=clean` (837 passed, 6 skipped). CI run 43044120999 on 7d5a2b1: all 11 jobs pass.
 - Next: one more reader decides on PR 2. Do not merge master without it.
+
+## POSITION — 2026-11-12, slice L6 (0.8.0) on branch slice/L6-the-delete-side, pull request 6, NOT merged
+
+- Built: C4 forget, C5 purge (records and, since run l6-finish, files under exports and cache), C6, C7; reader's fixes in dc02236; l6-finish added the steady refused-call compare (G2), files expiry, forget on a held file (exit 4 + names), a hosted Linux mutation trial (KEEP).
+- Gate: `node check.mjs` (901 passed, 7 skipped) at c5c5963; hosted CI 13 of 13 on c5c5963. Detail: docs/slices/L6-the-delete-side.md, part "Build 2 (0.8.0)".
+- Open for the owner: a hashed suppression list (changes the tables; not built). An independent reader follows l6-finish; nobody merges before that.

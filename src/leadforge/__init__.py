@@ -4,4 +4,4 @@ Architecture: docs/02-architecture.md
 Agent interface (token contract): docs/06-token-contract.md
 """
 
-__version__ = "0.7.3"
+__version__ = "0.8.0"

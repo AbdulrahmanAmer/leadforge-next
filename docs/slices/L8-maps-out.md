@@ -123,3 +123,33 @@ rows for the same county, write both numbers and their ratio ("half or more" giv
 - Dev tools (`pytest`, `ruff`, `pytest-xdist`, `pytest-timeout`) were installed unhashed with `--only-binary :all:` in the worktree venv, as CI's `.[dev]` does;
   they are not in the hashed lock.
 - Old history keeps the Maps code and the three saved Google fixtures (public, not rewritten).
+
+## After master 0.8.0 was brought in
+`origin/master` (ece4c8d, 0.8.0, the delete side) merged into this branch (a merge, not a rebase). Conflicts and how each was settled:
+- `src/leadforge/__init__.py`: master's `__version__ = "0.8.0"` taken (it is master's version, not a bump by this slice); `GOSOM_VERSION` stays gone.
+- `CHANGELOG.md`: master's `[0.8.0]` section untouched; this slice's text stays under `[Unreleased]`, above it.
+- `src/leadforge/providers/gosom.py`: deleted here, changed on master (0.8.0 made it delete its raw scraper output as soon as it is parsed, C6).
+  Resolved as deleted: the module lives in the private add-on. **Consequence, not fixed here:** the add-on's copy was taken from the old master
+  and does not delete the raw file yet (the reviewers' names in it, C6). `tests/test_l6_raw_scrapes.py` (it tested that module) was removed from this
+  branch with it. The add-on has to get the same `try/finally` and its own copy of that test. Until then C6 is not met for the add-on's provider.
+- Merged without a conflict and kept both sides: `scripts/e2e_fake_campaign.py` (master's refused-call compare, this slice's `fixture_list` steps),
+  `tests/fixtures/e2e/expected.json`, `config/leadforge.example.yaml`, `README.md`, `pyproject.toml`, `cli.py`, `config.py`, `export.py`.
+- Master's new tests named the moved provider (`source="gosom"`, cache file names `gosom_*.json`), which broke pass line 1 (the C17 search). Renamed to
+  `fakelist` / `fakelist_*.json` in `tests/test_l6_forget.py`, `test_l6_purge.py`, `test_l6_suppressed_export.py`. Nothing in them depended on the word.
+- Locks: master changed none (`.github/mutation/requirements.txt` is new and is not this slice's). Nothing to re-lock.
+
+**Golden.** `expected.json` was not regenerated; the merge carried master's changes in on their own: 18 `sendto 1.1.1.1/8.8.8.8 53 dns` retry entries gone (the
+refused list is now 3 entries, compared as a set of kinds and hosts), and in the status counts `expiring_30d: 0` and `purged: 0` added. This slice's three
+changes (Source column, About legend line, two steps) are as before.
+
+**Gates after the merge.**
+```
+python -m ruff check src tests          All checks passed!
+node check.mjs --ci (heavy lock)        864 passed, 5 skipped in 161.62s (0:02:41) / ok cli digest / CHECK PASS ... steps=6 skipped=0
+python scripts/e2e_fake_campaign.py     PASS - result equals tests/fixtures/e2e/expected.json (3 refused-call entries, as saved)
+git grep C17 search (both searches)     no output, exit 1
+```
+Delete side against Maps: `git grep` of `retention.py`, `cli.py`, `db.py`, `export.py` names the provider nowhere; the word "Maps" there is the `maps_url`
+column (data), not the provider. Delete side against the stand-in: the fake campaign's workspace was kept (`--out` on D:), then `leadforge forget harbour-motors.example`
+(23 rows, 2 sheets deleted) and `leadforge forget "Harbour Motors"` (progress line and cached register row taken out): a byte scan found the name only in the
+suppression row. `leadforge purge` on it reported `0 of 9 past the 12-month limit`. The stand-in writes no file of its own (it returns listings; they become rows).

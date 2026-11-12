@@ -293,11 +293,12 @@ def normalized(data: dict, ws: str) -> dict:
     for s in d["steps"]:
         s.pop("seconds", None)
     # a DNS packet to the machine's own resolvers (read from the OS) differs per machine in address and number: keep
-    # that it happened, once; packets to leadforge's fixed fallbacks (enrich/validate.py get_resolver) keep their count
+    # that it happened. Every refused call is kept once: the compare is over WHICH outside calls were refused (kind, host, port,
+    # caller), never how often a resolver retried one (the retries of enrich/validate.py get_resolver's fixed fallbacks vary with timing)
     refused = [[r["kind"], r["host"], r["port"] or 0, r["caller"]] for r in data["refused"]]
-    own = [x for x in refused if x[0] == "sendto" and x[2] == 53 and x[1] not in PUBLIC_RESOLVERS]
-    other = [x for x in refused if x not in own]
-    d["refused"] = sorted(other + [list(t) for t in {("sendto", "<system resolver>", 53, x[3]) for x in own}])
+    folded = {("sendto", "<system resolver>", 53, x[3]) if x[0] == "sendto" and x[2] == 53 and x[1] not in PUBLIC_RESOLVERS else tuple(x)
+              for x in refused}
+    d["refused"] = sorted(list(t) for t in folded)
     # request log: order depends on thread timing -> compare as a sorted multiset without the user agent
     d["requests"] = sorted(f'{r["host"]} {r["path"]} {r["status"]}' for r in data["requests"])
     return d
