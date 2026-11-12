@@ -219,3 +219,15 @@ Not done: widening or ignoring the requests list. Whether the golden is now stab
 - Whole suite, once, below-normal priority, serial, at the end: `846 passed, 6 skipped in 364.14s (0:06:04)`.
 - `ruff check src tests`: `All checks passed!`; `check_versions.py`: all six places `0.7.3`; `check_skill_frontmatter.py`, `check_skill_references.py`, `check_digest.py`: ok; `gitleaks` on every commit: `no leaks found`.
 - Fake campaign on Windows (this laptop), compared with the saved result: `PASS - result equals tests/fixtures/e2e/expected.json (21 refused-call entries, as saved)`; probe: `PROBE PASS`.
+
+## CI on the pull request (#5), job by job
+Each run is one commit; all 13 jobs per run (`claude plugin validate`, `Validate plugin manifests`, `Version strings agree`, `fake campaign` on ubuntu and windows, `test` on ubuntu/windows x py3.11-3.14).
+- 75acdbb (items 0, 1, old saved result): 13/13 success; `fake campaign · ubuntu-latest`: `PASS - result equals tests/fixtures/e2e/expected.json (21 refused-call entries, as saved)`.
+- 5dfecc3 (Companies House fake, new saved result): 13/13 success.
+- a84aa37 (speed test): 12/13; `fake campaign · windows-latest` FAIL, one request line missing (cause and fix above); not re-run, fixed in 3a5b120.
+- 9f5ee20 (send-outreach check): 13/13 success. 02645e5 (backend pin, changelog): 13/13 success.
+- 3a5b120 (request log under a lock; ALL code of this slice as pushed): 13/13 success, both fake campaigns included.
+- e92a63c (this slice file's carried-over part and one comment line in `config/leadforge.example.yaml`): BLOCKED, 13/13 failed in 5 s without starting. Annotation:
+  "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings."
+  Re-run once (attempt 2): the same. Cause is the account's GitHub billing, not the code; nothing I may change. What unblocks it: the owner fixes billing / spending limit, then re-run run 43131901513.
+  That commit differs from the green 3a5b120 only by the slice-file text and one YAML comment line (`git diff 3a5b120 e92a63c --stat`: 2 files, 18 insertions).
