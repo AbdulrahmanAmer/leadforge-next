@@ -635,6 +635,9 @@ def _redacted(name: str, value):
     part of an address (a proxy) is cut."""
     if isinstance(value, dict):
         return {k: _redacted(str(k), v) for k, v in value.items()}
+    if name == "command" and isinstance(value, list) and value:
+        # L9 (C2): agent.command's arguments may carry a key; shown like AgentFailed shows them
+        return [str(value[0]), f"<{len(value) - 1} arguments hidden>"]
     if isinstance(value, list):
         return [_redacted(name, v) for v in value]
     if _SECRET_KEY_RE.search(name) and value not in (None, "", {}):

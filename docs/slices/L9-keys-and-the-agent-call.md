@@ -222,6 +222,26 @@ restored all
 copied from the real profile), a one-word prompt on stdin, API-key variables removed from the child's environment. What it prints is
 written here as printed.
 
+**Result: UNPROVEN.** The probe (`D:\homelab-work\l9\probe-restricted.mjs`, outside the repository; `claude` 2.1.312 at
+`C:\Users\DELL\.local\bin\claude.exe`, the argv LeadForge builds today, prompt `hello` on stdin) printed, 2026-11-12 09:07:
+```
+lab folder D:\homelab-work\l9\lab-config, entries before: []
+variables removed from the child's environment: 11 (names not printed)
+exit: 1 signal: null error: none seconds: 1.6
+--- stdout ---
+Not logged in · Please run /login
+
+--- stderr ---
+
+--- end ---
+lab folder entries after: [".claude.json","backups","plugins","sessions"]
+```
+An empty lab folder has no login, so the question (does `--restricted` work with a SUBSCRIPTION login) cannot be answered from it.
+What would settle it: the owner logs in once inside the lab folder (`CLAUDE_CONFIG_DIR=D:\homelab-work\l9\lab-config`, `claude`,
+`/login`; a browser is needed, so not in an unattended run on this laptop), then the same probe is run again. The L2 slice's probe
+of 2026-11-11 (the real profile, not a lab folder) printed exit 0 with `--restricted`; that remains the only positive reading.
+What this probe does show: with no login the call exits 1 at once, so `run_agent` raises `AgentFailed` and the callers fall back.
+
 ### Item 6 — the fake-key scan over every output
 
 **Must hold (written before the code).** A fake key is planted in every key setting (both registry keys through the environment, both
@@ -229,10 +249,56 @@ through the fake keyring, one in `leadforge.yaml`, one inside `agent.command`'s 
 and its output, every file under the workspace's `logs` folder and every error text is scanned: the fake key appears nowhere. The fake
 campaign scans its step logs, the workspace's logs and exports for its fixture key and the planted OpenCorporates token: none appears.
 
+**What the scan found, and the fix.** Its first run was red on a real leak not listed in the plan: `config get agent` and
+`config get agent.command` printed the operator's `agent.command` list whole, the planted key argument with it:
+```
+E       AssertionError: ["config get agent: ['agent.command argument']", "config get agent.command: ['agent.command argument']"]
+1 failed in 21.05s
+```
+Cause: `cli._redacted` hides values by the setting's NAME (`key|token|secret|pass...`); `command` is not such a name and its value is
+a list of plain strings. Fix: `config` shows `agent.command` as `[program, "<n arguments hidden>"]`, as `AgentFailed` does. After it:
+`fake-key scan: 118 command runs, 8 files, 9 log records; refused by the guard: ["dns 'github.com'"]` / `1 passed in 9.91s`.
+
+**Check by reading (after the code).** `tests/test_l9_fake_key_scan.py` walks typer's command tree (every leaf: 37, of which 35 run; `dashboard`
+and `watch` are not run because they serve or follow until stopped, and the test fails if either name disappears), runs each with no
+arguments and with `--json`, then a list of runs with arguments (each `config get/set` form of a key, `intake` of a UK campaign so the
+key hint prints, `plan`, `doctor --json`, `status`, `enrich --stage registry`, `run`), then the real labeling path with the failing agent
+(`auto_label` -> `make_ndjson_runner` -> `run_agent`; asserted `agent_failures == 1`, so the planted argument really went through a
+failed call and its debug traceback), then every command again with a key written in `leadforge.yaml`. Scanned: every output and
+exception text, every log record at DEBUG and up (`caplog`), every file the workspace got (logs, database, exports, icp.yaml) except
+`leadforge.yaml` itself and the fake agent script. The guard refuses every outside connection and name lookup and every program except
+the fake agent. The guard refused one thing: `doctor` asks `github.com` for its connectivity check (`doctor.py:313`, a HEAD request,
+no download); not changed, outside this slice.
+
+**Proof.** `1 passed in 9.91s`. Seen red first: the real leak above (before the fix), and two breaks (`breakrun.py`, restored after):
+```
+### AgentFailed prints the argv again (broken: src/leadforge/agent_runner.py)
+E       AssertionError: ["log record: ['agent.command argument']", "leadforge_data\\logs\\leadforge.log: ['agent.command argument']"]
+1 failed in 14.73s
+### config get of a key prints its value (broken: src/leadforge/cli.py)
+E       AssertionError: ["config get registry.companies_house_key: ['Companies House key']", "config get registry.opencorporates_token: ['OpenCorporates token']"]
+1 failed in 12.97s
+restored all
+```
+
 ### Item 7 — the fake campaign still matches its saved result
 
 **Prediction (written before the run).** The campaign's Companies House key moves from `leadforge.yaml` to the environment and
 `registry.keyring: false` is added; the planted OpenCorporates token is ignored (provider off). No cell of `expected.json` moves.
+
+**Result.** `scripts/e2e_fake_campaign.py --out D:\homelab-work\l9\e2e1` at below-normal priority, Windows, 2026-11-12 09:13 (tail):
+```
+  [10] export         exit=0 {"ok": true, "cmd": "export", "run": "run_20261112_07130_1c4b", "counts": {"leads": 10, "tier_a": 2, "tier_b": 3, "tier_c": 5, "dq": 0, "drafted": 5, "drafts_by
+fake-key scan: clean (27 files: step outputs, guard and request logs, workspace logs, database, exports)
+PASS - result equals tests/fixtures/e2e/expected.json (21 refused-call entries, as saved)
+```
+The prediction held: no cell moved. The key from the environment is really used: the fake Companies House answers 200 only to the
+exact key, and its request log shows 10 `/ch/search/companies`, 2 `/ch/company/...` and 2 `.../officers`, all `200`.
+The campaign's scan seen red: one line added to `CompaniesHouseRegistry.__init__` that logs the key at INFO, the campaign run once,
+the line removed (`git diff --stat` of the file empty after):
+```
+FAIL - fake-key scan: a planted key is in 1 place(s): ['ws\\leadforge_data\\logs\\leadforge.log: Companies House key']
+```
 
 ## Plan and code disagree
 
