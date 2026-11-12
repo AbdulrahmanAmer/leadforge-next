@@ -185,7 +185,8 @@ process or file is left in `D:\Temp\lf-install`.
    after that). `run_status` also runs beside a run. Nothing else does.
 4. **Error `kind` values the screens know:** `failed`, `usage`, `environment`, `input`, `source`, `keyring`, `missing`; any other
    becomes `failed` on screen. `details` are shown as plain sentences; for `campaign_create` the screens mark a field when a detail
-   starts with `target.categories`, `target.geography.areas`, `target.geography.country` or `caps.max_leads` followed by `: `.
+   starts with `target.categories`, `target.geography.areas`, `target.geography.country`, `caps.max_leads`, `offer`, `sicCodes` or
+   `source` followed by `: ` (the last three are the seam decisions of 2026-11-12, below).
 5. **`sheet_open` returns `null`** on success (one JSON document). Opening a file means the engine starts the program Windows uses
    for it; the window and the core start nothing.
 6. **The working folder is `%LOCALAPPDATA%\app.leadforge.window\workspace`**, the environment is cleared down to a short list
@@ -224,3 +225,67 @@ Run by the orchestrator through `packaging\install-proof.ps1` on `LeadForge_0.8.
 - Uninstall: 0 processes, 0 files or folders left, no uninstall key. Checked separately: no `leadforge-window` process, no Start menu entry, no Defender detection that day.
 
 Not shown by this run: an interactive (double-click) install, the default per-user install folder, and the real `window` commands (the stand-in answered).
+
+## Seam decisions of 2026-11-12
+
+The real engine commands (pull request 14) proposed ten changes; these are final and the engine side is built to them. Types
+(`app/ui/src/engine.ts`), mock, stand-in, screens and `docs/window-actions.md` say the same. Shape rule: a field that left a type is
+ABSENT from the JSON; a nullable field is PRESENT with `null` (`app/ui/tests/seam-shape.test.mjs` holds the mock and the stand-in to it).
+
+1. `run_start`: stdout line 1 is the `RunHandle` `{"runId"}`, then `RunEvent`s, the last `finished`, `stopped` or `failed` (written as the contract in `docs/window-actions.md`).
+2. `CampaignDraft.offer: string`, required; the form has one field for it ("What you offer"); an empty one is refused, kind `input`, detail `offer: ...`, and the form marks that field.
+3. `CampaignDraft.sicCodes: string[]` (shown and required only for `companies_house`; refused with `sicCodes: ...`). `Settings.sources: SourceId[]`: the form offers only those, one is fixed text, none is a plain state; a register not listed is refused (`source: ...`, `next` names the configured one) and shown on the field.
+4. No new error kind: a key command the engine cannot do yet answers `missing`; the Keys screen reads it in words about keys (title "Keys cannot be managed from this window yet.", no "Try again").
+5. Nullable: `RunStatus.campaign`, `RunStatus.done`, `RunCounts.purged`, `RunCounts.expiringIn30Days`.
+6. Nullable: `Campaign.name`, `Campaign.source`, `Campaign.keptUntil`.
+7. Nullable: `Person.source`, `Person.foundAt`, `Person.campaign`; a null reads "not recorded".
+8. `theme` and `accent` left `Settings` and `SettingsPatch`; the window keeps them in `app/ui/src/prefs.ts` (browser storage, every read and write in try/catch, defaults `system` and `cobalt`, the page renders when storage throws). The Rust core merges nothing.
+9. `windowVersion` left `About`; the About screen shows `WINDOW_VERSION`, a build-time constant from the `[package]` version of `app/src-tauri/Cargo.toml` (`app/ui/window-version.mjs`, written by `vite.config.ts` `define`); no Tauri permission, no plugin. `tests/window-version.test.mjs` fails when the two differ.
+10. `people_list` returns the engine's named people, an email or phone only where recorded as that person's; the People screen says "named people", and that forget and suppress act on any address or domain, listed or not.
+
+### What each null shows
+
+| Field | When null the screen shows |
+|---|---|
+| `RunStatus.campaign` | the Run screen's title is the run id (`runTitle`) |
+| `RunStatus.done` | the stage that stopped or failed shows "progress not known" and an indeterminate bar; the "Done in this stage" figure reads "not known" |
+| `RunCounts.purged`, `RunCounts.expiringIn30Days` | the clean-up line ("Clean-up: 4 records deleted at the start, 9 expire in the next 30 days.") leaves out the null part; no line at all when both are null; a zero is a count and is shown |
+| `Campaign.name` | the Results detail shows the run id where the name goes |
+| `Campaign.source` | the list row says "register not recorded"; the detail's "Register" row says "not recorded" |
+| `Campaign.keptUntil` | the "Kept until" row is left out: no claim about a deletion day |
+| `Person.source` | "Source not recorded" (no page address) |
+| `Person.foundAt` | "Date not recorded" |
+| `Person.campaign` | "campaign not recorded" (after the date, on the same line) |
+
+### Where a decision could not be taken as written
+
+- **Item 3, "none": the engine's `next` text.** `settings_get` carries `sources: []` and nothing else, so the screen has no `next` from the
+  engine to show for a workspace with no register. It shows a fixed sentence (`NO_SOURCE_NEXT` in `NewCampaign.tsx`). Proposal:
+  `Settings` gains one nullable `sourcesNext: string | null` (present, null while `sources` is not empty), which the form shows in
+  the none state. It is a new field, so the engine side must agree before the window adds it; until then the sentence is the window's own.
+- **The core's own tests send the old shapes.** `app/src-tauri/tests/engine_dev.rs` sends a draft without `offer` and `sicCodes`, a
+  `settings_set` patch of `{"theme": "dark"}`, and expects four `details` for an empty draft; `app/src-tauri/src/selftest.rs`
+  fills only kind and place before it checks the plan. Both are the core and were not touched (the brief forbids it). So the stand-in
+  refuses a present-but-blank `offer` but not a missing `offer` key, and ignores unknown settings keys instead of refusing them (the mock
+  refuses both). The self-test's "check the plan" step now gets the `offer` refusal (its form has no offer), so the stand-in run
+  after it is not started by the self-test: that walk needs one more typed field in `selftest.rs`, which is the core's to change.
+- **The form fits 900 x 600 only in a denser layout.** With the offer and the SIC codes the old form (hints under each field, the register as two
+  cards) was 687 px tall at 900 x 600 for two registers and 810 px with SIC codes. Without shrinking type: the hints sit on the label's
+  line, the register is one row (label left, `SegmentedControl` right; one register is plain text), the form column is wider
+  below 1000 px, and the page's bottom padding is 16 px below 700 px of height. Measured by `scrollHeight` against `clientHeight` of
+  `<main>` for every form state (two registers, one, none, Companies House with SIC codes, the three refusals) in light and dark at
+  1280 x 800 and 900 x 600: 32 of 32 fit. The cards with a line of detail per register are gone.
+
+### Proof of 2026-11-12 (this slice's seam change)
+
+- `app/ui`: `tsc --noEmit` exit 0; `vite build` exit 0 (`dist/assets/index-CrYUJrvt.js`); `npm test` (the six files): `tests 89, pass 89, fail 0`.
+  New assertions each seen red once by breaking the code they cover: the offer and SIC refusals (check switched off), `readLook` without
+  its try/catch (5 tests red, SecurityError escapes), `windowVersion` returning a different number and a `windowVersion`, `theme` in the
+  mock's and the stand-in's `about` (6 tests red).
+- 72 renders (18 states, light and dark, 1280 x 800 and 900 x 600) in `D:\LeadForge\wt\window-shots\seam\`, made by a headless Edge
+  driven over CDP (exact viewport, one browser at a time, closed after each batch): after looking, the register cards became one row and the
+  hints moved onto the label line (the form did not fit), a wrapping label was made `nowrap`, the Keys page's first line no longer
+  promises a keyring when the engine says `missing`, and the People render is scrolled to the rows whose fields are null.
+- Debug build `cargo build --locked` exit 0 (32 s, peak 480 MB) and the real-window self-test against the stand-in (`window-shots\seam\selftest\`):
+  `shots taken: 10 of 10; probe clean: True`, `SELFTEST PASS`. The log shows `cmd=campaign_create ... error kind=input` for the empty form and
+  again after "fill kind and place" (the offer refusal), and no `cmd=run_start`: see above.

@@ -49,21 +49,17 @@
 
 /* ------------------------------------------------------------ new campaign */
 .lf-form { display: flex; flex-direction: column; gap: var(--ds-space-5); }
-.lf-form__row { display: grid; grid-template-columns: minmax(0, 1fr) 112px; gap: var(--ds-space-4); }
-.lf-input--short { max-width: 112px; }
+.lf-form__row { display: grid; grid-template-columns: minmax(0, 1fr) 140px; gap: var(--ds-space-4); }
+.lf-input--short { max-width: 140px; }
 .lf-form__actions { display: flex; }
 
-.lf-choice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-3); }
-.lf-choice legend { margin-bottom: 6px; }
-.lf-choice__item { display: flex; gap: var(--ds-space-3); padding: var(--ds-space-3) var(--ds-space-4); border-radius: var(--ds-radius-lg); box-shadow: var(--ds-shadow-control); cursor: pointer; }
-.lf-choice__item:hover { background: var(--ds-bg-hover); }
-.lf-choice__item.is-active { background: var(--ds-bg-accent-subtle); box-shadow: var(--ds-shadow-selected); }
-.lf-choice__item:focus-within { box-shadow: var(--ds-focus-ring); }
-.lf-choice__mark { flex: none; width: 16px; height: 16px; margin-top: 2px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ds-border-default); }
-.lf-choice__item.is-active .lf-choice__mark { box-shadow: inset 0 0 0 5px var(--ds-bg-accent); }
-.lf-choice__name { display: block; font-size: var(--ds-text-md); font-weight: var(--ds-weight-medium); }
-.lf-choice__detail { display: block; margin-top: 2px; font-size: var(--ds-text-xs); color: var(--ds-text-secondary); }
-
+/* "Where to look": the label on the left, the registers this workspace is configured for on the right (one register is plain text) */
+.lf-where { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.lf-where__row .ds-field__label { white-space: nowrap; }
+.lf-where__row { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-4); min-height: var(--ds-control-lg); }
+.lf-where__fixed { padding: 7px var(--ds-space-4); border-radius: var(--ds-radius-md); background: var(--ds-bg-sunken); font-weight: var(--ds-weight-medium); }
+.lf-where.is-invalid .ds-seg, .lf-where.is-invalid .lf-where__fixed { box-shadow: inset 0 0 0 1px var(--ds-text-danger); }
+.lf-where.is-invalid .ds-field__note { color: var(--ds-text-danger); }
 .lf-plan { display: flex; flex-direction: column; gap: var(--ds-space-4); }
 .lf-plan .ds-card-header { margin-bottom: 0; }
 .lf-plan__actions { display: flex; flex-wrap: wrap; gap: var(--ds-space-2); }
@@ -133,6 +129,7 @@
 .lf-table__sub { display: block; margin-top: 2px; font-size: var(--ds-text-sm); color: var(--ds-text-secondary); font-variant-numeric: tabular-nums; }
 .lf-source { display: flex; align-items: flex-start; gap: 6px; font-family: var(--ds-font-mono); font-size: var(--ds-text-sm); }
 .lf-source svg { flex: none; margin-top: 3px; color: var(--ds-text-muted); }
+.lf-source--none { font-family: inherit; color: var(--ds-text-secondary); font-style: italic; }
 .lf-table__actions { display: flex; justify-content: flex-end; gap: var(--ds-space-1); }
 
 .lf-confirm__target { padding: var(--ds-space-3) var(--ds-space-4); border-radius: var(--ds-radius-lg); background: var(--ds-bg-sunken); color: var(--ds-text-primary); }
@@ -192,9 +189,8 @@
   .lf-app { grid-template-columns: 104px minmax(0, 1fr); }
   .lf-app__main { padding: var(--ds-space-4) var(--ds-space-6) var(--ds-space-8) var(--ds-space-2); }
   .lf-screen, .lf-grid, .lf-stack { gap: var(--ds-space-4); }
-  .lf-grid--form { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+  .lf-grid--form { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
   .lf-form { gap: var(--ds-space-4); }
-  .lf-choice__item { padding: var(--ds-space-3); gap: var(--ds-space-2); }
   .lf-table { font-size: var(--ds-text-sm); }
   .lf-table tbody th, .lf-table td { padding: var(--ds-space-3) var(--ds-space-2); }
   .lf-table__line { overflow-wrap: normal; }
@@ -208,4 +204,7 @@
 @media (max-height: 700px) {
   .lf-app__side { padding: var(--ds-space-3) 0 var(--ds-space-2); }
   .lf-screen__head { min-height: 52px; }
+  /* the new-campaign form (kind, place, country, cap, offer, register, SIC codes) stays on one page at 900 x 600 */
+  .lf-form { gap: var(--ds-space-3); }
+  .lf-app__main { padding-bottom: var(--ds-space-4); }
 }

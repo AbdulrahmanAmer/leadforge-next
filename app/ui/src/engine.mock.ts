@@ -8,8 +8,11 @@ import { EngineError, STAGES } from "./engine.ts";
 import type {
   About, ActionName, Campaign, CampaignDraft, CampaignPlan, Engine, ForgetKind, ForgetResult, KeyName, KeyStatus,
   PeoplePage, PeopleQuery, Person, PurgeEverythingResult, PurgeReport, Retention, RunArgs, RunEvent, RunHandle,
-  RunStatus, Settings, SettingsPatch, Sheet, StageId, SuppressKind, SuppressResult,
+  RunStatus, Settings, SettingsPatch, Sheet, SourceId, StageId, SuppressKind, SuppressResult,
 } from "./engine.ts";
+
+/** The name that makes a run answer with the engine's "unknown" fields: shared with the stand-in. */
+export const UNNAMED_RUN = "unnamed-run";
 
 export interface MockOptions {
   /** Multiplies every delay. 0 answers at once (tests and renders). Default 1. */
@@ -24,6 +27,14 @@ export interface MockOptions {
   runFreezesAfter?: number;
   /** The run fails while visiting websites. */
   runFails?: boolean;
+  /** Actions the engine cannot do yet: they answer kind `missing`. */
+  missing?: readonly ActionName[];
+  /** The registers `settings_get` lists. Default both. */
+  sources?: readonly SourceId[];
+  /** The registers the engine really accepts. Default: the same as `sources` (a different list is a stale view). */
+  configured?: readonly SourceId[];
+  /** The run's statuses carry null campaign, done, purged and expiringIn30Days (also: campaign name "unnamed-run"). */
+  runEndsNull?: boolean;
   /** The clock the mock reads. */
   now?: () => Date;
 }
@@ -53,6 +64,13 @@ const FAILURES: Record<ActionName, [kind: EngineError["kind"], message: string, 
   getSettings: ["failed", "The settings could not be read.", ["The settings file of the window is damaged."], "The defaults are in use."],
   setSettings: ["usage", "The setting was not saved.", ["invalid value for export.formats: ValidationError"], null],
   about: ["failed", "The engine did not answer.", ["The bundled engine did not start within 5 seconds."], "Reinstall LeadForge if this keeps happening."],
+};
+
+/** The title of a `missing` answer, for the actions a screen can meet it on. */
+const MISSING: Partial<Record<ActionName, string>> = {
+  listKeys: "Keys cannot be managed from this window yet.",
+  saveKey: "The key was not saved: the engine cannot store keys yet.",
+  removeKey: "The key was not removed: the engine cannot remove keys yet.",
 };
 
 const BUSINESSES: [name: string, domain: string, town: string][] = [
@@ -91,9 +109,10 @@ function makePeople(): Person[] {
       name, role, business, domain,
       email: hasEmail ? `${first}@${domain}` : null,
       phone: hasPhone ? phone : null,
-      source: `${domain}/${["contact", "about-us", "our-team", "contact-us"][i % 4]}`,
-      foundAt: `2026-${i < 7 ? "11" : "09"}-${pad(i < 7 ? 3 + i : 14 + (i - 7), 2)}`,
-      campaign: i < 7 ? "bristol-mot-garages" : "bath-tyre-fitters",
+      // the last two people carry the engine's "not recorded": one lacks the page, the last lacks all three
+      source: i >= 10 ? null : `${domain}/${["contact", "about-us", "our-team", "contact-us"][i % 4]}`,
+      foundAt: i === 11 ? null : `2026-${i < 7 ? "11" : "09"}-${pad(i < 7 ? 3 + i : 14 + (i - 7), 2)}`,
+      campaign: i === 11 ? null : i < 7 ? "bristol-mot-garages" : "bath-tyre-fitters",
       suppressed: i === 9,
     };
   });
@@ -135,6 +154,12 @@ function makeCampaigns(): Campaign[] {
       state: "finished", stage: "export", startedAt: "2026-09-14T11:05:00Z", keptUntil: "2027-09-14",
       businesses: 64, withEmail: 47, withPhone: 60, tiers: { a: 9, b: 31, c: 24 },
       sheet: makeSheet("r-20260914-0d3f", 64, "2026-09-14T11:31:00Z"),
+    },
+    {
+      // every nullable field null: the engine has no name, register or deletion day for this run
+      runId: "r-20260802-3c1a", name: null, kinds: ["Roofing contractor"], places: ["Exeter"], source: null,
+      state: "finished", stage: "export", startedAt: "2026-08-02T08:20:00Z", keptUntil: null,
+      businesses: 41, withEmail: 22, withPhone: 38, tiers: { a: 4, b: 19, c: 18 }, sheet: makeSheet("r-20260802-3c1a", 41, "2026-08-02T08:44:00Z"),
     },
   ];
 }
@@ -186,12 +211,17 @@ export function createMockEngine(options: MockOptions = {}): Engine {
   let months = 12;
   let expired = options.empty ? 0 : 14;
   let total = options.empty ? 0 : 372;
-  let settings: Settings = { theme: "system", accent: "cobalt", workspace: "D:\\Leads\\west-country", sheetFormats: ["xlsx", "csv"], openSheetWhenDone: true };
+  const listedSources: SourceId[] = [...(options.sources ?? ["dvsa", "companies_house"])];
+  const configuredSources: SourceId[] = [...(options.configured ?? listedSources)];
+  let settings: Settings = { workspace: "D:\\Leads\\west-country", sheetFormats: ["xlsx", "csv"], openSheetWhenDone: true, sources: listedSources };
   const keys: Record<KeyName, KeyStatus> = {
     companies_house_key: { name: "companies_house_key", saved: !options.empty, savedAt: options.empty ? null : "2026-11-03T08:50:00Z" },
     opencorporates_token: { name: "opencorporates_token", saved: false, savedAt: null },
   };
-  let run: { status: RunStatus; stopped: boolean } | null = null;
+  let run: { status: RunStatus; stopped: boolean; unknown: boolean } | null = null;
+  /** A status the way the engine sends it when it does not know: campaign, done and the clean-up counts null. */
+  const shown = (status: RunStatus, unknown: boolean): RunStatus =>
+    unknown ? { ...status, campaign: null, done: null, counts: { ...status.counts, purged: null, expiringIn30Days: null } } : { ...status, counts: { ...status.counts } };
 
   const sleep = (ms: number) => (speed === 0 ? Promise.resolve() : new Promise<void>((r) => setTimeout(r, ms * speed)));
   const listed = (set: MockOptions["fail"], action: ActionName) => set === "all" || (set ?? []).includes(action);
@@ -200,6 +230,10 @@ export function createMockEngine(options: MockOptions = {}): Engine {
   async function begin(action: ActionName, ms: number): Promise<void> {
     if (listed(options.hang, action)) await new Promise<never>(() => {});
     await sleep(ms);
+    if (listed(options.missing, action)) {
+      // no new error kind: a command the engine cannot do yet is `missing`, with the window command named
+      throw new EngineError(action, "missing", MISSING[action] ?? "The engine cannot do this yet.", [`The engine has no command for this yet.`], null);
+    }
     if (listed(options.fail, action)) {
       const [kind, message, details, next] = FAILURES[action];
       throw new EngineError(action, kind, message, details, next);
@@ -218,6 +252,13 @@ export function createMockEngine(options: MockOptions = {}): Engine {
       if (!draft.places.some((p) => p.trim())) problems.push("target.geography.areas: at least one place");
       if (!draft.country.trim()) problems.push("target.geography.country: country is required");
       if (!(draft.maxLeads >= 1)) problems.push("caps.max_leads: must be 1 or more");
+      // the three refusals of the seam decisions (each names its field; the shape is the engine's `input`)
+      if (!draft.offer || !draft.offer.trim()) problems.push("offer: say in a line or two what you offer these businesses");
+      if (draft.source === "companies_house" && !(draft.sicCodes ?? []).some((c) => c.trim())) problems.push("sicCodes: at least one SIC code is needed for Companies House");
+      if (!configuredSources.includes(draft.source)) {
+        const names = configuredSources.length ? configuredSources.join(", ") : "no register";
+        throw new EngineError("createCampaign", "input", "The campaign is not complete.", [...problems, `source: ${draft.source} is not switched on`], `this workspace is configured for ${names}`);
+      }
       if (problems.length) throw new EngineError("createCampaign", "input", "The campaign is not complete.", problems, "Fill in the marked fields and check the plan again.");
       const searches = draft.kinds.length * draft.places.length * 12;
       const estimated = Math.min(draft.maxLeads, searches * 9);
@@ -237,7 +278,8 @@ export function createMockEngine(options: MockOptions = {}): Engine {
         runId, campaign: args.campaign, state: "running", stage: "discover", done: 0, total: null, etaSeconds: null,
         counts: { businesses: 0, contacts: 0, purged: 4, expiringIn30Days: 9 }, startedAt: stamp(), reason: null,
       };
-      const mine = { status, stopped: false };
+      const unknown = options.runEndsNull === true || args.campaign === UNNAMED_RUN;
+      const mine = { status, stopped: false, unknown };
       run = mine;
       const script = runScript(options.runFails === true);
       void (async () => {
@@ -259,7 +301,7 @@ export function createMockEngine(options: MockOptions = {}): Engine {
           } else {
             status.state = "failed";
             status.reason = "This computer went offline while the websites were being read.";
-            onEvent({ type: "failed", status: { ...status }, error: { kind: "environment", message: status.reason, details: ["Five requests in a row got no answer.", "What was found so far is kept; the run can continue from this stage."] } });
+            onEvent({ type: "failed", status: shown(status, unknown), error: { kind: "environment", message: status.reason, details: ["Five requests in a row got no answer.", "What was found so far is kept; the run can continue from this stage."] } });
             return;
           }
         }
@@ -270,7 +312,7 @@ export function createMockEngine(options: MockOptions = {}): Engine {
           startedAt: status.startedAt, keptUntil: "2027-11-12", businesses: 212, withEmail: 164, withPhone: 201,
           tiers: { a: 38, b: 97, c: 77 }, sheet: makeSheet(runId, 212, stamp()),
         }, ...campaigns];
-        onEvent({ type: "finished", status: { ...status } });
+        onEvent({ type: "finished", status: shown(status, unknown) });
       })();
       return { runId };
     },
@@ -282,12 +324,12 @@ export function createMockEngine(options: MockOptions = {}): Engine {
       }
       run.stopped = true;
       run.status.state = "stopped";
-      return { ...run.status };
+      return shown(run.status, run.unknown);
     },
 
     async runStatus(runId?: string): Promise<RunStatus | null> {
       await begin("runStatus", 250);
-      if (run && (!runId || run.status.runId === runId)) return { ...run.status };
+      if (run && (!runId || run.status.runId === runId)) return shown(run.status, run.unknown);
       return null;
     },
 
@@ -395,22 +437,26 @@ export function createMockEngine(options: MockOptions = {}): Engine {
 
     async getSettings(): Promise<Settings> {
       await begin("getSettings", 150);
-      return { ...settings };
+      return { ...settings, sources: [...settings.sources] };
     },
 
     async setSettings(patch: SettingsPatch): Promise<Settings> {
       await begin("setSettings", 300);
+      // the engine's settings only: theme and accent are the window's own and never reach here
+      const known = ["sheetFormats", "openSheetWhenDone"];
+      const stray = Object.keys(patch).filter((k) => !known.includes(k));
+      if (stray.length) throw new EngineError("setSettings", "usage", "The setting was not saved.", stray.map((k) => `unknown setting: ${k}`), null);
       if (patch.sheetFormats && patch.sheetFormats.length === 0) {
         throw new EngineError("setSettings", "usage", "The setting was not saved.", ["Keep at least one sheet format."], null);
       }
       settings = { ...settings, ...patch };
-      return { ...settings };
+      return { ...settings, sources: [...settings.sources] };
     },
 
     async about(): Promise<About> {
       await begin("about", 400);
       return {
-        windowVersion: "0.0.0-dev", engineVersion: "0.7.3", licence: "MIT",
+        engineVersion: "0.8.0", licence: "MIT",
         licences: options.empty ? [] : [
           { name: "React", version: "19.3.1", licence: "MIT", notice: "Copyright (c) Meta Platforms, Inc. and affiliates. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files, to deal in the Software without restriction." },
           { name: "Tauri", version: "2.x", licence: "Apache-2.0 OR MIT", notice: "Copyright (c) The Tauri Programme within The Commons Conservancy. Licensed under Apache-2.0 or MIT, at your option." },

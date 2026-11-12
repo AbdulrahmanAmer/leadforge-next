@@ -8,6 +8,33 @@ export function formatDate(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+/** What the screens say for a value the engine did not record: never an empty cell, a dash, or "Invalid Date". */
+export const NOT_RECORDED = "not recorded";
+
+/** A date, or "not recorded" for null, empty or anything that is not a date. */
+export function formatDateOrNot(iso: string | null): string {
+  if (iso === null || iso.trim() === "" || Number.isNaN(new Date(iso).getTime())) return NOT_RECORDED;
+  return formatDate(iso);
+}
+
+/** A text the engine may not have recorded: the text, or "not recorded" for null or blank. */
+export function textOrNot(value: string | null): string {
+  return value === null || value.trim() === "" ? NOT_RECORDED : value;
+}
+
+/** The clean-up counts of a run, each only when the engine counted it; no line at all when it counted neither. */
+export function cleanUpLine(counts: { purged: number | null; expiringIn30Days: number | null }): string | null {
+  const parts: string[] = [];
+  if (counts.purged !== null) parts.push(`${formatCount(counts.purged)} ${counts.purged === 1 ? "record" : "records"} deleted at the start`);
+  if (counts.expiringIn30Days !== null) parts.push(`${formatCount(counts.expiringIn30Days)} ${counts.expiringIn30Days === 1 ? "expires" : "expire"} in the next 30 days`);
+  return parts.length ? `Clean-up: ${parts.join(", ")}.` : null;
+}
+
+/** What names a run: the engine's campaign name, or the run id when the engine has none (null). */
+export function runTitle(status: { campaign: string | null; runId: string }): string {
+  return status.campaign !== null && status.campaign.trim() !== "" ? status.campaign : status.runId;
+}
+
 export function formatDuration(seconds: number | null): string {
   if (seconds === null) return "not known yet";
   if (seconds < 60) return `${Math.max(1, Math.round(seconds))} s`;

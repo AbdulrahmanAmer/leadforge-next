@@ -1,4 +1,5 @@
 import { defineConfig, type Plugin } from "vite";
+import { windowVersion } from "./window-version.mjs";
 
 /**
  * The policy the built window must run under, written into dist/index.html so every render of the
@@ -22,6 +23,8 @@ function contentSecurityPolicy(): Plugin {
 export default defineConfig({
   // relative asset addresses: the shell serves the folder from its own scheme
   base: "./",
+  // the window's version, from app/src-tauri/Cargo.toml (window-version.mjs); src/version.ts reads it
+  define: { __WINDOW_VERSION__: JSON.stringify(windowVersion()) },
   plugins: [contentSecurityPolicy()],
   server: { host: "127.0.0.1", port: 5183, strictPort: true },
   build: {

@@ -57,7 +57,12 @@ export interface CampaignDraft {
   places: string[];
   /** ISO country code; the engine requires it. */
   country: string;
+  /** One of `Settings.sources`. The engine refuses (`input`, field `source`) one that is not configured. */
   source: SourceId;
+  /** What the user offers these businesses, one or two lines. Required: an empty one is refused (`input`, field `offer`). */
+  offer: string;
+  /** SIC codes. Asked for, and required (`input`, field `sicCodes`), only when `source` is `companies_house`; `[]` otherwise. */
+  sicCodes: string[];
   /** Stop after this many businesses. */
   maxLeads: number;
 }
@@ -87,17 +92,19 @@ export interface RunArgs {
 export interface RunCounts {
   businesses: number;
   contacts: number;
-  /** Records the start-of-run clean-up deleted, and how many expire within 30 days. */
-  purged: number;
-  expiringIn30Days: number;
+  /** Records the start-of-run clean-up deleted, and how many expire within 30 days. Null: the engine did not count. */
+  purged: number | null;
+  expiringIn30Days: number | null;
 }
 
 export interface RunStatus {
   runId: string;
-  campaign: string;
+  /** Null when the engine does not know the campaign's name; the screen shows the run id. */
+  campaign: string | null;
   state: RunState;
   stage: StageId;
-  done: number;
+  /** Null when the engine cannot say how far the stage is; the screen shows an indeterminate bar. */
+  done: number | null;
   total: number | null;
   etaSeconds: number | null;
   counts: RunCounts;
@@ -121,15 +128,17 @@ export interface RunHandle {
 
 export interface Campaign {
   runId: string;
-  name: string;
+  /** Null when the engine has none; the screen shows the run id. */
+  name: string | null;
   kinds: string[];
   places: string[];
-  source: SourceId;
+  /** Null when not recorded. */
+  source: SourceId | null;
   state: RunState;
   stage: StageId;
   startedAt: string;
-  /** The day the engine deletes what this campaign found. */
-  keptUntil: string;
+  /** The day the engine deletes what this campaign found. Null: the screen makes no claim about it. */
+  keptUntil: string | null;
   businesses: number;
   withEmail: number;
   withPhone: number;
@@ -163,10 +172,11 @@ export interface Person {
   domain: string;
   email: string | null;
   phone: string | null;
-  /** Where the detail was found (a page address, shown as text) and when. */
-  source: string;
-  foundAt: string;
-  campaign: string;
+  /** Where the detail was found (a page address, shown as text) and when. Null: shown as "not recorded". */
+  source: string | null;
+  foundAt: string | null;
+  /** The campaign that found the person. Null: shown as "not recorded". */
+  campaign: string | null;
   suppressed: boolean;
 }
 
@@ -240,19 +250,17 @@ export interface KeyStatus {
 
 /* ------------------------------------------------------------------- settings */
 
-export type ThemeSetting = "light" | "dark" | "system";
-export type AccentSetting = "cobalt" | "brass" | "celadon" | "ember";
-
+/** The engine's settings. The window's look (theme, accent) is not here: the window keeps it itself (prefs.ts). */
 export interface Settings {
-  theme: ThemeSetting;
-  accent: AccentSetting;
   /** The folder the engine works in. Changed through the shell's own folder dialog. */
   workspace: string;
   sheetFormats: ("xlsx" | "csv")[];
   openSheetWhenDone: boolean;
+  /** The registers this workspace is configured for. The new-campaign form offers these and no others. */
+  sources: SourceId[];
 }
 
-export type SettingsPatch = Partial<Omit<Settings, "workspace">>;
+export type SettingsPatch = Partial<Pick<Settings, "sheetFormats" | "openSheetWhenDone">>;
 
 export interface Licence {
   name: string;
@@ -262,8 +270,8 @@ export interface Licence {
   notice: string;
 }
 
+/** The engine's version and the licence notices. The window's own version is a build-time constant (version.ts). */
 export interface About {
-  windowVersion: string;
   engineVersion: string;
   licence: string;
   licences: Licence[];
@@ -286,7 +294,7 @@ export interface Engine {
   exportSheet(runId: string): Promise<Sheet>;
   /** Asks the shell to open a sheet file in the program Windows uses for it. */
   openSheet(path: string): Promise<void>;
-  /** People: the contacts found, with the source and date of each. */
+  /** People: the engine's named people, with an email or phone only where it was recorded as that person's. */
   listPeople(query: PeopleQuery): Promise<PeoplePage>;
   /** Forget: removes an email address, a domain or a name from the workspace and keeps them off new runs. */
   forgetPerson(value: string): Promise<ForgetResult>;

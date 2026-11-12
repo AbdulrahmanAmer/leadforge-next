@@ -5,7 +5,7 @@
  * CSS reads only --ds-* roles. No `style` attribute anywhere: the window runs under a strict policy.
  */
 import { useEffect, useId, useRef } from "react";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
 import { Icon, type IconName } from "./Icon";
 import { EngineError } from "../engine.ts";
 
@@ -178,20 +178,26 @@ export function SearchInput({ label, ...rest }: InputHTMLAttributes<HTMLInputEle
   );
 }
 
-export function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string | null; children: (id: string, describedBy: string | undefined) => ReactNode }) {
+/** `inline`: the hint sits on the label's line, in muted type, instead of under the input (a long form stays on one page). An error is always the note under the input. */
+export function Field({ label, hint, error, inline, children }: { label: string; hint?: string; error?: string | null; inline?: boolean; children: (id: string, describedBy: string | undefined) => ReactNode }) {
   const id = useId();
   const noteId = `${id}-note`;
+  const note = error ?? (inline ? undefined : hint);
   return (
     <div className={cx("ds-field", error && "is-invalid")}>
-      <label className="ds-field__label" htmlFor={id}>{label}</label>
-      {children(id, hint || error ? noteId : undefined)}
-      {(error || hint) && <p className="ds-field__note" id={noteId}>{error ?? hint}</p>}
+      <label className="ds-field__label" htmlFor={id}>{label}{inline && hint && <span className="ds-field__inline">{hint}</span>}</label>
+      {children(id, note ? noteId : undefined)}
+      {note && <p className="ds-field__note" id={noteId}>{note}</p>}
     </div>
   );
 }
 
 export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input className="ds-input" type="text" autoComplete="off" spellCheck={false} {...props} />;
+}
+
+export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea className="ds-input ds-textarea" rows={2} autoComplete="off" spellCheck={false} {...props} />;
 }
 
 export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (next: boolean) => void; label: string }) {

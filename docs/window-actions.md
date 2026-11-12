@@ -13,14 +13,14 @@ at `origin/slice/L6-the-delete-side` ("L6", not merged yet: its line numbers wil
 
 | # | Action in the window | Tauri command | Engine command and arguments | Function, line | The digest returns | While it runs | When it fails |
 |---|---|---|---|---|---|---|---|
-| 1 | New campaign: check the plan | `campaign_create` | the shell writes `answers.yaml` from the form, then `intake --answers answers.yaml --out icp.yaml`, then `plan --icp icp.yaml` | `intake` master:85, `plan` master:111 | intake: `counts.errors`, `counts.categories`, `artifacts[icp.yaml]`; plan: `counts.queries`, `est_max_results`, `est_enrich_sites`, `est_total_min`, `warnings` | the plan card shows placeholder lines, the button reads "Checking the plan" | exit 4: each warning is one problem; the form marks the field it names and the card lists the rest |
+| 1 | New campaign: check the plan (the form also has the offer, the SIC codes for Companies House, and only the registers `settings_get` lists) | `campaign_create` | the shell writes `answers.yaml` from the form, then `intake --answers answers.yaml --out icp.yaml`, then `plan --icp icp.yaml` | `intake` master:85, `plan` master:111 | intake: `counts.errors`, `counts.categories`, `artifacts[icp.yaml]`; plan: `counts.queries`, `est_max_results`, `est_enrich_sites`, `est_total_min`, `warnings` | the plan card shows placeholder lines, the button reads "Checking the plan" | exit 4: each warning is one problem; the form marks the field it names and the card lists the rest |
 | 2 | Run, with live progress | `run_start` (+ channel) | `run --icp icp.yaml` (`--resume` to continue); kept in the foreground by the shell, so stdout carries `LF_PROGRESS {"stage","done","total","msg","ts"}` lines (`util.emit_progress`, util.py:346) and then the digest | `run` master:465 (L6:465, which first calls `_start_of_run_purge` L6:542) | `run`, `counts.stage` and the pipeline counts; on L6 also `counts.purged`, `counts.expiring_30d` | the Run screen: six stages, the current one with its count, bar and last message; time left for the stage; the clean-up notice | exit 3, 4 or 5: the stage it stopped in is marked, the warning is shown, "Continue the run" resumes. Exit 4 with "more than half" (L6:554): the retention stop, shown with its own text |
 | 3 | Stop the run | `run_stop` | none: see "Missing" 1. The shell ends the engine process it started; the run stays resumable (`run --resume`) | n/a | the shell answers with a last `status` | the button reads "Stopping" | the error is shown above the stages; the run goes on |
 | 4 | Is a run going | `run_status` | `status` or `status --run <id>` | `status` master:571 | `run`, `counts.stage`, `businesses`, `alive`, `progress_stage`, `progress_done`, `progress_total`, `eta_seconds` | nothing (asked once when the window opens) | the Run screen says nothing is running |
 | 5 | Open the results | `campaigns_list` | none that lists runs: see "Missing" 2. Today only the latest run: `status` | `status` master:571 | one run | placeholder rows | a banner with the engine's warning and "Try again" |
 | 6 | The sheet: write it | `sheet_export` | `export --icp icp.yaml` (`--format xlsx,csv` from Settings) | `export` master:392 | `counts` (`summarize_for_digest`), `artifacts` (the xlsx, csv and `report.json` paths), `warnings` (the top hooks) | the button reads "Writing" | exit 4 "no run found": banner in the card |
 | 7 | The sheet: open it | `sheet_open` | none. The shell opens the artifact path from row 6 in the program Windows uses, and only if it lies in the workspace's `exports` folder. (`export` opens it itself when `export.auto_open` is true, master:415.) | n/a | nothing | the button is busy | banner in the card |
-| 8 | People: list and search | `people_list` | none: see "Missing" 3 | n/a | n/a | placeholder rows | banner with "Try again" |
+| 8 | People: list and search | `people_list` | the engine's named people only, with an email or phone only where recorded as that person's: see "Missing" 3 | n/a | n/a | placeholder rows | banner with "Try again" |
 | 9 | Forget a person | `person_forget` | `forget <email, domain or name>` | `forget` L6:573 | `counts.kind`, `rows`, `files_removed`, `files_edited`; `artifacts`; the warning "sheets already handed out cannot be reached" | the confirmation stays open, its button reads "Deleting" | exit 4 (`InputError`: an empty value, a half-upgraded workspace), "nothing was changed": shown inside the confirmation, which stays open |
 | 10 | Suppress an address | `address_suppress` | `suppress add <value>` (`--kind email` or `domain`) | `suppress` master:596 | `counts.suppressed` (the size of the list) | the confirmation's button reads "Adding" | exit 2 (empty value, unknown kind): shown inside the confirmation |
 | 11 | Purge: the report | `purge_report` | `purge` | `purge` L6:595 | `counts.state` (`report`, `armed`, `no_workspace`), `expired`, `expiring_30d`, `total` | placeholder lines in "The next clean-up" | exit 4 (a half-upgraded workspace): banner with "Try again"; nothing was changed |
@@ -31,9 +31,9 @@ at `origin/slice/L6-the-delete-side` ("L6", not merged yet: its line numbers wil
 | 16 | Keys: which are saved | `keys_list` | none. The shell asks the Windows keyring | n/a | per key: saved or not, and since when. Never the value | placeholder lines | "The Windows keyring did not answer" |
 | 17 | Keys: save | `key_save` | none yet: see "Missing" 6. The shell stores the value in the Windows keyring | n/a | the same status as row 16. The value is not returned and no command reads it back | the button reads "Saving"; the field is emptied either way | banner in the key's card |
 | 18 | Keys: remove | `key_remove` | none. The shell deletes the keyring entry | n/a | the status | the button is busy | banner in the key's card |
-| 19 | Settings: read | `settings_get` | theme and accent are the shell's own; sheet formats and "open when done" are `config get export.formats` and `config get export.auto_open` | `config_cmd` master:655 | nothing in the digest: see "Missing" 5 | placeholder lines; the window uses its defaults | banner in the card; the defaults stay |
-| 20 | Settings: change | `settings_set` | `config set export.formats <list>`, `config set export.auto_open <bool>`; theme and accent stay in the shell | `config_cmd` master:655 | `counts.set = 1` | the control moves at once | banner in the card |
-| 21 | About and licences | `about` | `version` for the engine; the shell adds its own version and the bundled notices file (C15) | `version` master:883 | nothing in the digest: see "Missing" 7 | placeholder lines | banner with "Try again" |
+| 19 | Settings: read | `settings_get` | sheet formats and "open when done" are `config get export.formats` and `config get export.auto_open`; `sources` is the registers the workspace is configured for; theme and accent are not here: the window keeps them (`prefs.ts`) | `config_cmd` master:655 | nothing in the digest: see "Missing" 5 | placeholder lines; the window uses its defaults | banner in the card; the defaults stay |
+| 20 | Settings: change | `settings_set` | `config set export.formats <list>`, `config set export.auto_open <bool>`; a patch never carries theme or accent | `config_cmd` master:655 | `counts.set = 1` | the control moves at once | banner in the card |
+| 21 | About and licences | `about` | `version` for the engine and the bundled notices file (C15); the window's own version is a build-time constant, not part of the answer | `version` master:883 | nothing in the digest: see "Missing" 7 | placeholder lines | banner with "Try again" |
 
 Exit codes the shell maps to the window's error kinds: 1 `failed`, 2 `usage`, 3 `environment` (`EnvError`), 4
 `input` (`InputError`), 5 `source` (`ProviderFailed`) (util.py:25 to 38); a keyring fault is `keyring`; a row marked
@@ -47,6 +47,35 @@ Two things `run` does by itself today, which the shell has to settle before row 
   `export.auto_open` is true (pipeline.py:550 to 553). That is the "Open the sheet when a run finishes" switch in Settings,
   so the engine, not the window, does the opening after a run.
 
+## The seam's contract (decisions of 2026-11-12, final)
+
+The real commands are `leadforge window <name>`: the arguments as one JSON document on stdin, one JSON document on stdout and
+exit 0, or a non-zero exit and `{"kind","message","details":[...],"next":null|string}`; logs on stderr only. The types are
+`app/ui/src/engine.ts`; `engine.mock.ts` and the stand-in answer in exactly those shapes (`app/ui/tests/seam-shape.test.mjs`).
+
+- **Shape rule.** A field that left a type is ABSENT from the JSON. A nullable field is PRESENT with `null`. Every other field is
+  present and not null. `seam-shape.test.mjs` reads the field lists out of `engine.ts` and holds the mock and the stand-in to it.
+- **`run_start` (the stream).** stdout line 1 is the `RunHandle` `{"runId": "..."}`; then one `RunEvent` per line (`progress`,
+  `stage-done`, `notice`); the last line is exactly one of `finished`, `stopped` or `failed`, each carrying the run's `RunStatus`
+  (`failed` also carries `error: {kind, message, details}`). A run that ends without one of the three is an engine fault. This is how
+  the core already works (`engine_dev.rs` reads the handle first, then the events).
+- **`CampaignDraft`** gains `offer: string` (required: what the user offers these businesses, one or two lines) and
+  `sicCodes: string[]` (asked for only when `source` is `companies_house`; `[]` otherwise). Three refusals, all kind `input`, each
+  with a `details` line that starts with the field's name and a colon, which the form shows on that field:
+  `offer: ...` for an empty offer; `sicCodes: ...` for `companies_house` with no code; `source: ...` for a register that
+  `settings_get` does not list, with `next` naming the configured one.
+- **`Settings`** is `{workspace, sheetFormats, openSheetWhenDone, sources}`. `sources: SourceId[]` is the registers this workspace is
+  configured for; the form offers those and no others. `theme` and `accent` are not in `Settings` or `SettingsPatch`; the window
+  keeps them itself (`app/ui/src/prefs.ts`) and `settings_get` / `settings_set` never carry them. The Rust core merges nothing.
+- **`About`** is `{engineVersion, licence, licences}`. The window's own version is the build-time constant from
+  `app/src-tauri/Cargo.toml` (`app/ui/window-version.mjs`, written by `vite.config.ts`).
+- **`people_list`** returns the engine's named people, with an email or phone only where it was recorded as that person's.
+  Forget and suppress act on any address or domain, listed or not.
+- **No new error kind.** A key command the engine cannot do yet answers `missing`; the Keys screen shows it in words about keys.
+- **Nullable:** `RunStatus.campaign`, `RunStatus.done`, `RunCounts.purged`, `RunCounts.expiringIn30Days`; `Campaign.name`,
+  `Campaign.source`, `Campaign.keptUntil`; `Person.source`, `Person.foundAt`, `Person.campaign`. What each null shows is the table
+  in `docs/slices/L11-window.md`, "Seam decisions of 2026-11-12".
+
 ## Tauri commands (for the shell's author)
 
 Types are those of `app/ui/src/engine.ts`. Every command rejects with `{ kind, message, details: string[], next: string | null }`.
@@ -54,7 +83,7 @@ Types are those of `app/ui/src/engine.ts`. Every command rejects with `{ kind, m
 | Command | Arguments | Result |
 |---|---|---|
 | `campaign_create` | `draft: CampaignDraft` | `CampaignPlan` |
-| `run_start` | `args: RunArgs`, `events: Channel<RunEvent>` | `RunHandle` |
+| `run_start` | `args: RunArgs`, `events: Channel<RunEvent>` | `RunHandle` (the engine's stdout line 1; the events are the lines after it, the last one `finished`, `stopped` or `failed`) |
 | `run_stop` | `runId: string` | `RunStatus` |
 | `run_status` | `runId: string \| null` | `RunStatus \| null` |
 | `campaigns_list` | none | `Campaign[]` |

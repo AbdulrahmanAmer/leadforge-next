@@ -3,7 +3,7 @@ import type { Engine, ForgetResult, Person, SuppressResult } from "../engine.ts"
 import type { ScreenId } from "../App";
 import { Badge, Button, Card, Dialog, EmptyState, ErrorBanner, SearchInput, SegmentedControl, Skeleton, StatusBanner, TextInput } from "../components/ui";
 import { Icon } from "../components/Icon";
-import { formatCount, formatDate, useAction, useLoad } from "../lib";
+import { NOT_RECORDED, formatCount, formatDate, formatDateOrNot, useAction, useLoad } from "../lib";
 
 type Target = { value: string; label: string };
 type Ask = { kind: "forget" | "suppress"; person: Person | null; typed: string };
@@ -40,13 +40,13 @@ export function People({ engine, go, openDialog }: { engine: Engine; go: (s: Scr
   return (
     <div className="lf-screen">
       <header className="lf-screen__head">
-        <div><h1>People</h1><p>The contacts the campaigns found, each with where and when it was found.</p></div>
+        <div><h1>People</h1><p>The named people the campaigns found, with an email address or phone number only where one was recorded as theirs, and where and when it was found.</p></div>
       </header>
 
       <Card padding="md" className="lf-request" label="A request from a person">
         <div className="lf-request__text">
           <h2>Someone asked to be removed</h2>
-          <p>Enter their email address, their domain or their name. It works even if they are not in the list below.</p>
+          <p>Forget and Suppress act on any email address or domain you enter, whether or not it is listed below. This list holds named people only.</p>
         </div>
         <TextInput aria-label="Email address, domain or name" placeholder="name@business.example" value={typed} onChange={(e) => setTyped(e.target.value)} />
         <Button variant="danger-soft" leadingIcon="forget" disabled={!typed.trim()} onClick={() => setAsk({ kind: "forget", person: null, typed: typed.trim() })}>Forget</Button>
@@ -62,25 +62,25 @@ export function People({ engine, go, openDialog }: { engine: Engine; go: (s: Scr
           detail={`It leaves every sheet from the next export on and is not collected again. The list holds ${formatCount(done.suppress.suppressed)} entries.`} />
       )}
 
-      <Card padding="none" className="lf-people" label="Contacts">
+      <Card padding="none" className="lf-people" label="Named people">
         <div className="lf-people__bar">
-          <SearchInput label="Search the contacts" placeholder="Search by name, address, business or domain" value={search} onChange={(e) => setSearch(e.target.value)} />
-          {page.state === "done" && page.data.total > 0 && <p className="lf-caption">{search ? `${formatCount(page.data.matching)} of ${formatCount(page.data.total)}` : `${formatCount(page.data.total)} contacts`}</p>}
+          <SearchInput label="Search the named people" placeholder="Search by name, address, business or domain" value={search} onChange={(e) => setSearch(e.target.value)} />
+          {page.state === "done" && page.data.total > 0 && <p className="lf-caption">{search ? `${formatCount(page.data.matching)} of ${formatCount(page.data.total)}` : `${formatCount(page.data.total)} named people`}</p>}
         </div>
 
-        {page.state === "loading" && <div className="lf-people__pad"><Skeleton lines={6} label="Loading the contacts" /></div>}
+        {page.state === "loading" && <div className="lf-people__pad"><Skeleton lines={6} label="Loading the named people" /></div>}
         {page.state === "error" && <div className="lf-people__pad"><ErrorBanner error={page.error} onRetry={page.reload} /></div>}
         {page.state === "done" && page.data.total === 0 && (
-          <EmptyState icon="people" title="No contacts yet" detail="When a run has read the websites, the people it found are listed here with the page each detail came from."
+          <EmptyState icon="people" title="No named people yet" detail="When a run has read the websites, the people it named are listed here with the page each detail came from."
             action={<Button variant="primary" leadingIcon="campaign" onClick={() => go("campaign")}>New campaign</Button>} />
         )}
         {page.state === "done" && page.data.total > 0 && page.data.matching === 0 && (
-          <EmptyState icon="search" title="Nobody matches that" detail="A person who is not listed can still be forgotten or suppressed with the box above." />
+          <EmptyState icon="search" title="Nobody matches that" detail="An address or domain that is not listed can still be forgotten or suppressed with the box above." />
         )}
         {page.state === "done" && page.data.people.length > 0 && (
           <table className="lf-table">
             <thead>
-              <tr><th scope="col">Person</th><th scope="col">Contact details</th><th scope="col">Found</th><th scope="col"><span className="ds-visually-hidden">Actions</span></th></tr>
+              <tr><th scope="col">Person</th><th scope="col">Their details</th><th scope="col">Found</th><th scope="col"><span className="ds-visually-hidden">Actions</span></th></tr>
             </thead>
             <tbody>
               {page.data.people.map((p) => (
@@ -90,12 +90,19 @@ export function People({ engine, go, openDialog }: { engine: Engine; go: (s: Scr
                     <span className="lf-table__sub">{p.role}, {p.business}</span>
                   </th>
                   <td>
-                    <span className="lf-table__line">{p.email ? <>{p.email.split("@")[0]}<wbr />@{p.email.split("@")[1]}</> : "No email address"}</span>
-                    <span className="lf-table__sub">{p.phone ?? "No phone number"}</span>
+                    <span className="lf-table__line">{p.email ? <>{p.email.split("@")[0]}<wbr />@{p.email.split("@")[1]}</> : "No email recorded"}</span>
+                    <span className="lf-table__sub">{p.phone ?? "No phone recorded"}</span>
                   </td>
                   <td>
-                    <span className="lf-table__line lf-source"><Icon name="source" size={14} /><span>{p.source.split("/")[0]}<wbr />/{p.source.split("/").slice(1).join("/")}</span></span>
-                    <span className="lf-table__sub">{formatDate(p.foundAt)}</span>
+                    {/* a null source, date or campaign is said in words: never an empty cell, a dash, or "Invalid Date" */}
+                    {p.source !== null && p.source.trim() !== ""
+                      ? <span className="lf-table__line lf-source"><Icon name="source" size={14} /><span>{p.source.split("/")[0]}<wbr />/{p.source.split("/").slice(1).join("/")}</span></span>
+                      : <span className="lf-table__line lf-source lf-source--none"><Icon name="source" size={14} /><span>Source {NOT_RECORDED}</span></span>}
+                    <span className="lf-table__sub">
+                      {p.foundAt !== null && formatDateOrNot(p.foundAt) !== NOT_RECORDED ? formatDate(p.foundAt) : `Date ${NOT_RECORDED}`}
+                      {" · "}
+                      {p.campaign !== null && p.campaign.trim() !== "" ? p.campaign : `campaign ${NOT_RECORDED}`}
+                    </span>
                   </td>
                   <td>
                     <div className="lf-table__actions">

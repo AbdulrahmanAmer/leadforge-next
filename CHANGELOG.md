@@ -23,6 +23,11 @@ are kept (an add-on reads its own settings from them).
   progress streams line by line. Until the engine has those commands, a clearly named stand-in answers with made-up data (one-line
   switch in `docs/slices/L11-window.md`). A second copy of the app brings the first to the front instead of starting. The screens'
   build tool is pinned to `vite` 8.3.6 (no package younger than 7 days).
+- The window's seam with the engine, ten decisions of 2026-11-12 (window side; `docs/slices/L11-window.md`): the new-campaign form asks
+  what you offer and, for Companies House, the SIC codes, and offers only the registers the workspace is configured for; four run
+  fields, three campaign fields and three person fields may be null and say "not recorded"; the window keeps its theme and accent
+  itself and its version comes from the crate's `Cargo.toml`; the engine's `settings_get` and `about` no longer carry them; the People
+  screen lists named people only. The mock and the stand-in answer in exactly the new shapes. The tool's behaviour is unchanged.
 
 Clean-up of the plan's debts (docs/slices/debts.md). `leadforge --version` prints the package version. Dropped the never-imported `tenacity` and `rich`
 declarations (the hashed locks are regenerated; `uv.lock` names the real project version), the `codeindex` extra, `scripts/code_index*`,

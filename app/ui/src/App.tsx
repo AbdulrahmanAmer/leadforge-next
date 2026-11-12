@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
-import type { AccentSetting, Engine, RunEvent, RunStatus, Settings, StageId, ThemeSetting } from "./engine.ts";
+import type { Engine, RunEvent, RunStatus, StageId } from "./engine.ts";
 import { EngineError, STAGES } from "./engine.ts";
+import { readLook, writeLook, type AccentSetting, type ThemeSetting } from "./prefs.ts";
 import { Logo } from "./components/Logo";
 import { SideRail, type RailItem } from "./components/ui";
 import { Wall } from "./components/Wall";
@@ -26,10 +27,13 @@ export interface Scenario {
   plan: boolean;
   /** Opens one confirmation: forget, suppress, purge, everything. */
   dialog: string | null;
+  /** Renders only: how the New campaign form is pre-filled (see main.tsx). */
+  draft: string | null;
 }
 
 /* ------------------------------------------------------------- the run view */
-export interface StageView { done: number; total: number | null; summary: string | null; message: string }
+/** `done: null` is a stage whose progress the engine could not say (an end status with `done` null). */
+export interface StageView { done: number | null; total: number | null; summary: string | null; message: string }
 
 export interface RunView {
   phase: "idle" | "starting" | "running" | "finished" | "stopped" | "failed";
@@ -62,6 +66,12 @@ type RunAction =
   | { type: "stopped"; status: RunStatus }
   | { type: "stop-refused"; error: unknown };
 
+/** An end status says where the run stopped: its stage keeps the status's `done`, which may be null (not known). */
+function withStatus(view: RunView, status: RunStatus): RunView {
+  const stage = view.stages[status.stage];
+  return { ...view, status, stages: { ...view.stages, [status.stage]: { ...stage, done: status.done, total: status.total ?? stage.total } } };
+}
+
 function reduceRun(view: RunView, action: RunAction): RunView {
   switch (action.type) {
     case "starting":
@@ -73,7 +83,7 @@ function reduceRun(view: RunView, action: RunAction): RunView {
     case "stopping":
       return { ...view, stopping: true, error: null };
     case "stopped":
-      return { ...view, phase: "stopped", stopping: false, status: action.status };
+      return { ...withStatus(view, action.status), phase: "stopped", stopping: false };
     case "stop-refused":
       return { ...view, stopping: false, error: action.error };
     case "event": {
@@ -91,8 +101,8 @@ function reduceRun(view: RunView, action: RunAction): RunView {
       }
       if (e.type === "notice") return { ...view, notices: [...view.notices, e.text] };
       if (e.type === "finished") return { ...view, phase: "finished", status: e.status, current: null, etaSeconds: null };
-      if (e.type === "stopped") return { ...view, phase: "stopped", status: e.status, stopping: false };
-      return { ...view, phase: "failed", status: e.status, error: new EngineError("startRun", e.error.kind, e.error.message, e.error.details) };
+      if (e.type === "stopped") return { ...withStatus(view, e.status), phase: "stopped", stopping: false };
+      return { ...withStatus(view, e.status), phase: "failed", error: new EngineError("startRun", e.error.kind, e.error.message, e.error.details) };
     }
   }
 }
@@ -108,28 +118,22 @@ const RAIL: readonly RailItem<ScreenId>[] = [
 ];
 
 function systemTheme(): "light" | "dark" {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  try {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  } catch {
+    return "light";
+  }
 }
 
 export function App({ engine, scenario }: { engine: Engine; scenario: Scenario | null }) {
   const [screen, setScreen] = useState<ScreenId>(scenario?.screen ?? "campaign");
-  const [theme, setTheme] = useState<ThemeSetting>(scenario?.theme ?? "system");
-  const [accent, setAccent] = useState<AccentSetting>(scenario?.accent ?? "cobalt");
+  // the window's own look (prefs.ts: browser storage, defaults when it throws), unless a render asked for one
+  const [theme, setTheme] = useState<ThemeSetting>(() => scenario?.theme ?? readLook().theme);
+  const [accent, setAccent] = useState<AccentSetting>(() => scenario?.accent ?? readLook().accent);
   const [run, dispatch] = useReducer(reduceRun, IDLE);
 
-  // the saved look, unless a render asked for one
-  useEffect(() => {
-    let live = true;
-    engine.getSettings().then(
-      (s: Settings) => {
-        if (!live) return;
-        if (!scenario?.theme) setTheme(s.theme);
-        if (!scenario?.accent) setAccent(s.accent);
-      },
-      () => { /* the defaults stay; the Settings screen shows the error */ },
-    );
-    return () => { live = false; };
-  }, [engine, scenario]);
+  const changeTheme = useCallback((next: ThemeSetting) => { setTheme(next); writeLook({ theme: next, accent }); }, [accent]);
+  const changeAccent = useCallback((next: AccentSetting) => { setAccent(next); writeLook({ theme, accent: next }); }, [theme]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -172,13 +176,13 @@ export function App({ engine, scenario }: { engine: Engine; scenario: Scenario |
         <SideRail items={rail} active={screen} onSelect={setScreen} />
       </aside>
       <main className="lf-app__main" data-screen={screen}>
-        {screen === "campaign" && <NewCampaign engine={engine} run={run} onStart={(campaign) => startRun(campaign, false)} go={setScreen} autoPlan={scenario?.plan ?? false} />}
+        {screen === "campaign" && <NewCampaign engine={engine} run={run} onStart={(campaign) => startRun(campaign, false)} go={setScreen} autoPlan={scenario?.plan ?? false} draft={scenario?.draft ?? null} />}
         {screen === "run" && <Run run={run} onStop={stopRun} onResume={() => run.campaign && startRun(run.campaign, true)} onRetry={() => run.campaign && startRun(run.campaign, false)} go={setScreen} />}
         {screen === "results" && <Results engine={engine} go={setScreen} />}
         {screen === "people" && <People engine={engine} go={setScreen} openDialog={scenario?.dialog ?? null} />}
         {screen === "data" && <Data engine={engine} go={setScreen} openDialog={scenario?.dialog ?? null} />}
         {screen === "keys" && <Keys engine={engine} />}
-        {screen === "settings" && <SettingsScreen engine={engine} theme={theme} accent={accent} onTheme={setTheme} onAccent={setAccent} initialTab={scenario?.dialog === "about" ? "about" : "settings"} />}
+        {screen === "settings" && <SettingsScreen engine={engine} theme={theme} accent={accent} onTheme={changeTheme} onAccent={changeAccent} initialTab={scenario?.dialog === "about" ? "about" : "settings"} />}
       </main>
     </div>
   );

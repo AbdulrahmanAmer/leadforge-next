@@ -1,8 +1,12 @@
 import { useState } from "react";
-import type { AccentSetting, Engine, Settings, SettingsPatch, ThemeSetting } from "../engine.ts";
+import type { Engine, Settings, SettingsPatch, SourceId } from "../engine.ts";
+import type { AccentSetting, ThemeSetting } from "../prefs.ts";
+import { WINDOW_VERSION } from "../version.ts";
 import { Button, Card, CardHeader, EmptyState, ErrorBanner, KeyValueList, Skeleton, SegmentedControl, Switch, cx } from "../components/ui";
 import { Logo } from "../components/Logo";
 import { useAction, useLoad } from "../lib";
+
+const SOURCE_NAME: Record<SourceId, string> = { dvsa: "MOT test stations", companies_house: "Companies House" };
 
 const ACCENTS: { id: AccentSetting; label: string }[] = [
   { id: "cobalt", label: "Cobalt" }, { id: "brass", label: "Brass" }, { id: "celadon", label: "Celadon" }, { id: "ember", label: "Ember" },
@@ -18,9 +22,8 @@ export function SettingsScreen({ engine, theme, accent, onTheme, onAccent, initi
   const save = useAction((patch: SettingsPatch) => engine.setSettings(patch));
   const [open, setOpen] = useState<string | null>(null);
 
+  // theme and accent are the window's own (App keeps them in prefs.ts); only the engine's settings go to the engine
   const change = async (patch: SettingsPatch) => {
-    if (patch.theme) onTheme(patch.theme);
-    if (patch.accent) onAccent(patch.accent);
     const next = await save.call(patch);
     if (next) settings.set(next);
   };
@@ -39,14 +42,14 @@ export function SettingsScreen({ engine, theme, accent, onTheme, onAccent, initi
             <CardHeader title="Appearance" />
             <div className="lf-setting">
               <div><h3>Theme</h3><p>System follows Windows.</p></div>
-              <SegmentedControl label="Theme" value={theme} onChange={(t) => void change({ theme: t })}
+              <SegmentedControl label="Theme" value={theme} onChange={onTheme}
                 options={[{ id: "light", label: "Light", icon: "sun" }, { id: "dark", label: "Dark", icon: "moon" }, { id: "system", label: "System" }]} />
             </div>
             <div className="lf-setting">
               <div><h3>Accent</h3><p>The one colour used for the main action and the current page.</p></div>
               <div className="lf-swatches" role="radiogroup" aria-label="Accent">
                 {ACCENTS.map((a) => (
-                  <button key={a.id} type="button" role="radio" aria-checked={accent === a.id} className={cx("lf-swatch", `lf-swatch--${a.id}`, accent === a.id && "is-active")} onClick={() => void change({ accent: a.id })}>
+                  <button key={a.id} type="button" role="radio" aria-checked={accent === a.id} className={cx("lf-swatch", `lf-swatch--${a.id}`, accent === a.id && "is-active")} onClick={() => onAccent(a.id)}>
                     <span className="lf-swatch__dot" aria-hidden="true" />{a.label}
                   </button>
                 ))}
@@ -62,6 +65,9 @@ export function SettingsScreen({ engine, theme, accent, onTheme, onAccent, initi
               <>
                 <div className="lf-setting">
                   <div><h3>Workspace folder</h3><p className="lf-mono">{s.workspace}</p></div>
+                </div>
+                <div className="lf-setting">
+                  <div><h3>Registers switched on</h3><p>{s.sources.length ? s.sources.map((id) => SOURCE_NAME[id]).join(", ") : "None. No register is switched on for this workspace."}</p></div>
                 </div>
                 <div className="lf-setting">
                   <div><h3>Also write a CSV copy</h3><p>The same rows as the Excel sheet, for other programs.</p></div>
@@ -85,9 +91,9 @@ export function SettingsScreen({ engine, theme, accent, onTheme, onAccent, initi
             <div className="lf-about__text">
               <h2>LeadForge</h2>
               <p>Finds businesses in public registers, reads their own websites for contact details, and writes a sheet. The data stays on this computer.</p>
-              {about.state === "loading" && <Skeleton lines={2} label="Asking the engine for its version" />}
               {about.state === "error" && <ErrorBanner compact error={about.error} onRetry={about.reload} />}
-              {about.data && <KeyValueList rows={[["Window", about.data.windowVersion], ["Engine", about.data.engineVersion], ["Licence", about.data.licence]]} />}
+              {/* the window's version is the build's own constant: it shows even when the engine does not answer */}
+              <KeyValueList rows={[["Window", WINDOW_VERSION], ["Engine", about.data ? about.data.engineVersion : about.state === "loading" ? "asking the engine" : "not answered"], ...(about.data ? [["Licence", about.data.licence] as [string, string]] : [])]} />
             </div>
           </Card>
           <Card label="Licences" padding="none">

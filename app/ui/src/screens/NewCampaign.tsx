@@ -1,41 +1,87 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CampaignDraft, CampaignPlan, Engine, SourceId } from "../engine.ts";
 import { EngineError } from "../engine.ts";
 import type { RunView, ScreenId } from "../App";
-import { Button, Card, CardHeader, EmptyState, ErrorBanner, Field, KeyValueList, Readout, ReadoutGroup, Skeleton, StatusBanner, TextInput, cx } from "../components/ui";
+import { Button, Card, CardHeader, EmptyState, ErrorBanner, Field, KeyValueList, Readout, ReadoutGroup, SegmentedControl, Skeleton, StatusBanner, TextArea, TextInput, cx } from "../components/ui";
 import { Icon } from "../components/Icon";
-import { formatCount, formatDuration, useAction } from "../lib";
+import { formatCount, formatDuration, useAction, useLoad } from "../lib";
 
-const SOURCES: { id: SourceId; name: string; detail: string }[] = [
-  { id: "dvsa", name: "MOT test stations", detail: "The DVSA register of active test stations. Garages only, Great Britain." },
-  { id: "companies_house", name: "Companies House", detail: "Registered companies by kind of business. Needs your API key." },
-];
+const SOURCES: Record<SourceId, { name: string }> = {
+  dvsa: { name: "MOT test stations" },
+  companies_house: { name: "Companies House" },
+};
 
-const EXAMPLE: CampaignDraft = { kinds: ["MOT garage"], places: ["Bristol"], country: "GB", source: "dvsa", maxLeads: 250 };
+/** Said when `settings_get` lists no register. The engine's own `next` text is not part of that answer (see the slice file). */
+const NO_SOURCE_NEXT = "Turn a register on in this workspace's settings file, then open New campaign again.";
+
+const EXAMPLE = {
+  kinds: "MOT garage", places: "Bristol", offer: "Online booking for MOT tests and services, so a garage stops losing the calls it cannot take.",
+  sic: "45200, 45111",
+};
+
+/** Renders only (`?draft=`): how the form is pre-filled, and whether the plan is asked for at once. */
+const SCENES: Record<string, { source: SourceId | null; offer: boolean; sic: boolean; check: boolean }> = {
+  "no-offer": { source: null, offer: false, sic: false, check: true },
+  "ch": { source: "companies_house", offer: true, sic: true, check: false },
+  "ch-no-sic": { source: "companies_house", offer: true, sic: false, check: true },
+  "stale-source": { source: "companies_house", offer: true, sic: true, check: true },
+};
+
+/** The fields the engine names in a refusal; their problems are shown on the field, not twice in the banner. */
+const FIELD_KEYS = ["target.categories", "target.geography.areas", "target.geography.country", "caps.max_leads", "offer", "sicCodes", "source"];
 
 function split(text: string): string[] {
   return text.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
-export function NewCampaign({ engine, run, onStart, go, autoPlan }: {
-  engine: Engine; run: RunView; onStart: (campaign: string) => void; go: (s: ScreenId) => void; autoPlan: boolean;
+export function NewCampaign({ engine, run, onStart, go, autoPlan, draft: sceneName }: {
+  engine: Engine; run: RunView; onStart: (campaign: string) => void; go: (s: ScreenId) => void; autoPlan: boolean; draft: string | null;
 }) {
-  const [kinds, setKinds] = useState(autoPlan ? EXAMPLE.kinds.join(", ") : "");
-  const [places, setPlaces] = useState(autoPlan ? EXAMPLE.places.join(", ") : "");
+  const scene = sceneName ? SCENES[sceneName] ?? null : null;
+  const prefilled = autoPlan || scene !== null;
+  const [kinds, setKinds] = useState(prefilled ? EXAMPLE.kinds : "");
+  const [places, setPlaces] = useState(prefilled ? EXAMPLE.places : "");
   const [country, setCountry] = useState("GB");
-  const [source, setSource] = useState<SourceId>("dvsa");
+  const [offer, setOffer] = useState(prefilled && (scene === null || scene.offer) ? EXAMPLE.offer : "");
+  const [picked, setPicked] = useState<SourceId | null>(scene?.source ?? null);
+  const [sic, setSic] = useState(scene?.sic ? EXAMPLE.sic : "");
   const [maxLeads, setMaxLeads] = useState("250");
-  const plan = useAction((draft: CampaignDraft) => engine.createCampaign(draft));
+  const settings = useLoad(() => engine.getSettings(), [engine]);
+  const plan = useAction((d: CampaignDraft) => engine.createCampaign(d));
   const running = run.phase === "running" || run.phase === "starting";
 
-  const draft: CampaignDraft = { kinds: split(kinds), places: split(places), country: country.trim().toUpperCase(), source, maxLeads: Number(maxLeads) };
-  const check = () => { void plan.call(draft); };
-  useEffect(() => { if (autoPlan) check(); /* once, for a render */ }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // the registers this workspace is configured for; the form offers those and no others
+  const sources = settings.data?.sources ?? null;
+  const source: SourceId | null = sources === null ? null : picked !== null && sources.includes(picked) ? picked : sources[0] ?? null;
+  const askSic = source === "companies_house";
 
-  const problems = plan.error instanceof EngineError ? plan.error.details : [];
-  const problem = (key: string) => problems.find((p) => p.startsWith(key))?.split(": ")[1] ?? null;
-  const onFields = problems.filter((p) => ["target.categories", "target.geography.areas", "target.geography.country", "caps.max_leads"].some((key) => p.startsWith(key)));
+  const draft: CampaignDraft = {
+    kinds: split(kinds), places: split(places), country: country.trim().toUpperCase(),
+    source: source ?? "dvsa", offer: offer.trim(), sicCodes: askSic ? split(sic) : [], maxLeads: Number(maxLeads),
+  };
+  const check = () => { void plan.call(draft); };
+
+  const asked = useRef(false);
+  useEffect(() => {
+    // once, for a render, as soon as the registers are known
+    if ((autoPlan || scene?.check) && sources !== null && sources.length > 0 && !asked.current) { asked.current = true; check(); }
+  }, [sources]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const found = plan.error instanceof EngineError ? plan.error : null;
+  const problems = found ? found.details : [];
+  const problem = (key: string) => {
+    const line = problems.find((p) => p.startsWith(`${key}:`));
+    return line ? line.slice(line.indexOf(":") + 1).trim() : null;
+  };
+  const onFields = problems.filter((p) => FIELD_KEYS.some((key) => p.startsWith(`${key}:`)));
+  // a refused register: the engine's reason and its `next` (which names the configured one) go on the field
+  const sourceDetail = problem("source");
+  const sourceNote = sourceDetail ? [sourceDetail, found?.next ? found.next.charAt(0).toUpperCase() + found.next.slice(1) : null].filter(Boolean).join(". ") : null;
+  const banner = found && sourceDetail ? new EngineError(found.action, found.kind, found.message, found.details, null) : plan.error;
   const edited = () => { if (plan.result || plan.error) plan.clear(); };
+
+  const none = settings.state === "done" && sources !== null && sources.length === 0;
+  const canCheck = settings.state === "done" && !none;
 
   return (
     <div className="lf-screen">
@@ -48,42 +94,57 @@ export function NewCampaign({ engine, run, onStart, go, autoPlan }: {
 
       <div className="lf-grid lf-grid--form">
         <Card>
-          <form className="lf-form" onSubmit={(e) => { e.preventDefault(); check(); }}>
-            <div className="lf-form__row">
-              <Field label="Kind of business" hint="Separate several with commas." error={problem("target.categories")}>
-                {(id, note) => <TextInput id={id} aria-describedby={note} placeholder="MOT garage" value={kinds} onChange={(e) => { setKinds(e.target.value); edited(); }} />}
-              </Field>
-              <Field label="Stop after" hint="Businesses." error={problem("caps.max_leads")}>
-                {(id, note) => <TextInput id={id} aria-describedby={note} className="ds-input lf-input--short" inputMode="numeric" value={maxLeads} onChange={(e) => { setMaxLeads(e.target.value.replace(/\D/g, "")); edited(); }} />}
-              </Field>
-            </div>
-            <div className="lf-form__row">
-              <Field label="Place" hint="Towns, counties or postcode areas." error={problem("target.geography.areas")}>
-                {(id, note) => <TextInput id={id} aria-describedby={note} placeholder="Bristol" value={places} onChange={(e) => { setPlaces(e.target.value); edited(); }} />}
-              </Field>
-              <Field label="Country" hint="Two letters." error={problem("target.geography.country")}>
-                {(id, note) => <TextInput id={id} aria-describedby={note} className="ds-input lf-input--short" maxLength={2} value={country} onChange={(e) => { setCountry(e.target.value); edited(); }} />}
-              </Field>
-            </div>
+          {none ? (
+            <EmptyState icon="info" title="No register is switched on" detail={`No register is switched on for this workspace. ${NO_SOURCE_NEXT}`} />
+          ) : (
+            <form className="lf-form" onSubmit={(e) => { e.preventDefault(); if (canCheck) check(); }}>
+              <div className="lf-form__row">
+                <Field inline label="Kind of business" hint="several: use commas" error={problem("target.categories")}>
+                  {(id, note) => <TextInput id={id} aria-describedby={note} placeholder="MOT garage" value={kinds} onChange={(e) => { setKinds(e.target.value); edited(); }} />}
+                </Field>
+                <Field inline label="Stop after" hint="businesses" error={problem("caps.max_leads")}>
+                  {(id, note) => <TextInput id={id} aria-describedby={note} className="ds-input lf-input--short" inputMode="numeric" value={maxLeads} onChange={(e) => { setMaxLeads(e.target.value.replace(/\D/g, "")); edited(); }} />}
+                </Field>
+              </div>
+              <div className="lf-form__row">
+                <Field inline label="Place" hint="towns, counties, postcodes" error={problem("target.geography.areas")}>
+                  {(id, note) => <TextInput id={id} aria-describedby={note} placeholder="Bristol" value={places} onChange={(e) => { setPlaces(e.target.value); edited(); }} />}
+                </Field>
+                <Field inline label="Country" hint="two letters" error={problem("target.geography.country")}>
+                  {(id, note) => <TextInput id={id} aria-describedby={note} className="ds-input lf-input--short" maxLength={2} value={country} onChange={(e) => { setCountry(e.target.value); edited(); }} />}
+                </Field>
+              </div>
 
-            <fieldset className="lf-choice">
-              <legend className="ds-field__label">Where to look</legend>
-              {SOURCES.map((s) => (
-                <label key={s.id} className={cx("lf-choice__item", source === s.id && "is-active")}>
-                  <input type="radio" name="source" className="ds-visually-hidden" checked={source === s.id} onChange={() => { setSource(s.id); edited(); }} />
-                  <span className="lf-choice__mark" aria-hidden="true" />
-                  <span>
-                    <span className="lf-choice__name">{s.name}</span>
-                    <span className="lf-choice__detail">{s.detail}</span>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
+              <Field inline label="What you offer" hint="to these businesses, in one or two lines" error={problem("offer")}>
+                {(id, note) => <TextArea id={id} aria-describedby={note} placeholder="Online booking for MOT tests" value={offer} onChange={(e) => { setOffer(e.target.value); edited(); }} />}
+              </Field>
 
-            <div className="lf-form__actions">
-              <Button type="submit" variant={plan.result ? "soft" : "primary"} size="lg" busy={plan.busy}>{plan.busy ? "Checking the plan" : "Check the plan"}</Button>
-            </div>
-          </form>
+              {settings.state === "loading" && <Skeleton lines={2} label="Reading which registers are switched on" />}
+              {settings.state === "error" && <ErrorBanner compact error={settings.error} onRetry={settings.reload} />}
+              {sources !== null && sources.length >= 1 && source !== null && (
+                <div className={cx("lf-where", sourceNote && "is-invalid")}>
+                  <div className="lf-where__row">
+                    <span className="ds-field__label" id="lf-where-label">Where to look</span>
+                    {sources.length === 1
+                      /* one configured register is fixed text, not a picker */
+                      ? <span className="lf-where__fixed" aria-labelledby="lf-where-label">{SOURCES[source].name}</span>
+                      : <SegmentedControl label="Where to look" value={source} onChange={(id) => { setPicked(id); edited(); }} options={sources.map((id) => ({ id, label: SOURCES[id].name }))} />}
+                  </div>
+                  {sourceNote && <p className="ds-field__note" role="alert">{sourceNote}</p>}
+                </div>
+              )}
+
+              {askSic && (
+                <Field inline label="SIC codes" hint="several: use commas" error={problem("sicCodes")}>
+                  {(id, note) => <TextInput id={id} aria-describedby={note} placeholder="45200, 45111" inputMode="numeric" value={sic} onChange={(e) => { setSic(e.target.value); edited(); }} />}
+                </Field>
+              )}
+
+              <div className="lf-form__actions">
+                <Button type="submit" variant={plan.result ? "soft" : "primary"} size="lg" busy={plan.busy} disabled={!canCheck}>{plan.busy ? "Checking the plan" : "Check the plan"}</Button>
+              </div>
+            </form>
+          )}
         </Card>
 
         <Card className="lf-plan" label="The plan">
@@ -96,7 +157,7 @@ export function NewCampaign({ engine, run, onStart, go, autoPlan }: {
           {!plan.busy && plan.error !== null && (
             <>
               <CardHeader title="The plan" />
-              <ErrorBanner error={plan.error} onRetry={onFields.length ? undefined : check} hide={onFields} />
+              <ErrorBanner error={banner} onRetry={onFields.length ? undefined : check} hide={onFields} />
             </>
           )}
           {!plan.busy && !plan.error && !plan.result && (

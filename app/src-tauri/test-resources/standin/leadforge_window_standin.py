@@ -21,6 +21,8 @@ from pathlib import Path
 
 STATE = Path("standin-state.json")
 STOP_FLAG = Path("standin-stop.flag")
+STATE_VERSION = 2  # 2: the seam decisions of 2026-11-12 (offer, sicCodes, sources, nullable fields, no theme or accent)
+UNNAMED_RUN = "unnamed-run"  # the campaign name that makes a run answer with the engine's "unknown" fields (as in engine.mock.ts)
 EXIT = {"failed": 1, "usage": 2, "environment": 3, "input": 4, "source": 5, "keyring": 1, "missing": 1}
 STAGES = ["discover", "enrich", "label", "score", "draft", "export"]
 
@@ -73,9 +75,10 @@ def people() -> list[dict]:
             "id": f"p{i + 1}", "name": name, "role": role, "business": business, "domain": domain,
             "email": f"{first}@{domain}" if i % 5 != 3 else None,
             "phone": phone if i % 4 != 2 else None,
-            "source": f"{domain}/{['contact', 'about-us', 'our-team', 'contact-us'][i % 4]}",
-            "foundAt": f"2026-{'11' if i < 7 else '09'}-{(3 + i if i < 7 else 14 + i - 7):02d}",
-            "campaign": "bristol-mot-garages" if i < 7 else "bath-tyre-fitters",
+            # the last two people carry the engine's "not recorded": one lacks the page, the last lacks all three
+            "source": None if i >= 10 else f"{domain}/{['contact', 'about-us', 'our-team', 'contact-us'][i % 4]}",
+            "foundAt": None if i == 11 else f"2026-{'11' if i < 7 else '09'}-{(3 + i if i < 7 else 14 + i - 7):02d}",
+            "campaign": None if i == 11 else "bristol-mot-garages" if i < 7 else "bath-tyre-fitters",
             "suppressed": i == 9,
         })
     return out
@@ -108,24 +111,50 @@ def campaigns() -> list[dict]:
          "source": "dvsa", "state": "finished", "stage": "export", "startedAt": "2026-09-14T11:05:00Z",
          "keptUntil": "2027-09-14", "businesses": 64, "withEmail": 47, "withPhone": 60,
          "tiers": {"a": 9, "b": 31, "c": 24}, "sheet": sheet("r-20260914-0d3f", 64, "2026-09-14T11:31:00Z")},
+        # every nullable field null: the engine has no name, register or deletion day for this run
+        {"runId": "r-20260802-3c1a", "name": None, "kinds": ["Roofing contractor"], "places": ["Exeter"],
+         "source": None, "state": "finished", "stage": "export", "startedAt": "2026-08-02T08:20:00Z",
+         "keptUntil": None, "businesses": 41, "withEmail": 22, "withPhone": 38, "tiers": {"a": 4, "b": 19, "c": 18},
+         "sheet": sheet("r-20260802-3c1a", 41, "2026-08-02T08:44:00Z")},
     ]
+
+
+def settings_default() -> dict:
+    return {"workspace": "D:\\Leads\\west-country", "sheetFormats": ["xlsx", "csv"], "openSheetWhenDone": True,
+            "sources": ["dvsa", "companies_house"]}
+
+
+def settings_doc(s: dict) -> dict:
+    """Exactly the engine's Settings fields. A state file from an older stand-in may hold more (theme, accent): never passed on."""
+    st = {**settings_default(), **(s.get("settings") or {})}
+    return {k: st[k] for k in settings_default()}
+
+
+def shown(status: dict, unknown: bool) -> dict:
+    """A run status as the engine sends it when it does not know: campaign, done and the clean-up counts null."""
+    out = {**status, "counts": dict(status["counts"])}
+    if unknown:
+        out.update(campaign=None, done=None)
+        out["counts"].update(purged=None, expiringIn30Days=None)
+    return out
 
 
 def load() -> dict:
     for _ in range(20):  # a run's process may be replacing the file this moment
         try:
             if STATE.exists():
-                return json.loads(STATE.read_text(encoding="utf-8"))
+                old = json.loads(STATE.read_text(encoding="utf-8"))
+                if old.get("v") == STATE_VERSION:  # a file from an older stand-in has the old shapes: start again
+                    return old
             break
         except (OSError, json.JSONDecodeError):
             time.sleep(0.05)
     return {
         "people": people(), "campaigns": campaigns(), "suppressed": 23, "months": 12, "expired": 14, "total": 372,
-        "settings": {"theme": "system", "accent": "cobalt", "workspace": "D:\\Leads\\west-country",
-                     "sheetFormats": ["xlsx", "csv"], "openSheetWhenDone": True},
+        "settings": settings_default(),
         "keys": {"companies_house_key": {"name": "companies_house_key", "saved": True, "savedAt": "2026-11-03T08:50:00Z"},
                  "opencorporates_token": {"name": "opencorporates_token", "saved": False, "savedAt": None}},
-        "run": None,
+        "run": None, "v": STATE_VERSION,
     }
 
 
@@ -160,7 +189,8 @@ def run_start(s: dict, a: dict) -> None:
     status = {"runId": run_id, "campaign": campaign, "state": "running", "stage": "discover", "done": 0, "total": None,
               "etaSeconds": None, "counts": {"businesses": 0, "contacts": 0, "purged": 4, "expiringIn30Days": 9},
               "startedAt": now(), "reason": None}
-    s["run"] = status
+    unknown = campaign == UNNAMED_RUN
+    s["run"] = shown(status, unknown)
     save(s)
     STOP_FLAG.unlink(missing_ok=True)
     emit({"runId": run_id})
@@ -174,9 +204,9 @@ def run_start(s: dict, a: dict) -> None:
             if STOP_FLAG.exists():
                 STOP_FLAG.unlink(missing_ok=True)
                 status["state"] = "stopped"
-                s["run"] = status
+                s["run"] = shown(status, unknown)
                 save(s)
-                emit({"type": "stopped", "status": status})
+                emit({"type": "stopped", "status": shown(status, unknown)})
                 return
             status.update(stage=stage, done=done, total=total)
             status["etaSeconds"] = None if stage == "export" else round((total - done) * 0.6)
@@ -188,20 +218,20 @@ def run_start(s: dict, a: dict) -> None:
             emit({"type": "progress", "stage": stage, "done": done, "total": total,
                   "message": f"{b[1]}: {['1 email, 1 phone', '1 phone', '2 emails, 1 phone'][i % 3]}",
                   "etaSeconds": status["etaSeconds"], "at": now()})
-            s["run"] = status
+            s["run"] = shown(status, unknown)
             save(s)
             time.sleep(0.25)
             done = total + 1 if done == total else min(total, done + step)
             i += 1
         emit({"type": "stage-done", "stage": stage, "summary": STAGE_SUMMARY[stage], "at": now()})
     status["state"] = "finished"
-    s["run"] = status
+    s["run"] = shown(status, unknown)
     s["campaigns"].insert(0, {"runId": run_id, "name": campaign, "kinds": ["MOT garage"], "places": ["Bristol"],
                               "source": "dvsa", "state": "finished", "stage": "export", "startedAt": status["startedAt"],
                               "keptUntil": "2027-11-12", "businesses": 212, "withEmail": 164, "withPhone": 201,
                               "tiers": {"a": 38, "b": 97, "c": 77}, "sheet": sheet(run_id, 212, now())})
     save(s)
-    emit({"type": "finished", "status": status})
+    emit({"type": "finished", "status": shown(status, unknown)})
 
 
 def answer(name: str, s: dict, a: dict):  # noqa: C901 - one branch per command, on purpose
@@ -216,6 +246,17 @@ def answer(name: str, s: dict, a: dict):  # noqa: C901 - one branch per command,
             problems.append("target.geography.country: country is required")
         if not (isinstance(d.get("maxLeads"), (int, float)) and d["maxLeads"] >= 1):
             problems.append("caps.max_leads: must be 1 or more")
+        # the three refusals of the seam decisions: each names its field. (A draft with no `offer` key at all is not
+        # refused: the core's engine_dev test sends the old draft and may not change; the window always sends the key.)
+        if "offer" in d and not str(d["offer"] or "").strip():
+            problems.append("offer: say in a line or two what you offer these businesses")
+        if d.get("source") == "companies_house" and not any(str(c).strip() for c in d.get("sicCodes") or []):
+            problems.append("sicCodes: at least one SIC code is needed for Companies House")
+        configured = s.get("configured") or settings_doc(s)["sources"]
+        if d.get("source") not in configured:
+            raise Refused("input", "The campaign is not complete.",
+                          [*problems, f"source: {d.get('source')} is not switched on"],
+                          f"this workspace is configured for {', '.join(configured) or 'no register'}")
         if problems:
             raise Refused("input", "The campaign is not complete.", problems,
                           "Fill in the marked fields and check the plan again.")
@@ -317,20 +358,23 @@ def answer(name: str, s: dict, a: dict):  # noqa: C901 - one branch per command,
         s["keys"][key] = {"name": key, "saved": False, "savedAt": None}
         return s["keys"][key]
     if name == "settings_get":
-        return s["settings"]
+        return settings_doc(s)
     if name == "settings_set":
         patch = a.get("patch") or {}
         if "sheetFormats" in patch and not patch["sheetFormats"]:
             raise Refused("usage", "The setting was not saved.", ["Keep at least one sheet format."])
-        patch.pop("workspace", None)
-        s["settings"].update(patch)
-        return s["settings"]
+        # only the two settings a window may change; anything else (workspace, sources, a stray theme) is ignored,
+        # because the core's engine_dev test still sends {"theme": "dark"} and may not change
+        st = settings_doc(s)
+        st.update({k: patch[k] for k in ("sheetFormats", "openSheetWhenDone") if k in patch})
+        s["settings"] = st
+        return settings_doc(s)
     if name == "about":
         try:
             from leadforge import __version__ as engine_version
         except Exception:  # noqa: BLE001 - the stand-in still answers without the engine
             engine_version = "unknown"
-        return {"windowVersion": "stand-in", "engineVersion": engine_version, "licence": "MIT", "licences": [
+        return {"engineVersion": engine_version, "licence": "MIT", "licences": [
             {"name": "React", "version": "19.3.1", "licence": "MIT", "notice": "Copyright (c) Meta Platforms, Inc. and affiliates."},
             {"name": "Tauri", "version": "2.x", "licence": "Apache-2.0 OR MIT", "notice": "Copyright (c) The Tauri Programme within The Commons Conservancy."},
             {"name": "Python", "version": "3.12", "licence": "PSF-2.0", "notice": "Copyright (c) Python Software Foundation."},

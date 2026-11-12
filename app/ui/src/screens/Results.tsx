@@ -3,7 +3,7 @@ import type { Campaign, Engine, RunState } from "../engine.ts";
 import type { ScreenId } from "../App";
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorBanner, KeyValueList, Skeleton, type Tone, cx } from "../components/ui";
 import { Icon } from "../components/Icon";
-import { formatCount, formatDate, useAction, useLoad } from "../lib";
+import { NOT_RECORDED, formatCount, formatDate, runTitle, useAction, useLoad } from "../lib";
 
 const STATE: Record<RunState, [label: string, tone: Tone]> = {
   finished: ["Finished", "success"],
@@ -45,7 +45,7 @@ export function Results({ engine, go }: { engine: Engine; go: (s: ScreenId) => v
                 <button type="button" className={cx("lf-row", c.runId === picked && "is-active")} aria-pressed={c.runId === picked} onClick={() => setPicked(c.runId)}>
                   <span className="lf-row__main">
                     <span className="lf-row__title">{c.kinds.join(", ")} in {c.places.join(", ")}</span>
-                    <span className="lf-row__meta">{formatDate(c.startedAt)} · {SOURCE[c.source]}</span>
+                    <span className="lf-row__meta">{formatDate(c.startedAt)} · {c.source ? SOURCE[c.source] : "register not recorded"}</span>
                   </span>
                   <span className="lf-row__figure">{formatCount(c.businesses)}<span>businesses</span></span>
                   <Badge tone={STATE[c.state][1]}>{STATE[c.state][0]}</Badge>
@@ -68,7 +68,7 @@ function Detail({ campaign, engine, onChanged }: { campaign: Campaign; engine: E
 
   return (
     <Card className="lf-detail" label="The sheet">
-      <CardHeader title={campaign.kinds.join(", ") + " in " + campaign.places.join(", ")} detail={<span className="lf-mono">{campaign.name}</span>} />
+      <CardHeader title={campaign.kinds.join(", ") + " in " + campaign.places.join(", ")} detail={<span className="lf-mono">{runTitle({ campaign: campaign.name, runId: campaign.runId })}</span>} />
       {sheet && xlsx && (
         <div className="lf-detail__actions">
           <Button variant="primary" size="lg" leadingIcon="sheet" busy={open.busy} onClick={() => void open.call(xlsx.path)}>Open the sheet</Button>
@@ -82,7 +82,9 @@ function Detail({ campaign, engine, onChanged }: { campaign: Campaign; engine: E
         ["With an email address", formatCount(campaign.withEmail)],
         ["With a phone number", formatCount(campaign.withPhone)],
         ...(campaign.state === "finished" ? [["Strong, fair, weak", `${campaign.tiers.a} · ${campaign.tiers.b} · ${campaign.tiers.c}`] as [string, string]] : []),
-        ["Kept until", formatDate(campaign.keptUntil)],
+        ["Register", campaign.source ? SOURCE[campaign.source] : NOT_RECORDED],
+        // no "kept until" claim when the engine gave no day
+        ...(campaign.keptUntil !== null ? [["Kept until", formatDate(campaign.keptUntil)] as [string, string]] : []),
       ]} />
 
       {(write.error !== null || open.error !== null) && <ErrorBanner compact error={write.error ?? open.error} />}

@@ -63,8 +63,37 @@ test("nothing that needs a relaxed policy: no style attribute, no inline script,
 test("no link that opens a browser, and no file or network access from the window", () => {
   for (const { name, text } of sources.filter((s) => /\.tsx?$/.test(s.name))) {
     assert.doesNotMatch(text, /<a\s|window\.open|location\.href\s*=|target="_blank"/, name);
-    assert.doesNotMatch(text, /\bfetch\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|localStorage|sessionStorage|indexedDB|showOpenFilePicker|type="file"/, name);
+    assert.doesNotMatch(text, /\bfetch\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|indexedDB|showOpenFilePicker|type="file"/, name);
   }
+});
+
+test("browser storage is touched in one file only (src/prefs.ts: the window's look), and only inside try/catch", () => {
+  for (const { name, text } of sources.filter((s) => /\.tsx?$/.test(s.name))) {
+    if (name === "src/prefs.ts") continue;
+    assert.doesNotMatch(text, /localStorage|sessionStorage/, name);
+  }
+  const prefs = sources.find((s) => s.name === "src/prefs.ts").text;
+  assert.doesNotMatch(prefs, /sessionStorage|indexedDB|document\.cookie/);
+  // every call into the store sits in a try block: `store()` appears only after a `try {` in its own function
+  for (const fn of ["readLook", "writeLook"]) {
+    const body = prefs.slice(prefs.indexOf(`export function ${fn}(`));
+    const end = body.indexOf("\n}\n");
+    const text = body.slice(0, end);
+    assert.match(text, /try \{[\s\S]*store\(\)[\s\S]*\} catch/, fn);
+  }
+  // the browser's own object is named only inside the one helper that callers wrap in their try
+  const named = [...prefs.matchAll(/globalThis\.localStorage/g)].length;
+  assert.equal(named, 1);
+});
+
+test("the settings the engine returns carry no theme and no accent, and the About no window version", () => {
+  const engine = read("src", "engine.ts");
+  const settings = engine.slice(engine.indexOf("export interface Settings {"), engine.indexOf("export type SettingsPatch"));
+  assert.doesNotMatch(settings, /\btheme\b|\baccent\b/);
+  assert.match(settings, /sources: SourceId\[\]/);
+  assert.doesNotMatch(engine.slice(engine.indexOf("export type SettingsPatch")), /^export type SettingsPatch[^\n]*(theme|accent)/);
+  const about = engine.slice(engine.indexOf("export interface About {"), engine.indexOf("/* ----------------------------------------------------------------- the seam */"));
+  assert.doesNotMatch(about, /windowVersion/);
 });
 
 test("only the Tauri engine imports Tauri, and it imports nothing but invoke and Channel", () => {

@@ -2,7 +2,7 @@ import { STAGES, type StageId } from "../engine.ts";
 import type { RunView, ScreenId } from "../App";
 import { Button, Card, EmptyState, ErrorBanner, ProgressBar, Readout, ReadoutGroup, Skeleton, StatusBanner, cx } from "../components/ui";
 import { Icon } from "../components/Icon";
-import { formatCount, formatDuration } from "../lib";
+import { cleanUpLine, formatCount, formatDuration, runTitle } from "../lib";
 
 const STAGE_NAME: Record<StageId, [name: string, doing: string]> = {
   discover: ["Find the businesses", "Searching the register"],
@@ -36,7 +36,8 @@ export function Run({ run, onStop, onResume, onRetry, go }: { run: RunView; onSt
       <header className="lf-screen__head">
         <div>
           <h1>Run</h1>
-          <p className="lf-mono">{run.campaign}</p>
+          {/* the engine's status may not know the campaign's name (null): then the run id stands for it */}
+          <p className="lf-mono">{run.status ? runTitle(run.status) : run.campaign}</p>
         </div>
         {live && (
           <Button variant="danger-soft" size="lg" leadingIcon="stop" onClick={onStop} busy={run.stopping} disabled={run.phase === "starting"}>
@@ -74,8 +75,9 @@ export function Run({ run, onStop, onResume, onRetry, go }: { run: RunView; onSt
                     </div>
                     {(state === "now" || state === "held") && (
                       <div className="lf-stage__meter">
-                        <span className="lf-stage__count">{formatCount(s.done)}{s.total !== null && ` of ${formatCount(s.total)}`}</span>
-                        <ProgressBar value={s.done} max={s.total} label={STAGE_NAME[id][0]} tone={state === "held" ? "neutral" : "accent"} />
+                        {/* done null: the engine could not say how far this stage got, so the bar is indeterminate */}
+                        <span className="lf-stage__count">{s.done === null ? "progress not known" : <>{formatCount(s.done)}{s.total !== null && ` of ${formatCount(s.total)}`}</>}</span>
+                        <ProgressBar value={s.done ?? 0} max={s.done === null ? null : s.total} label={STAGE_NAME[id][0]} tone={state === "held" ? "neutral" : "accent"} />
                       </div>
                     )}
                   </li>
@@ -94,7 +96,7 @@ export function Run({ run, onStop, onResume, onRetry, go }: { run: RunView; onSt
             {run.phase === "failed" && <ErrorBanner error={run.error} />}
             {run.phase === "running" && now && (
               <ReadoutGroup divided>
-                <Readout label="Done in this stage" value={formatCount(now.done)} unit={now.total !== null ? `of ${formatCount(now.total)}` : undefined} />
+                <Readout label="Done in this stage" value={now.done === null ? "not known" : formatCount(now.done)} unit={now.done !== null && now.total !== null ? `of ${formatCount(now.total)}` : undefined} />
                 <Readout label="Time left" value={run.etaSeconds === null ? "–" : formatDuration(run.etaSeconds).split(" ")[0]} unit={run.etaSeconds === null ? undefined : formatDuration(run.etaSeconds).split(" ").slice(1).join(" ")} />
               </ReadoutGroup>
             )}
@@ -104,6 +106,7 @@ export function Run({ run, onStop, onResume, onRetry, go }: { run: RunView; onSt
                 <Readout label="Contact details" value={formatCount(counts.contacts)} />
               </ReadoutGroup>
             )}
+            {counts && run.phase !== "running" && cleanUpLine(counts) && <p className="lf-caption lf-cleanup">{cleanUpLine(counts)}</p>}
           </Card>
           {run.notices.length > 0 && (
             <Card padding="md" className="lf-notice">

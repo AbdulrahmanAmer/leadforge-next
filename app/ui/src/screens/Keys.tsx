@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Engine, KeyName, KeyStatus } from "../engine.ts";
+import { EngineError } from "../engine.ts";
 import { Badge, Button, Card, ErrorBanner, Skeleton, StatusBanner } from "../components/ui";
 import { formatDate, useAction, useLoad } from "../lib";
 
@@ -15,7 +16,13 @@ export function Keys({ engine }: { engine: Engine }) {
   return (
     <div className="lf-screen lf-screen--narrow">
       <header className="lf-screen__head">
-        <div><h1>Keys</h1><p>Kept in the Windows keyring of your account. Once saved, a key is never shown again.</p></div>
+        <div>
+          <h1>Keys</h1>
+          {/* the engine cannot do the key commands yet (kind `missing`): the page does not promise a keyring it cannot reach */}
+          <p>{keys.error instanceof EngineError && keys.error.kind === "missing"
+            ? "Saving a key needs a command this version of the engine does not have yet. Nothing is stored."
+            : "Kept in the Windows keyring of your account. Once saved, a key is never shown again."}</p>
+        </div>
       </header>
       {keys.state === "loading" && <Card><Skeleton lines={4} label="Asking the keyring" /></Card>}
       {keys.state === "error" && <Card><ErrorBanner error={keys.error} onRetry={keys.reload} /></Card>}

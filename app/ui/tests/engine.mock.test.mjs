@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { ACTIONS, EngineError } from "../src/engine.ts";
 import { createMockEngine } from "../src/engine.mock.ts";
 
-const draft = { kinds: ["MOT garage"], places: ["Bristol"], country: "GB", source: "dvsa", maxLeads: 50 };
+const draft = { kinds: ["MOT garage"], places: ["Bristol"], country: "GB", source: "dvsa", offer: "Online booking for MOT tests", sicCodes: [], maxLeads: 50 };
 
 /** One call per action, with arguments the working mock accepts. */
 const CALLS = {
@@ -28,7 +28,7 @@ const CALLS = {
   saveKey: (e) => e.saveKey("companies_house_key", "made-up-key-000"),
   removeKey: (e) => e.removeKey("companies_house_key"),
   getSettings: (e) => e.getSettings(),
-  setSettings: (e) => e.setSettings({ theme: "dark" }),
+  setSettings: (e) => e.setSettings({ openSheetWhenDone: false }),
   about: (e) => e.about(),
 };
 
