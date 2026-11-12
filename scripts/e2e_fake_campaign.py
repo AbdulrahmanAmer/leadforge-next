@@ -40,6 +40,7 @@ HOSTS = [s["host"] for s in WORLD["sites"]]
 CH = json.loads((FIX / "companies_house.json").read_text(encoding="utf-8"))
 SECRETISH = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH|ANTHROPIC|OPENAI|GITHUB|^GH_", re.I)
 PUBLIC_RESOLVERS = {"8.8.8.8", "1.1.1.1"}
+OC_FAKE_TOKEN = "-".join(["FAKE", "oc", "campaign", "planted", "for", "the", "scan"])
 KEEP_ENV = ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP", "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "OS")
 
 CONFIG_YAML = f"""discovery:
@@ -47,7 +48,7 @@ CONFIG_YAML = f"""discovery:
   dvsa:
     url: http://127.0.0.1:{WORLD['port']}/dvsa/active-mot-stations.csv
 registry:
-  companies_house_key: {CH['key']}
+  keyring: false
   companies_house_url: http://127.0.0.1:{WORLD['port']}/ch
 politeness:
   delay_s: 0.2
@@ -155,6 +156,9 @@ def child_env(ws: Path, guard_log: Path) -> dict:
         "PYTHONPATH": str(HARNESS), "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "COLUMNS": "200", "NO_COLOR": "1",
         "HOME": str(home), "USERPROFILE": str(home), "APPDATA": str(home / "AppData"), "LOCALAPPDATA": str(home / "Local"),
         "LF_GUARD_LOG": str(guard_log), "LF_GUARD_HOSTS": ",".join(HOSTS), "LF_FAKE_LISTINGS": str(FIX / "listings.json"),
+        # L9: a key is read only from the environment or the OS keyring (the campaign switches the keyring off);
+        # the OpenCorporates token is planted for the fake-key scan only (that provider is off by default)
+        "LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY": CH["key"], "LEADFORGE_REGISTRY__OPENCORPORATES_TOKEN": OC_FAKE_TOKEN,
     })
     return env
 
@@ -202,6 +206,23 @@ def run_campaign(py: str, ws: Path, out: Path) -> dict:
     step("status", [*m, "status"])
     step("export", [*m, "export", "--icp", "icp.yaml", "--format", "xlsx,csv"])
     return {"steps": steps, "ws": str(ws)}
+
+
+def key_scan(out: Path) -> tuple[int, list[str]]:
+    """L9 (C2): every file the campaign left (each step's output, the guard and request logs, the workspace's logs, database
+    and exports, an .xlsx read member by member) is searched for the keys it was given. Returns (files read, hits)."""
+    import zipfile
+
+    keys = {"Companies House key": CH["key"].encode(), "OpenCorporates token": OC_FAKE_TOKEN.encode()}
+    files, hits = 0, []
+    for p in sorted(x for x in out.rglob("*") if x.is_file()):
+        blobs = [p.read_bytes()]
+        if p.suffix.lower() == ".xlsx":
+            with zipfile.ZipFile(p) as z:
+                blobs += [z.read(n) for n in z.namelist()]
+        files += 1
+        hits += [f"{p.relative_to(out)}: {label}" for label, k in keys.items() if any(k in b for b in blobs)]
+    return files, hits
 
 
 # ----------------------------------------------------------------------------- reading the result
@@ -367,6 +388,11 @@ def main() -> int:
     data = collect(a.python, a.label, out)
     norm = normalized(data, str(ws))
     (out / "result.json").write_text(json.dumps(norm, indent=1, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    n_files, key_hits = key_scan(out)
+    if key_hits:
+        print(f"FAIL - fake-key scan: a planted key is in {len(key_hits)} place(s): {key_hits}")
+        return 1
+    print(f"fake-key scan: clean ({n_files} files: step outputs, guard and request logs, workspace logs, database, exports)")
     if a.no_golden:
         print(f"saved {out / 'result.json'}")
         return 0

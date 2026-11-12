@@ -54,7 +54,8 @@ semantics: `references/icp-guide.md`. You MUST end up knowing:
 6. **Profile** — default scoring, or `scoring: { profile: account_fit }` for a prospecting-engine brief.
 
 **UK campaigns only.** If country is GB and `leadforge config get registry.companies_house_key` is empty, ask ONCE
-about a free Companies House API key (`references/icp-guide.md`); proceed without it if declined.
+about a free Companies House API key (`references/icp-guide.md`); proceed without it if declined. The user sets it
+themselves (environment variable `LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY` or the OS keyring); never ask them to paste it to you.
 
 Write `answers.yaml`, then: `leadforge intake --answers answers.yaml --json` (fix field errors by asking the user).
 

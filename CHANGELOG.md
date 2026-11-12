@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+Keys and the agent call (slice L9, no version yet). **Registry keys are no longer read from `leadforge.yaml`:** set
+`LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY` / `LEADFORGE_REGISTRY__OPENCORPORATES_TOKEN` in the environment, or store them in the OS
+keyring (the optional `keyring` extra, `pip install -e .[keyring]`; then `keyring set leadforge registry.companies_house_key`; the plugin's locked install does not carry it). A workspace whose
+`leadforge.yaml` still holds a key is refused with a message naming the setting; `leadforge config set registry.companies_house_key ""`
+clears it. `config get` of a key says only whether it is set and where from. OpenCorporates is off by default (new setting
+`registry.opencorporates_enabled`): its API takes the token only in the web address. Agent-call errors and `config get agent` show the
+agent program and its argument count, never the arguments.
+
 Google Maps and the social presence provider are out of the public tool. Extra discovery providers now come through a
 seam: any installed package that declares an entry point in the group `leadforge.providers` is loaded; asking for a provider
 nobody provides prints "provider '<name>' is not available" and starts nothing. The two Maps providers, their settings, the

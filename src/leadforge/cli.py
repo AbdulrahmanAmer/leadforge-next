@@ -19,7 +19,7 @@ from leadforge import __version__
 # CLI import (docs/06 perf pass, Layer 1 item 5). Most commands never touch the database (doctor,
 # intake, plan, discover, watch, dashboard, render-check, version, config); `db` is imported lazily,
 # inside each command that actually needs it, rather than once for every invocation.
-from leadforge.config import Config, load_config
+from leadforge.config import KEY_SETTINGS, KEYRING_SERVICE, Config, KeyInConfigFile, key_env_name, load_config
 from leadforge.util import LeadForgeError, emit_digest, setup_logging
 
 app = typer.Typer(add_completion=False, help="LeadForge — internal B2B lead generation engine.", no_args_is_help=True)
@@ -56,8 +56,10 @@ def _root(
     try:
         cfg = load_config(".", data_dir_override=data_dir)
     except Exception as e:  # noqa: BLE001 — any parse/validation error, reported not stacktraced
+        # a refused key keeps its whole message (it names the setting and where the key goes, never the value)
+        shown = str(e) if isinstance(e, KeyInConfigFile) else str(e)[:100]
         ctx.obj = {"cfg": None, "json_only": json_only,
-                   "cfg_error": f"leadforge.yaml invalid: {type(e).__name__}: {str(e)[:100]}"}
+                   "cfg_error": f"leadforge.yaml invalid: {type(e).__name__}: {shown}"}
         return
     setup_logging(Path(cfg.workspace) / cfg.data_dir / "logs", verbose=verbose)  # not cfg.logs_dir: that creates the folder
     ctx.obj = {"cfg": cfg, "json_only": json_only}
@@ -771,6 +773,9 @@ def _redacted(name: str, value):
     part of any address is cut."""
     if isinstance(value, dict):
         return {k: _redacted(str(k), v) for k, v in value.items()}
+    if name == "command" and isinstance(value, list) and value:
+        # L9 (C2): agent.command's arguments may carry a key; shown like AgentFailed shows them
+        return [str(value[0]), f"<{len(value) - 1} arguments hidden>"]
     if isinstance(value, list):
         return [_redacted(name, v) for v in value]
     if _SECRET_KEY_RE.search(name) and value not in (None, "", {}):
@@ -824,12 +829,29 @@ def config_cmd(ctx: typer.Context,
             (Path(td) / "leadforge.yaml").write_text(merged, encoding="utf-8")
             try:
                 load_config(td)
+            except KeyInConfigFile as e:  # L9 (C2): a key never goes into leadforge.yaml; nothing is written
+                _say(ctx, str(e))
+                emit_digest(False, "config", warnings=[str(e)], next_=None)
+                raise typer.Exit(2) from None
             except Exception as e:  # noqa: BLE001 — report, don't stacktrace
                 emit_digest(False, "config", warnings=[f"invalid value for {key}: {type(e).__name__}"], next_=None)
                 raise typer.Exit(2) from e
         path.write_text(merged, encoding="utf-8")
         _say(ctx, f"{key} = {_shown(key, parsed if isinstance(parsed, (dict, list)) else value)} written to {path}")
         emit_digest(True, "config", counts={"set": 1}, next_=None)
+    elif action == "get" and len(parts) == 2 and parts[0] == "registry" and parts[1] in KEY_SETTINGS:
+        # L9 (C2): a key lives in the environment or the OS keyring; say whether it is set and where, never the value
+        cfg = ctx.obj.get("cfg")
+        if cfg is None:
+            emit_digest(False, "config", warnings=[ctx.obj.get("cfg_error") or "leadforge.yaml invalid"], next_=None)
+            raise typer.Exit(2)
+        value = getattr(cfg.registry, parts[1])
+        if value:
+            _say(ctx, f"{key} = <hidden, {len(value)} chars> (from the {cfg._key_sources.get(parts[1], '?')})")
+        else:
+            _say(ctx, f"{key} = '' (not set; set the environment variable {key_env_name(parts[1])} "
+                      f"or the OS keyring: `keyring set {KEYRING_SERVICE} {key}`)")
+        emit_digest(True, "config", counts={"key_set": int(bool(value))}, warnings=[], next_=None)
     elif action == "get":
         node = data
         for p in parts:
