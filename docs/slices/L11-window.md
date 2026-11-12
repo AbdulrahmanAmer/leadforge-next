@@ -47,7 +47,8 @@ object goes back untouched as the rejection; if the engine breaks the contract (
 **Limits.** Arguments at most 1 MiB (refused before the engine starts); a one-document answer at most 8 MiB (past it the engine is
 stopped and the window gets an error); a `run_start` line at most 64 KiB, and a line that is not one JSON document or is too long
 is not relayed (counted as `dropped=` in the log). Timeouts: `run_start` 12 h; `run_stop`, `run_status`, `about` 30 s;
-`sheet_export`, `purge_apply`, `purge_everything`, `person_forget` 600 s; everything else 120 s. On a timeout the engine is stopped.
+`sheet_export`, `purge_report`, `purge_apply`, `purge_everything`, `person_forget` 600 s; everything else 120 s (pinned per
+command since "The start, the stop and the end of a run" below). On a timeout the engine is stopped.
 
 **One engine at a time.** A gate: a command waits for the one before it. While a `run_start` runs, `run_stop` and `run_status` get
 their own engine process beside it (one at a time); every other command is refused at once with an error object ("A run is going
@@ -55,7 +56,8 @@ on ..."), not queued for hours.
 
 **`run_start`.** Line 1 of the engine's stdout is the run handle `{"runId": ...}`: the command's answer. Every later line is relayed
 as it arrives through the Tauri channel the screens pass as `events` (the core removes `events` from the arguments before they go
-to stdin). After `run_stop` answers, the run's engine gets 10 s to end by itself; then the core ends it. Closing the window
+to stdin). After `run_stop` answers ok, the run's engine gets 90 s to end by itself (was 10 s; see "The start, the stop and the
+end of a run" below); then the core ends it. Closing the window
 (`CloseRequested`/`Destroyed`) and the app's exit stop every engine the core started (log: `exit: every engine stopped`).
 
 **`key_save`'s value.** The arguments live in `EngineInput`, whose `Debug` prints only the byte count; the log line per command holds
@@ -179,10 +181,12 @@ process or file is left in `D:\Temp\lf-install`.
    `person_forget {"value"}`, `address_suppress {"value","kind": string|null}`, `purge_everything {"confirm": true}`,
    `retention_set {"months"}`, `key_save {"name","value"}`, `key_remove {"name"}`, `settings_set {"patch"}`; the rest `{}`.
 2. **`run_start`'s first stdout line is the run handle `{"runId": "..."}`**, then one RunEvent per line, and the last line must be a
-   `finished`, `stopped` or `failed` event: the core does not read lines, so if the engine dies without one the screen keeps
-   showing a running run. A refusal before the run starts: no handle line, the error object, non-zero exit.
-3. **`run_stop` runs as a second engine process beside the run** and must make the run's process end within 10 s (the core ends it
-   after that). `run_status` also runs beside a run. Nothing else does.
+   `finished`, `stopped` or `failed` event. A refusal before the run starts: no handle line, the error object as line 1, non-zero
+   exit. The rules the core holds the engine to (line 1, `stream-closed`, the wait after a stop, the time limits) are the
+   contract in `docs/window-actions.md`, "The seam's contract".
+3. **`run_stop` runs as a second engine process beside the run**; after it answers ok, the run's process has 90 s to write its end
+   event (the core ends it after that). `run_status` also runs beside a run, and must answer `failed` for a run whose process was
+   ended from outside. Nothing else runs beside a run.
 4. **Error `kind` values the screens know:** `failed`, `usage`, `environment`, `input`, `source`, `keyring`, `missing`; any other
    becomes `failed` on screen. `details` are shown as plain sentences; for `campaign_create` the screens mark a field when a detail
    starts with `target.categories`, `target.geography.areas`, `target.geography.country`, `caps.max_leads`, `offer`, `sicCodes` or
@@ -199,8 +203,9 @@ process or file is left in `D:\Temp\lf-install`.
 - The real `leadforge window` commands (other laptop); then the switch of item 4.
 - The keyring (`keys_list`, `key_save`, `key_remove`): the stand-in only pretends.
 - The workspace folder dialog (`Settings`): the core has no dialog; the screens show the folder as text.
-- If the run's engine dies without an end event, the screen stays on "running" (engine side, item 2 of the list above).
-- The self-test walks the seven screens, one error, one run and its stop; not the dialogs, `sheet_open`, a failed run.
+- (Settled 2026-11-12: a run whose engine dies without an end event now ends on screen; see "The start, the stop and the end of a run".)
+- The self-test walks the seven screens, one error, one run and its stop, and one refused start; not the dialogs, `sheet_open`,
+  a failed run.
 - The single-instance guard was not watched failing. (The self-test's run and its stop now are: see "The self-test".)
 - No CI job (same reason as L10); the permission-check crate would be the cheap one to add.
 
@@ -248,7 +253,7 @@ ABSENT from the JSON; a nullable field is PRESENT with `null` (`app/ui/tests/sea
 | Field | When null the screen shows |
 |---|---|
 | `RunStatus.campaign` | the Run screen's title is the run id (`runTitle`) |
-| `RunStatus.done` | the stage that stopped or failed shows "progress not known" and an indeterminate bar; the "Done in this stage" figure reads "not known" |
+| `RunStatus.done` | the stage that stopped or failed shows no progress line at all (changed 2026-11-12, was "progress not known" and an indeterminate bar); while running, the "Done in this stage" figure reads "not known" |
 | `RunCounts.purged`, `RunCounts.expiringIn30Days` | the clean-up line ("Clean-up: 4 records deleted at the start, 9 expire in the next 30 days.") leaves out the null part; no line at all when both are null; a zero is a count and is shown |
 | `Campaign.name` | the Results detail shows the run id where the name goes |
 | `Campaign.source` | the list row says "register not recorded"; the detail's "Register" row says "not recorded" |
@@ -309,3 +314,47 @@ script now finds the visible window of the process that is not a console.
 Green (third run): `shots taken: 10 of 10; probe clean: True`, `expectations missed: 0`, `SELFTEST PASS`; log: `campaign_create ... ok out=164B`,
 `run_start handle relayed`, `run_stop ... ok`, `run_start ... ok out=22B lines=22 dropped=0`, then the eight data commands `ok`.
 Not covered: the real engine's wording of the field problem on screen (step 1 looks for "at least one"; the stand-in's text).
+
+## The start, the stop and the end of a run (2026-11-12, after the engine side tested its commands against the core)
+
+The engine side found two cases the core got wrong: a refused start was relayed as a handle with no `runId` (the screen waited on
+"running" for ever), and a stream that ended without an end event told the screen nothing. The rules are now the contract in
+`docs/window-actions.md`, "The seam's contract" (items 1 to 4 there; the engine side builds to the same text):
+1. line 1 is the handle only if it is an object with a non-empty string `runId`; an object with `kind` is the refusal (rejected
+   untouched once the process has ended, 5 s bound); anything else is the core's own `failed` error;
+2. a stream that ends without `finished`, `stopped` or `failed` gets exactly one `{"type":"stream-closed","exitCode","reason"}` from
+   the core (`exit`, `ended-by-core`, `line-too-long`, `timeout`); the Run screen then asks `runStatus` once and shows its answer, or
+   "The engine stopped without saying why." with "Continue the run";
+3. after `run_stop` answers ok, the run has 90 s (`engine::STOP_WAIT`) to write its end event; `run_stop` answers at once (it used
+   to wait up to 10 s for the run before answering); tests pass a short wait to `engine::after_stop` (a parameter, nothing a
+   release build reads); the core's deadline lives in the process handle, so the run loop itself ends the process;
+4. `purge_report` is in the 600 s class; `timeouts_are_pinned_per_command` lists all 21.
+
+**How.** `engine::run_stream` is the whole `run_start` path (the Tauri command only wires its answer to the invoke and its lines to
+the channel); `engine::after_stop` is the stop path. `tests/run_seam.rs` drives both against the stand-in's cases (`CASES` in the
+stand-in: `standin-refuse`, `standin-garbled`, `standin-dies`, `standin-slow-stop`, `standin-ignores-stop`, `standin-long-line`);
+a unit test runs `standin-ignores-stop` with a 3 s time limit for the `timeout` reason.
+**Seen red** (the old rules put back in one build: any line 1 is the handle, no `stream-closed`, a 10 s wait, `purge_report` at 120 s):
+`a_refused_start_rejects_with_the_engines_document` (`a refused start is a rejection, not a handle: "{\"kind\": \"input\", ...`),
+`a_run_that_dies_closes_the_stream` (last message a `progress`, not `stream-closed`), `an_end_event_over_the_line_cap_closes_the_stream`,
+`a_run_that_ignores_the_stop_is_ended_when_the_wait_ends`, `a_slow_stop_is_waited_for` (`the run ended itself` left `progress`
+right `stopped`: ended at 10 s), `the_stop_wait_is_ninety_seconds` (left 10s right 90s), `timeouts_are_pinned_per_command`
+(`purge_report: time-limit class` left 120s right 600s), `a_run_past_its_time_limit_closes_the_stream_with_timeout`. Restored: all green.
+The screen side (`app/ui/src/run.ts`, the run's state out of `App.tsx` so Node tests it; `tests/run-view.test.mjs`) was red with the
+old reducer put back (`actual: 'stopped', expected: 'stopping'`; `the screen now asks runStatus once` actual null) and green after.
+
+**The Run screen.** New state "Stopping the run" (from `run_stop`'s answer to the end event or `stream-closed`): "The engine is
+finishing the business it is on, then it stops. This can take up to a minute and a half. Nothing found so far is lost."; no Stop
+button; the stage keeps its live progress. A stopped or failed run whose `done` is null shows no progress line. Renders (light and
+dark, 1280 x 800 and 900 x 600, `D:\LeadForge\wt\window-shots\seam\`): `run-stopping-*`, `run-closed-silent-*`, `run-stopped-null-*`,
+`run-failed-null-*`, all fit (`scrollHeight` = `clientHeight`). After looking: the stopping state showed "Time left 3 min" beside
+"Stopping the run" (the stage will not run to its end), so it shows only "Done in this stage" now.
+
+**The self-test.** The walk adds a refused start (the place "Standin refuse", picture `05b-run-refused`, 11 pictures now); the
+script expects `cmd=run_start rejected: line 1 was not a run handle`, `cmd=run_start ... error kind=input lines=0` and the screen
+text (Try again, then the engine's message). Bounds: 20 s with no step of the walk in the log, 120 s for the walk (the script stops
+the app, and the app also ends itself at 120 s). Two runs on the owner's screen, about 45 s each: the first missed one expectation
+for a wrong check (the page text was cut at 240 characters before the message; and "Try again" comes first in the text): the probe
+now keeps 600 characters. The second: `shots taken: 11 of 11; probe clean: True`, `key marker in this run's log: False`,
+`expectations missed: 0`, `SELFTEST PASS`.
+Not watched: the 20 s and 120 s bounds firing (a walk that hangs on purpose would need a third window).

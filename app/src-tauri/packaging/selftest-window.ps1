@@ -54,9 +54,20 @@ function Shot([Diagnostics.Process]$p, [string]$file) {
 }
 $p = Start-Process -FilePath $Exe -ArgumentList '--selftest' -PassThru
 $taken = @{}
-for ($i = 0; $i -lt 900 -and -not $p.HasExited; $i++) {   # 900 x 200 ms = 3 minutes at most
+# Bounds (a failing walk once kept the window on the owner's screen for three minutes): the whole walk 120 s, and
+# 20 s for each step: when no new "selftest:" line reaches the log for 20 s, the walk is stuck and the app is stopped.
+$walkBound = [TimeSpan]::FromSeconds(120)
+$stepBound = [TimeSpan]::FromSeconds(20)
+$clock = [Diagnostics.Stopwatch]::StartNew()
+$lastStep = $clock.Elapsed
+$steps = 0
+$bounded = ''
+while (-not $p.HasExited) {
     Start-Sleep -Milliseconds 200
-    foreach ($m in [regex]::Matches((Read-New), 'selftest: shot (\S+)')) {
+    $text = Read-New
+    $now = ([regex]::Matches($text, 'selftest: ')).Count
+    if ($now -ne $steps) { $steps = $now; $lastStep = $clock.Elapsed }
+    foreach ($m in [regex]::Matches($text, 'selftest: shot (\S+)')) {
         $name = $m.Groups[1].Value
         if (-not $taken.ContainsKey($name)) {
             $file = Join-Path $Shots ($name + '.png')
@@ -64,8 +75,12 @@ for ($i = 0; $i -lt 900 -and -not $p.HasExited; $i++) {   # 900 x 200 ms = 3 min
             "shot {0}: {1}" -f $name, $taken[$name]
         }
     }
+    if ($clock.Elapsed -gt $walkBound) { $bounded = 'the whole walk passed its 120 s bound'; break }
+    if (($clock.Elapsed - $lastStep) -gt $stepBound) { $bounded = 'no step of the walk for 20 s'; break }
 }
+if ($bounded) { "SELFTEST BOUND: $bounded; stopping the app"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
 if (-not $p.WaitForExit(10000)) { 'app did not exit by itself: stopping it'; Stop-Process -Id $p.Id -Force }
+"walk took {0:N0} s" -f $clock.Elapsed.TotalSeconds
 "app exit code: $($p.ExitCode)"
 $new = Read-New
 'core.log lines of this run:'; $new.TrimEnd()
@@ -73,7 +88,7 @@ $leak = $new.Contains('LF-SELFTEST-KEY-7f3a9c51')
 "key marker in this run's log: $leak"
 $clean = $new -match 'selftest: probe "\{\\"violations\\":\[\],\\"errors\\":\[\]\}"'
 $shots = @($taken.Values | Where-Object { $_ }).Count
-"shots taken: $shots of 10; probe clean: $clean"
+"shots taken: $shots of 11; probe clean: $clean"
 # What the core's own log of THIS run must show, in this order. A walk that took its pictures but never started a run
 # proves nothing about the run: every missed expectation prints a line saying which one.
 $rows = @($new -split "`r?`n" | Where-Object { $_ -ne '' })
@@ -94,12 +109,18 @@ $null = Expect 'the refusal is on screen (02-campaign-error shows the field prob
 $c = Expect 'campaign_create answered ok' 'cmd=campaign_create .* ok out=' $e
 $s = Expect 'run_start relayed its handle' 'cmd=run_start handle relayed' $c
 $t = Expect 'run_stop answered ok' 'cmd=run_stop .* ok out=' $s
-$null = Expect 'run_start ended ok with at least one stream line after the handle (lines=2 or more)' 'cmd=run_start .* ok out=\d+B lines=([2-9]|\d\d+) ' $s
+$r = Expect 'run_start ended ok with at least one stream line after the handle (lines=2 or more)' 'cmd=run_start .* ok out=\d+B lines=([2-9]|\d\d+) ' $s
+# a start the engine refuses (stand-in case standin-refuse): the core rejects run_start with the engine's own
+# document (kind input), and the Run screen shows the start refused (the engine's message and "Try again")
+$f = Expect 'the refused start: the core rejected run_start (line 1 was not a run handle)' 'cmd=run_start rejected: line 1 was not a run handle' $r
+$null = Expect "the refused start: run_start logged with the engine's kind (error kind=input lines=0)" 'cmd=run_start .* error kind=input lines=0 ' $r
+$null = Expect 'the refused start is on screen (05b-run-refused: Try again, then the message)' 'selftest: shows 05b-run-refused: "run \| .*Try again.*could not start the run' $f
 # every screen's own data command answered ok after the run was stopped
 foreach ($cmd in 'campaigns_list', 'people_list', 'purge_report', 'retention_get', 'keys_list', 'key_save', 'settings_get', 'about') {
     $null = Expect "$cmd answered ok" "cmd=$cmd .* ok out=" $t
 }
+if ($bounded) { $missed += "SELFTEST EXPECTATION MISSED: the walk ended within its bounds ($bounded)" }
 foreach ($m in $missed) { $m }
 $ran = ($missed.Count -eq 0)
 "expectations missed: $($missed.Count)"
-if ($p.ExitCode -eq 0 -and $shots -eq 10 -and $clean -and -not $leak -and $ran) { 'SELFTEST PASS'; exit 0 } else { 'SELFTEST FAIL'; exit 1 }
+if ($p.ExitCode -eq 0 -and $shots -eq 11 -and $clean -and -not $leak -and $ran) { 'SELFTEST PASS'; exit 0 } else { 'SELFTEST FAIL'; exit 1 }

@@ -180,11 +180,27 @@ def emit(doc: dict) -> None:
     sys.stdout.flush()
 
 
-def run_start(s: dict, a: dict) -> None:
+def case_of(campaign: str) -> str | None:
+    """The test case a made-up campaign name chooses (the name starts with it; see CASES)."""
+    return next((c for c in CASES if campaign.startswith(c)), None)
+
+
+def run_start(s: dict, a: dict) -> int:
     args = a.get("args") or {}
     campaign = str(args.get("campaign") or "").strip()
     if not campaign:
         raise Refused("input", "The engine could not start the run.", ["no campaign named"], "Check the plan first.")
+    case = case_of(campaign)
+    if case == "standin-refuse":
+        # what the engine does for a campaign it does not know: the error document as line 1, a non-zero exit
+        raise Refused("input", "The engine could not start the run: there is no such campaign.",
+                      ["campaign: no plan was checked under this name"], "Check the plan on the Campaign screen first.")
+    if case == "standin-garbled":
+        # a broken engine: plain text on line 1 (a run handle after it must not be taken for one)
+        sys.stdout.write("stand-in: this is not a run handle\n")
+        emit({"runId": "r-20261112-garb"})
+        sys.stdout.flush()
+        return 1
     run_id = "r-20261112-5e90"
     status = {"runId": run_id, "campaign": campaign, "state": "running", "stage": "discover", "done": 0, "total": None,
               "etaSeconds": None, "counts": {"businesses": 0, "contacts": 0, "purged": 4, "expiringIn30Days": 9},
@@ -198,16 +214,35 @@ def run_start(s: dict, a: dict) -> None:
                                     "9 more expire in the next 30 days.", "at": now()})
     steps = [("discover", 48, 6), ("enrich", 212, 12), ("label", 204, 34), ("score", 212, 53), ("draft", 131, 44),
              ("export", 3, 1)]
+    if case == "standin-ignores-stop":
+        steps = [("enrich", 100000, 1)]  # long enough for any test; the core ends it (a bound below all the same)
+    sent = 0
+    began = time.monotonic()
     for stage, total, step in steps:
         done, i = 0, 0
         while done <= total:
-            if STOP_FLAG.exists():
+            if case == "standin-dies" and sent >= 4:
+                print("stand-in: dying on purpose, no end event", file=sys.stderr)
+                return 3
+            if case == "standin-long-line" and sent >= 3:
+                # the end event padded past the core's 64 KiB line cap: the core drops it
+                emit({"type": "finished", "status": shown(status, unknown), "pad": "x" * (70 * 1024)})
+                return 0
+            if case == "standin-ignores-stop" and time.monotonic() - began > 600:
+                return 4  # never orphaned: ends by itself after 10 minutes, without an end event
+            if STOP_FLAG.exists() and case != "standin-ignores-stop":
                 STOP_FLAG.unlink(missing_ok=True)
+                if case == "standin-slow-stop":
+                    # finishing the business it is on: about 15 s, still writing progress, then the clean stop
+                    for k in range(15):
+                        time.sleep(1)
+                        emit({"type": "progress", "stage": stage, "done": done, "total": total,
+                              "message": f"finishing the current business ({k + 1} s)", "etaSeconds": None, "at": now()})
                 status["state"] = "stopped"
                 s["run"] = shown(status, unknown)
                 save(s)
                 emit({"type": "stopped", "status": shown(status, unknown)})
-                return
+                return 0
             status.update(stage=stage, done=done, total=total)
             status["etaSeconds"] = None if stage == "export" else round((total - done) * 0.6)
             if stage == "discover":
@@ -218,6 +253,7 @@ def run_start(s: dict, a: dict) -> None:
             emit({"type": "progress", "stage": stage, "done": done, "total": total,
                   "message": f"{b[1]}: {['1 email, 1 phone', '1 phone', '2 emails, 1 phone'][i % 3]}",
                   "etaSeconds": status["etaSeconds"], "at": now()})
+            sent += 1
             s["run"] = shown(status, unknown)
             save(s)
             time.sleep(0.25)
@@ -232,6 +268,19 @@ def run_start(s: dict, a: dict) -> None:
                               "tiers": {"a": 38, "b": 97, "c": 77}, "sheet": sheet(run_id, 212, now())})
     save(s)
     emit({"type": "finished", "status": shown(status, unknown)})
+    return 0
+
+
+# The test cases of `run_start`, each chosen by a made-up campaign name that STARTS WITH the case's name (the
+# window's plan names campaigns "<place>-<kind>s", so the place "Standin refuse" gives "standin-refuse-...").
+CASES = {
+    "standin-refuse": "a refused start: the error document as line 1, exit 4, no run",
+    "standin-garbled": "a broken start: plain text as line 1, then a handle that must not count, exit 1",
+    "standin-dies": "the run dies after the handle, a notice and four progress lines: no end event, exit 3",
+    "standin-slow-stop": "after run_stop the run takes about 15 s (progress lines meanwhile), then writes `stopped`",
+    "standin-ignores-stop": "the run never obeys a stop (and ends by itself only after 10 minutes, exit 4)",
+    "standin-long-line": "the end event is over the 64 KiB line cap, then exit 0",
+}
 
 
 def answer(name: str, s: dict, a: dict):  # noqa: C901 - one branch per command, on purpose
@@ -404,8 +453,7 @@ def main(argv: list[str]) -> int:
             raise Refused("usage", "The arguments are not an object.")
         s = load()
         if name == "run_start":
-            run_start(s, a)
-            return 0
+            return run_start(s, a)
         result = answer(name, s, a)
         save(s)
         emit(result) if result is not None else sys.stdout.write("null\n")

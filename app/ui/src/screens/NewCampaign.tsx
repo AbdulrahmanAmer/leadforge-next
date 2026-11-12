@@ -48,7 +48,7 @@ export function NewCampaign({ engine, run, onStart, go, autoPlan, draft: sceneNa
   const [maxLeads, setMaxLeads] = useState("250");
   const settings = useLoad(() => engine.getSettings(), [engine]);
   const plan = useAction((d: CampaignDraft) => engine.createCampaign(d));
-  const running = run.phase === "running" || run.phase === "starting";
+  const running = run.phase === "running" || run.phase === "starting" || run.phase === "stopping";
 
   // the registers this workspace is configured for; the form offers those and no others
   const sources = settings.data?.sources ?? null;

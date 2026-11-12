@@ -57,8 +57,38 @@ exit 0, or a non-zero exit and `{"kind","message","details":[...],"next":null|st
   present and not null. `seam-shape.test.mjs` reads the field lists out of `engine.ts` and holds the mock and the stand-in to it.
 - **`run_start` (the stream).** stdout line 1 is the `RunHandle` `{"runId": "..."}`; then one `RunEvent` per line (`progress`,
   `stage-done`, `notice`); the last line is exactly one of `finished`, `stopped` or `failed`, each carrying the run's `RunStatus`
-  (`failed` also carries `error: {kind, message, details}`). A run that ends without one of the three is an engine fault. This is how
-  the core already works (`engine_dev.rs` reads the handle first, then the events).
+  (`failed` also carries `error: {kind, message, details}`). A run that ends without one of the three is an engine fault.
+  The core holds the engine to these rules (`engine::run_stream`, `engine::after_stop`; tests `tests/run_seam.rs`):
+  1. **Line 1 is the handle only if** it is a JSON object with a non-empty string `runId`; it goes back as the command's answer,
+     untouched. **A JSON object with `kind` on line 1 is a refused start** (no such campaign, a clean-up refusing): the core gives
+     the process 5 s to end (then ends it) and rejects `run_start` with that document, untouched; nothing is sent on the channel.
+     **Anything else on line 1** (not JSON, blank, over 64 KiB, the end of the stream) rejects with the core's own error
+     `{"kind":"failed","message":"The engine did not start the run: ...","details":[],"next":null}`, also once the process has
+     ended; a handle on a later line is not taken. The Run screen shows its "start refused" state (the message, "Try again").
+  2. **A stream that ends without an end event** (the engine died, the core ended it, its last line was over the cap, the time
+     limit): the core sends exactly ONE message of its own on the channel, after the last relayed line and never after an engine
+     end event: `{"type": "stream-closed", "exitCode": number|null, "reason": "exit"|"ended-by-core"|"line-too-long"|"timeout"}`.
+     It is the shell's message, not an engine event (`StreamClosed` in `engine.ts`). `exitCode` is null when the core ended the
+     process. `line-too-long`: the process exited by itself and its last non-blank line was over 64 KiB (not relayed). On
+     `stream-closed` with no end event seen, the Run screen calls `runStatus(runId)` once and shows what the engine says; if that
+     call fails or still says `running`, it shows a failed run: "The engine stopped without saying why." and "Continue the run".
+  3. **The wait after a stop.** After a `run_stop` that answered ok, the run gets **90 s** (`engine::STOP_WAIT`) to write its end
+     event; then the core ends it (and rule 2 sends `stream-closed`, reason `ended-by-core`). `run_stop` answers at once; the Run
+     screen shows "Stopping the run" until the end event or `stream-closed`. A `run_stop` that was refused sets no wait. Closing
+     the window still ends every engine at once.
+  4. **Time limits** (`EngineCommand::timeout`, pinned per command by `timeouts_are_pinned_per_command`): 12 h `run_start`; 30 s
+     `run_stop`, `run_status`, `about`; 600 s `sheet_export`, `purge_report`, `purge_apply`, `purge_everything`,
+     `person_forget`; 120 s every other command.
+- **What the engine must do for these rules.** Refuse a start by writing its error document as line 1 and exiting non-zero
+  (never a handle first and then a refusal). Check the stop flag at least once per business and write `stopped` within 90 s of
+  `run_stop`'s answer. After its process was ended from outside, answer `run_status` for that run with `failed` (a status, not
+  `running`). Keep every line, the end event included, under 64 KiB.
+- **The stand-in's test cases** (`test-resources/standin/leadforge_window_standin.py`, `CASES`), each chosen by a made-up campaign
+  name that starts with it: `standin-refuse` (error document as line 1, exit 4), `standin-garbled` (plain text as line 1, then a
+  handle that must not count, exit 1), `standin-dies` (handle, a notice, four progress lines, exit 3, no end event),
+  `standin-slow-stop` (about 15 s of progress after a stop, then `stopped`), `standin-ignores-stop` (never obeys a stop; ends by
+  itself only after 10 minutes), `standin-long-line` (the end event over the 64 KiB cap, exit 0). The window's plan names a
+  campaign `<place>-<kind>s`, so the place "Standin refuse" gives `standin-refuse-mot-garages` (the self-test does that).
 - **`CampaignDraft`** gains `offer: string` (required: what the user offers these businesses, one or two lines) and
   `sicCodes: string[]` (asked for only when `source` is `companies_house`; `[]` otherwise). Three refusals, all kind `input`, each
   with a `details` line that starts with the field's name and a colon, which the form shows on that field:
@@ -83,7 +113,7 @@ Types are those of `app/ui/src/engine.ts`. Every command rejects with `{ kind, m
 | Command | Arguments | Result |
 |---|---|---|
 | `campaign_create` | `draft: CampaignDraft` | `CampaignPlan` |
-| `run_start` | `args: RunArgs`, `events: Channel<RunEvent>` | `RunHandle` (the engine's stdout line 1; the events are the lines after it, the last one `finished`, `stopped` or `failed`) |
+| `run_start` | `args: RunArgs`, `events: Channel<RunEvent \| StreamClosed>` | `RunHandle` (the engine's stdout line 1 when it is a handle; the events are the lines after it, the last one `finished`, `stopped` or `failed`, or the core's one `stream-closed`) |
 | `run_stop` | `runId: string` | `RunStatus` |
 | `run_status` | `runId: string \| null` | `RunStatus \| null` |
 | `campaigns_list` | none | `Campaign[]` |

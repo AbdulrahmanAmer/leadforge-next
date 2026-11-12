@@ -122,6 +122,23 @@ export type RunEvent =
   | { type: "stopped"; status: RunStatus }
   | { type: "failed"; status: RunStatus; error: { kind: ErrorKind; message: string; details: string[] } };
 
+/**
+ * NOT an engine event: the shell's own last message on a run's channel. The Rust core sends exactly one when the
+ * engine's stream ended without `finished`, `stopped` or `failed` (after the last relayed line; never after an end
+ * event). `exitCode` is null when the core ended the process. `reason`: `exit` the engine ended by itself;
+ * `ended-by-core` the core ended it (the wait after a stop ran out, or the window closed); `line-too-long` the
+ * engine's last line was over the 64 KiB cap and was not relayed; `timeout` the run's 12-hour limit.
+ * The Run screen then asks `runStatus` once (docs/window-actions.md, "The seam's contract").
+ */
+export interface StreamClosed {
+  type: "stream-closed";
+  exitCode: number | null;
+  reason: "exit" | "ended-by-core" | "line-too-long" | "timeout";
+}
+
+/** What arrives on a run's channel: the engine's events, and at most one `stream-closed` from the shell. */
+export type RunMessage = RunEvent | StreamClosed;
+
 export interface RunHandle {
   runId: string;
 }
@@ -282,8 +299,11 @@ export interface About {
 export interface Engine {
   /** New campaign: checks the answers and returns the plan. Nothing is collected yet. */
   createCampaign(draft: CampaignDraft): Promise<CampaignPlan>;
-  /** Run: starts the engine and streams its progress to `onEvent` until one of the three end events. */
-  startRun(args: RunArgs, onEvent: (event: RunEvent) => void): Promise<RunHandle>;
+  /**
+   * Run: starts the engine and streams its progress to `onEvent` until one of the three end events, or the shell's
+   * `stream-closed` when the stream ended without one. A refused start rejects (and sends nothing to `onEvent`).
+   */
+  startRun(args: RunArgs, onEvent: (event: RunMessage) => void): Promise<RunHandle>;
   /** The clear stop. The run can be continued later with `resume`. */
   stopRun(runId: string): Promise<RunStatus>;
   /** The current or last run, or null when the workspace has none. */

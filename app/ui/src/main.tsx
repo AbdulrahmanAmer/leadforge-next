@@ -32,6 +32,8 @@ function pick(): { engine: Engine; scenario: Scenario | null } {
     if (v === null) return undefined;
     return v === "none" ? [] : v.split(",").filter((s): s is SourceId => s === "dvsa" || s === "companies_house");
   };
+  // &run=stopping: the run is stopped at once and its end never comes (the stopping state);
+  // &run=dies: the stream closes without an end event after 21 events (the "stopped without saying why" state)
   const options: MockOptions = {
     speed: asked ? 0 : 1,
     empty: mock === "empty",
@@ -40,8 +42,10 @@ function pick(): { engine: Engine; scenario: Scenario | null } {
     missing: q.get("missing") === "keys" ? ["listKeys", "saveKey", "removeKey"] : undefined,
     sources: registers("sources"),
     configured: registers("configured"),
-    runFreezesAfter: runMode === "mid" ? 21 : undefined,
+    runFreezesAfter: runMode === "mid" || runMode === "stopping" ? 21 : undefined,
     runFails: runMode === "fail",
+    stopTakesMs: runMode === "stopping" ? null : undefined,
+    runDiesAfter: runMode === "dies" ? 21 : undefined,
     runEndsNull: q.get("runnull") === "1",
   };
   const screen = q.get("screen") as ScreenId | null;

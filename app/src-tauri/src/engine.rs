@@ -114,14 +114,17 @@ impl EngineCommand {
         }
     }
 
-    /// The longest the engine may take before the core stops it.
+    /// The longest the engine may take before the core stops it. Four classes; `timeouts_are_pinned_per_command`
+    /// lists every command's class.
     pub fn timeout(self) -> Duration {
         let secs = match self {
             Self::RunStart => 12 * 60 * 60,
             Self::RunStop | Self::RunStatus | Self::About | Self::Version => 30,
-            Self::SheetExport | Self::PurgeApply | Self::PurgeEverything | Self::PersonForget => {
-                600
-            }
+            Self::SheetExport
+            | Self::PurgeReport
+            | Self::PurgeApply
+            | Self::PurgeEverything
+            | Self::PersonForget => 600,
             _ => 120,
         };
         Duration::from_secs(secs)
@@ -298,9 +301,21 @@ impl std::fmt::Debug for EngineInput {
     }
 }
 
+/// How an engine process came to its end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EndedBy {
+    /// It exited by itself.
+    Exit,
+    /// The core ended it: the wait after `run_stop` ran out, a refused start's wait ran out, or the window closed.
+    Core,
+    /// The command's time limit ([`EngineCommand::timeout`]) ran out and the core ended it.
+    Timeout,
+}
+
 /// What one finished engine run produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EngineOutput {
+    /// The exit code; `None` when the core ended the process (the code would be the core's, not the engine's).
     pub code: Option<i32>,
     /// The whole stdout of a one-document command; empty for a stream (its lines went to `on_line`).
     pub stdout: String,
@@ -308,17 +323,44 @@ pub struct EngineOutput {
     pub elapsed: Duration,
     /// Stream lines that were not one JSON document or were too long, so not relayed.
     pub dropped_lines: usize,
+    pub ended_by: EndedBy,
+    /// A stream's last non-blank line was over [`MAX_LINE_BYTES`] (so it was not relayed).
+    pub last_line_too_long: bool,
+    /// A one-document answer was over [`MAX_OUTPUT_BYTES`] (so it was not read).
+    pub too_big: bool,
+}
+
+/// The process and what the core decided about its end. Behind one lock, so a deadline set from another thread
+/// (`run_stop`) and the run loop's poll never race.
+struct Proc {
+    child: Child,
+    /// The core ends the process at this moment if it has not ended by then.
+    end_at: Option<Instant>,
+    /// The core ended it (not the engine, not the time limit).
+    by_core: bool,
 }
 
 /// Stops a running engine from another thread (`run_stop`, the window closing).
 #[derive(Clone)]
-pub struct KillHandle(Arc<Mutex<Child>>);
+pub struct KillHandle(Arc<Mutex<Proc>>);
 
 impl KillHandle {
+    /// Ends the engine now (the window closing). A process that already ended is left as it was.
     pub fn kill(&self) {
-        if let Ok(mut c) = self.0.lock() {
-            let _ = c.kill();
-            let _ = c.wait();
+        if let Ok(mut p) = self.0.lock() {
+            if matches!(p.child.try_wait(), Ok(None)) {
+                p.by_core = true;
+            }
+            let _ = p.child.kill();
+            let _ = p.child.wait();
+        }
+    }
+
+    /// The engine may run for at most `wait` from now; then the run loop ends it. An earlier deadline stays.
+    pub fn end_within(&self, wait: Duration) {
+        if let Ok(mut p) = self.0.lock() {
+            let at = Instant::now() + wait;
+            p.end_at = Some(p.end_at.map_or(at, |e| e.min(at)));
         }
     }
 
@@ -326,9 +368,37 @@ impl KillHandle {
     pub fn ended(&self) -> bool {
         self.0
             .lock()
-            .map(|mut c| !matches!(c.try_wait(), Ok(None)))
+            .map(|mut p| !matches!(p.child.try_wait(), Ok(None)))
             .unwrap_or(true)
     }
+}
+
+/// After `run_stop` answered ok, the run's engine gets this long to write its end event; then the core ends it.
+/// The engine checks its stop flag once per business, and one business can take more than a minute; a stop that
+/// is waited for is clean and can be continued, an ended process is not. Tests pass a short wait to [`after_stop`].
+pub const STOP_WAIT: Duration = Duration::from_secs(90);
+
+/// After a refused start (line 1 not a run handle), the engine gets this long to end by itself; then it is ended.
+pub const REFUSAL_WAIT: Duration = Duration::from_secs(5);
+
+/// After `run_stop`: if it answered ok and the run's engine is still going, give it `wait` to end by itself
+/// (the core ends it then). Returns whether a wait was set. The app passes [`STOP_WAIT`].
+pub fn after_stop(stop: &Result<String, Value>, run: Option<&KillHandle>, wait: Duration) -> bool {
+    match (stop, run) {
+        (Ok(_), Some(h)) if !h.ended() => {
+            h.end_within(wait);
+            true
+        }
+        _ => false,
+    }
+}
+
+/// One stdout line of a stream, as the reader saw it.
+enum Item {
+    Json(String),
+    NotJson,
+    TooLong,
+    Blank,
 }
 
 /// Environment variables the engine inherits; everything else is dropped.
@@ -386,12 +456,57 @@ fn spawn_engine(
 /// Run one engine command to its end, its timeout or a kill. The input goes to stdin and stdin is closed.
 /// A stream (`run_start`) hands every stdout line that is one JSON document to `on_line` as it arrives;
 /// a one-document command collects stdout up to [`MAX_OUTPUT_BYTES`]. `on_spawn` receives the kill handle.
+/// A timeout or an answer over the limit is the core's error.
 pub fn run(
     engine: &EngineProgram,
     cmd: EngineCommand,
     input: &EngineInput,
     workdir: &Path,
     mut on_line: impl FnMut(&str),
+    on_spawn: impl FnOnce(KillHandle),
+) -> Result<EngineOutput, WindowError> {
+    let out = run_raw(
+        engine,
+        cmd,
+        input,
+        workdir,
+        cmd.timeout(),
+        |item| {
+            if let Item::Json(line) = item {
+                on_line(&line);
+            }
+        },
+        on_spawn,
+    )?;
+    if out.ended_by == EndedBy::Timeout {
+        let mut e = WindowError::new(
+            "failed",
+            format!(
+                "The engine did not answer within {} s and was stopped.",
+                cmd.timeout().as_secs()
+            ),
+        );
+        e.next = Some("Try again; if it keeps happening, the workspace may be very large.".into());
+        return Err(e);
+    }
+    if out.too_big {
+        return Err(WindowError::new(
+            "failed",
+            "The engine's answer was larger than 8 MiB and was not read.",
+        ));
+    }
+    Ok(out)
+}
+
+/// The engine run itself: every stream line goes to `on_item` in order (blank, not JSON and too long ones too),
+/// and the output says how the process ended instead of turning a timeout into an error.
+fn run_raw(
+    engine: &EngineProgram,
+    cmd: EngineCommand,
+    input: &EngineInput,
+    workdir: &Path,
+    limit: Duration,
+    mut on_item: impl FnMut(Item),
     on_spawn: impl FnOnce(KillHandle),
 ) -> Result<EngineOutput, WindowError> {
     let started = Instant::now();
@@ -406,7 +521,11 @@ pub fn run(
             "The engine's pipes did not open.",
         ));
     };
-    let handle = KillHandle(Arc::new(Mutex::new(child)));
+    let handle = KillHandle(Arc::new(Mutex::new(Proc {
+        child,
+        end_at: None,
+        by_core: false,
+    })));
     on_spawn(handle.clone());
 
     // stdin in its own thread, so a large answer can never block on a full input pipe
@@ -417,7 +536,7 @@ pub fn run(
     });
 
     let streams = cmd.streams();
-    let (tx, rx) = mpsc::channel::<Result<String, ()>>();
+    let (tx, rx) = mpsc::channel::<Item>();
     let out_reader = thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
         if streams {
@@ -436,15 +555,18 @@ pub fn run(
                             // skip the rest of the long line
                             let mut rest = Vec::new();
                             let _ = reader.read_until(b'\n', &mut rest);
-                            let _ = tx.send(Err(()));
+                            let _ = tx.send(Item::TooLong);
                             continue;
                         }
                         let line = String::from_utf8_lossy(&buf).trim().to_string();
-                        if line.is_empty() {
-                            continue;
-                        }
-                        let ok = serde_json::from_str::<Value>(&line).is_ok();
-                        if tx.send(if ok { Ok(line) } else { Err(()) }).is_err() {
+                        let item = if line.is_empty() {
+                            Item::Blank
+                        } else if serde_json::from_str::<Value>(&line).is_ok() {
+                            Item::Json(line)
+                        } else {
+                            Item::NotJson
+                        };
+                        if tx.send(item).is_err() {
                             break;
                         }
                     }
@@ -471,26 +593,60 @@ pub fn run(
         String::from_utf8_lossy(&all[start..]).into_owned()
     });
 
-    let deadline = started + cmd.timeout();
+    let deadline = started + limit;
     let mut dropped = 0usize;
-    let mut timed_out = false;
+    let mut last_too_long = false;
+    let mut take = |item: Item| {
+        match &item {
+            Item::Json(_) => last_too_long = false,
+            Item::NotJson => {
+                dropped += 1;
+                last_too_long = false;
+            }
+            Item::TooLong => {
+                dropped += 1;
+                last_too_long = true;
+            }
+            Item::Blank => {}
+        }
+        on_item(item);
+    };
+    let mut ended_by = EndedBy::Exit;
     let code = loop {
         while let Ok(item) = rx.try_recv() {
-            match item {
-                Ok(line) => on_line(&line),
-                Err(()) => dropped += 1,
-            }
+            take(item);
         }
-        let polled = handle.0.lock().map(|mut c| c.try_wait());
-        match polled {
-            Ok(Ok(Some(status))) => break status.code(),
-            Ok(Ok(None)) if Instant::now() >= deadline => {
-                timed_out = true;
-                handle.kill();
+        let Ok(mut p) = handle.0.lock() else {
+            handle.kill();
+            return Err(WindowError::new("failed", "Waiting on the engine failed."));
+        };
+        let now = Instant::now();
+        match p.child.try_wait() {
+            Ok(Some(status)) => {
+                // the window closing ends the process from another thread: it ended, but by the core
+                if p.by_core {
+                    ended_by = EndedBy::Core;
+                    break None;
+                }
+                break status.code();
+            }
+            Ok(None) if now >= deadline || p.end_at.is_some_and(|t| now >= t) => {
+                ended_by = if now >= deadline {
+                    EndedBy::Timeout
+                } else {
+                    EndedBy::Core
+                };
+                p.by_core = true;
+                let _ = p.child.kill();
+                let _ = p.child.wait();
                 break None;
             }
-            Ok(Ok(None)) => thread::sleep(Duration::from_millis(20)),
-            _ => {
+            Ok(None) => {
+                drop(p);
+                thread::sleep(Duration::from_millis(20));
+            }
+            Err(_) => {
+                drop(p);
                 handle.kill();
                 return Err(WindowError::new("failed", "Waiting on the engine failed."));
             }
@@ -499,36 +655,219 @@ pub fn run(
     let _ = writer.join();
     let (stdout, too_big) = out_reader.join().unwrap_or_default();
     for item in rx.try_iter() {
-        match item {
-            Ok(line) => on_line(&line),
-            Err(()) => dropped += 1,
-        }
+        take(item);
     }
     let stderr_tail = err_reader.join().unwrap_or_default();
-    if timed_out {
-        let mut e = WindowError::new(
-            "failed",
-            format!(
-                "The engine did not answer within {} s and was stopped.",
-                cmd.timeout().as_secs()
-            ),
-        );
-        e.next = Some("Try again; if it keeps happening, the workspace may be very large.".into());
-        return Err(e);
-    }
-    if too_big {
-        return Err(WindowError::new(
-            "failed",
-            "The engine's answer was larger than 8 MiB and was not read.",
-        ));
-    }
     Ok(EngineOutput {
         code,
         stdout,
         stderr_tail,
         elapsed: started.elapsed(),
         dropped_lines: dropped,
+        ended_by,
+        last_line_too_long: last_too_long,
+        too_big,
     })
+}
+
+/// The shell's own last message on a run's channel when the stream ended without an engine end event
+/// (`finished`, `stopped` or `failed`). Not an engine event: `StreamClosed` in app/ui/src/engine.ts.
+pub fn stream_closed(code: Option<i32>, reason: &str) -> Value {
+    serde_json::json!({"type": "stream-closed", "exitCode": code, "reason": reason})
+}
+
+/// Why a stream ended without an end event: the time limit, the core, a last line over the cap, or the exit.
+pub fn closed_reason(ended_by: EndedBy, last_line_too_long: bool) -> &'static str {
+    match ended_by {
+        EndedBy::Timeout => "timeout",
+        EndedBy::Core => "ended-by-core",
+        EndedBy::Exit if last_line_too_long => "line-too-long",
+        EndedBy::Exit => "exit",
+    }
+}
+
+/// Line 1 of `run_start` is the run handle only if it is a JSON object with a non-empty string `runId`.
+pub fn is_run_handle(v: &Value) -> bool {
+    v.get("runId")
+        .and_then(Value::as_str)
+        .is_some_and(|id| !id.is_empty())
+}
+
+/// `finished`, `stopped` or `failed`: the engine's last event of a run.
+fn is_end_event(line: &str) -> bool {
+    serde_json::from_str::<Value>(line).is_ok_and(|v| {
+        matches!(
+            v.get("type").and_then(Value::as_str),
+            Some("finished" | "stopped" | "failed")
+        )
+    })
+}
+
+/// What one `run_start` came to, for the core's log.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StreamSummary {
+    /// Line 1 was a run handle and went back as the command's answer.
+    pub started: bool,
+    /// Lines relayed after the handle (the handle counted too when `started`), not counting `stream-closed`.
+    pub lines: usize,
+    pub dropped: usize,
+    pub code: Option<i32>,
+    /// The `reason` of the `stream-closed` message the core sent, if it sent one.
+    pub closed: Option<&'static str>,
+    /// What the command was rejected with, when it was.
+    pub rejected: Option<Value>,
+}
+
+/// `run_start`, the whole contract (docs/window-actions.md, "The seam's contract"):
+/// - line 1 is the handle only if it is a JSON object with a non-empty string `runId`: `answer(Ok(line))`, untouched;
+/// - a JSON object with `kind` on line 1 is the engine's refusal: the engine gets [`REFUSAL_WAIT`] to end, then
+///   `answer(Err(that document))`, untouched; anything else on line 1 (not JSON, blank, too long, the end of the
+///   stream) is `answer(Err(the core's own error))` once the process has ended (same bounded wait);
+/// - after the handle every JSON line goes to `relay` as it arrives; if the stream ends without a `finished`,
+///   `stopped` or `failed` line, the core relays exactly one [`stream_closed`] message after the last line.
+///
+/// `answer` is called exactly once. Nothing is sent to `relay` for a rejected start.
+pub fn run_stream(
+    engine: &EngineProgram,
+    input: &EngineInput,
+    workdir: &Path,
+    answer: impl FnOnce(Result<String, Value>),
+    relay: impl FnMut(String),
+    on_spawn: impl FnOnce(KillHandle),
+) -> StreamSummary {
+    run_stream_limited(
+        engine,
+        input,
+        workdir,
+        EngineCommand::RunStart.timeout(),
+        answer,
+        relay,
+        on_spawn,
+    )
+}
+
+fn run_stream_limited(
+    engine: &EngineProgram,
+    input: &EngineInput,
+    workdir: &Path,
+    limit: Duration,
+    answer: impl FnOnce(Result<String, Value>),
+    mut relay: impl FnMut(String),
+    on_spawn: impl FnOnce(KillHandle),
+) -> StreamSummary {
+    let not_a_handle = |why: &str| {
+        WindowError::new(
+            "failed",
+            format!("The engine did not start the run: {why}."),
+        )
+        .to_value()
+    };
+    let mut answer = Some(answer);
+    let mut started = false;
+    // what the command is rejected with, once the process has ended
+    let mut rejected: Option<Value> = None;
+    let mut lines = 0usize;
+    let mut saw_end = false;
+    let handle: std::cell::RefCell<Option<KillHandle>> = std::cell::RefCell::new(None);
+    let result = run_raw(
+        engine,
+        EngineCommand::RunStart,
+        input,
+        workdir,
+        limit,
+        |item| {
+            if started {
+                if let Item::Json(line) = item {
+                    saw_end |= is_end_event(&line);
+                    lines += 1;
+                    relay(line);
+                }
+                return;
+            }
+            if rejected.is_some() {
+                return; // a refused start: nothing after line 1 is read
+            }
+            let doc = match item {
+                Item::Json(line) => {
+                    let v: Value = serde_json::from_str(&line).unwrap_or(Value::Null);
+                    if is_run_handle(&v) {
+                        started = true;
+                        lines += 1;
+                        // the handle goes back at once, untouched: the screen shows the run while the lines follow
+                        if let Some(a) = answer.take() {
+                            a(Ok(line));
+                        }
+                        return;
+                    }
+                    if v.is_object() && v.get("kind").is_some() {
+                        v // the engine's own refusal, passed on untouched
+                    } else {
+                        not_a_handle("its first line was not a run handle")
+                    }
+                }
+                Item::TooLong => not_a_handle("its first line was longer than 64 KiB"),
+                Item::NotJson | Item::Blank => not_a_handle("its first line was not a run handle"),
+            };
+            rejected = Some(doc);
+            if let Some(h) = handle.borrow().as_ref() {
+                h.end_within(REFUSAL_WAIT);
+            }
+        },
+        |h| {
+            handle.borrow_mut().replace(h.clone());
+            on_spawn(h);
+        },
+    );
+    let out = match result {
+        Ok(out) => out,
+        Err(e) => {
+            // the engine did not start (missing, pipes): the core's own error
+            let doc = e.to_value();
+            if let Some(a) = answer.take() {
+                a(Err(doc.clone()));
+            }
+            return StreamSummary {
+                started: false,
+                lines: 0,
+                dropped: 0,
+                code: None,
+                closed: None,
+                rejected: Some(doc),
+            };
+        }
+    };
+    let mut closed = None;
+    if started {
+        if !saw_end {
+            let reason = closed_reason(out.ended_by, out.last_line_too_long);
+            relay(stream_closed(out.code, reason).to_string());
+            closed = Some(reason);
+        }
+    } else {
+        let doc = rejected.take().unwrap_or_else(|| {
+            let what = match (out.ended_by, out.code) {
+                (EndedBy::Timeout, _) => "it gave no first line within the time limit".to_string(),
+                (EndedBy::Core, _) => "it was ended before its first line".to_string(),
+                (EndedBy::Exit, Some(c)) => {
+                    format!("it ended with exit code {c} before its first line")
+                }
+                (EndedBy::Exit, None) => "it ended before its first line".to_string(),
+            };
+            not_a_handle(&what)
+        });
+        if let Some(a) = answer.take() {
+            a(Err(doc.clone()));
+        }
+        rejected = Some(doc);
+    }
+    StreamSummary {
+        started,
+        lines,
+        dropped: out.dropped_lines,
+        code: out.code,
+        closed,
+        rejected,
+    }
 }
 
 /// A one-document command's answer for the window: the engine's JSON text untouched on exit 0, the engine's
@@ -620,7 +959,115 @@ mod tests {
             stderr_tail: String::new(),
             elapsed: Duration::ZERO,
             dropped_lines: 0,
+            ended_by: EndedBy::Exit,
+            last_line_too_long: false,
+            too_big: false,
         }
+    }
+
+    /// Every one of the 21 commands in its time-limit class, written out so a change to the list is a change here.
+    #[test]
+    fn timeouts_are_pinned_per_command() {
+        use EngineCommand as C;
+        let table: [(C, u64); 21] = [
+            (C::CampaignCreate, 120),
+            (C::RunStart, 12 * 60 * 60),
+            (C::RunStop, 30),
+            (C::RunStatus, 30),
+            (C::CampaignsList, 120),
+            (C::SheetExport, 600),
+            (C::SheetOpen, 120),
+            (C::PeopleList, 120),
+            (C::PersonForget, 600),
+            (C::AddressSuppress, 120),
+            (C::PurgeReport, 600),
+            (C::PurgeApply, 600),
+            (C::PurgeEverything, 600),
+            (C::RetentionGet, 120),
+            (C::RetentionSet, 120),
+            (C::KeysList, 120),
+            (C::KeySave, 120),
+            (C::KeyRemove, 120),
+            (C::SettingsGet, 120),
+            (C::SettingsSet, 120),
+            (C::About, 30),
+        ];
+        let listed: Vec<C> = table.iter().map(|(c, _)| *c).collect();
+        assert_eq!(
+            listed,
+            EngineCommand::WINDOW,
+            "the table lists the 21 commands in order"
+        );
+        for (cmd, secs) in table {
+            assert_eq!(
+                cmd.timeout(),
+                Duration::from_secs(secs),
+                "{}: time-limit class",
+                cmd.name()
+            );
+        }
+    }
+
+    #[test]
+    fn the_stop_wait_is_ninety_seconds() {
+        assert_eq!(STOP_WAIT, Duration::from_secs(90));
+    }
+
+    #[test]
+    fn a_closed_stream_names_why() {
+        assert_eq!(closed_reason(EndedBy::Exit, false), "exit");
+        assert_eq!(closed_reason(EndedBy::Exit, true), "line-too-long");
+        assert_eq!(closed_reason(EndedBy::Core, true), "ended-by-core");
+        assert_eq!(closed_reason(EndedBy::Timeout, false), "timeout");
+        assert_eq!(
+            stream_closed(Some(3), "exit"),
+            serde_json::json!({"type": "stream-closed", "exitCode": 3, "reason": "exit"})
+        );
+        assert_eq!(stream_closed(None, "timeout")["exitCode"], Value::Null);
+    }
+
+    #[test]
+    fn line_one_is_a_handle_only_with_a_non_empty_run_id() {
+        assert!(is_run_handle(&serde_json::json!({"runId": "r-1"})));
+        assert!(!is_run_handle(&serde_json::json!({"runId": ""})));
+        assert!(!is_run_handle(&serde_json::json!({"runId": 7})));
+        assert!(!is_run_handle(
+            &serde_json::json!({"kind": "input", "message": "No."})
+        ));
+        assert!(!is_run_handle(&serde_json::json!(["runId"])));
+        assert!(is_end_event(r#"{"type":"stopped","status":{}}"#));
+        assert!(!is_end_event(r#"{"type":"progress"}"#));
+        assert!(!is_end_event(r#"{"type":"stream-closed"}"#));
+    }
+
+    /// The time limit, end to end on a run that ignores everything: `stream-closed` says `timeout`.
+    #[test]
+    fn a_run_past_its_time_limit_closes_the_stream_with_timeout() {
+        let p = EngineProgram::dev_venv();
+        let dir =
+            std::env::temp_dir().join(format!("lf-window-unit-timeout-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = EngineInput::from_args(
+            &serde_json::json!({"args": {"campaign": "standin-ignores-stop", "resume": false}}),
+        )
+        .unwrap();
+        let mut answered = None;
+        let mut relayed = Vec::new();
+        let s = run_stream_limited(
+            &p,
+            &input,
+            &dir,
+            Duration::from_secs(3),
+            |a| answered = Some(a),
+            |l| relayed.push(l),
+            |_| {},
+        );
+        assert!(answered.expect("answered once").is_ok(), "the run started");
+        let last: Value = serde_json::from_str(relayed.last().unwrap()).unwrap();
+        assert_eq!(last, stream_closed(None, "timeout"));
+        assert_eq!(s.closed, Some("timeout"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

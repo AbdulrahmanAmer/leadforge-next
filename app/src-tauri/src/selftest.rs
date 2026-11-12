@@ -45,7 +45,7 @@ pub const PROBE: &str = r#"(function () {
     },
     text: function () {
       var m = document.querySelector('main');
-      return (m ? m.getAttribute('data-screen') + ' | ' + m.innerText : '(no main)').replace(/\s+/g, ' ').slice(0, 240);
+      return (m ? m.getAttribute('data-screen') + ' | ' + m.innerText : '(no main)').replace(/\s+/g, ' ').slice(0, 600);
     },
   };
 })();"#;
@@ -75,6 +75,17 @@ fn steps() -> Vec<Step> {
         Js("stop the run", "__lf.button('Stop')".into()),
         Wait(2500),
         Shot("05-run-stopped"),
+        // a start the engine refuses: the stand-in's case `standin-refuse` (the plan names the campaign
+        // "standin-refuse-mot-garages"); line 1 is its error document, and the screen shows "start refused"
+        Js("rail: campaign", "__lf.rail(0)".into()),
+        Wait(1200),
+        Js("fill a campaign the engine refuses to start", "__lf.type('main input[placeholder=\"MOT garage\"]','MOT garage'); __lf.type('main input[placeholder=\"Bristol\"]','Standin refuse'); __lf.type('main textarea','Online booking for MOT tests')".into()),
+        Wait(400),
+        Js("check the plan", "__lf.button('Check the plan')".into()),
+        Wait(1600),
+        Js("start the run the engine refuses", "__lf.button('Start the run')".into()),
+        Wait(2500),
+        Shot("05b-run-refused"),
         Js("rail: results", "__lf.rail(2)".into()),
         Wait(1600),
         Shot("06-results"),
@@ -100,8 +111,21 @@ fn steps() -> Vec<Step> {
     ]
 }
 
+/// The whole walk's bound: past it the app ends itself with exit code 1 (packaging/selftest-window.ps1 also
+/// stops the app at this bound, and when 20 s pass with no step of the walk in the log).
+pub const WALK_BOUND: Duration = Duration::from_secs(120);
+
 /// Walks the steps on its own thread, then reports the probe and exits.
 pub fn start(app: AppHandle) {
+    let guard = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(WALK_BOUND);
+        crate::core_log(
+            &guard,
+            "selftest: the walk passed its 120 s bound; the app ends itself",
+        );
+        guard.exit(1);
+    });
     std::thread::spawn(move || {
         let log = |m: &str| crate::core_log(&app, m);
         let Some(w) = app.get_webview_window("main") else {

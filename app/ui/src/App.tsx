@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
-import type { Engine, RunEvent, RunStatus, StageId } from "./engine.ts";
-import { EngineError, STAGES } from "./engine.ts";
+import type { Engine } from "./engine.ts";
+import { IDLE, isLive, reduceRun } from "./run.ts";
 import { readLook, writeLook, type AccentSetting, type ThemeSetting } from "./prefs.ts";
 import { Logo } from "./components/Logo";
 import { SideRail, type RailItem } from "./components/ui";
@@ -31,81 +31,8 @@ export interface Scenario {
   draft: string | null;
 }
 
-/* ------------------------------------------------------------- the run view */
-/** `done: null` is a stage whose progress the engine could not say (an end status with `done` null). */
-export interface StageView { done: number | null; total: number | null; summary: string | null; message: string }
-
-export interface RunView {
-  phase: "idle" | "starting" | "running" | "finished" | "stopped" | "failed";
-  campaign: string | null;
-  runId: string | null;
-  current: StageId | null;
-  stages: Record<StageId, StageView>;
-  etaSeconds: number | null;
-  notices: string[];
-  status: RunStatus | null;
-  /** Why the run did not start, or why it failed. */
-  error: unknown;
-  stopping: boolean;
-}
-
-function freshStages(): Record<StageId, StageView> {
-  const out = {} as Record<StageId, StageView>;
-  for (const s of STAGES) out[s] = { done: 0, total: null, summary: null, message: "" };
-  return out;
-}
-
-const IDLE: RunView = { phase: "idle", campaign: null, runId: null, current: null, stages: freshStages(), etaSeconds: null, notices: [], status: null, error: null, stopping: false };
-
-type RunAction =
-  | { type: "starting"; campaign: string }
-  | { type: "started"; runId: string }
-  | { type: "refused"; error: unknown }
-  | { type: "event"; event: RunEvent }
-  | { type: "stopping" }
-  | { type: "stopped"; status: RunStatus }
-  | { type: "stop-refused"; error: unknown };
-
-/** An end status says where the run stopped: its stage keeps the status's `done`, which may be null (not known). */
-function withStatus(view: RunView, status: RunStatus): RunView {
-  const stage = view.stages[status.stage];
-  return { ...view, status, stages: { ...view.stages, [status.stage]: { ...stage, done: status.done, total: status.total ?? stage.total } } };
-}
-
-function reduceRun(view: RunView, action: RunAction): RunView {
-  switch (action.type) {
-    case "starting":
-      return { ...IDLE, stages: freshStages(), phase: "starting", campaign: action.campaign };
-    case "started":
-      return { ...view, phase: view.phase === "starting" ? "running" : view.phase, runId: action.runId };
-    case "refused":
-      return { ...view, phase: "failed", error: action.error };
-    case "stopping":
-      return { ...view, stopping: true, error: null };
-    case "stopped":
-      return { ...withStatus(view, action.status), phase: "stopped", stopping: false };
-    case "stop-refused":
-      return { ...view, stopping: false, error: action.error };
-    case "event": {
-      const e = action.event;
-      if (view.phase === "stopped") return view;
-      if (e.type === "progress") {
-        return {
-          ...view, phase: "running", current: e.stage, etaSeconds: e.etaSeconds,
-          stages: { ...view.stages, [e.stage]: { ...view.stages[e.stage], done: e.done, total: e.total, message: e.message } },
-        };
-      }
-      if (e.type === "stage-done") {
-        const stage = view.stages[e.stage];
-        return { ...view, stages: { ...view.stages, [e.stage]: { ...stage, done: stage.total ?? stage.done, summary: e.summary } } };
-      }
-      if (e.type === "notice") return { ...view, notices: [...view.notices, e.text] };
-      if (e.type === "finished") return { ...view, phase: "finished", status: e.status, current: null, etaSeconds: null };
-      if (e.type === "stopped") return { ...withStatus(view, e.status), phase: "stopped", stopping: false };
-      return { ...withStatus(view, e.status), phase: "failed", error: new EngineError("startRun", e.error.kind, e.error.message, e.error.details) };
-    }
-  }
-}
+/* ------------------------------------------------------------- the run view (run.ts) */
+export type { RunView, StageView } from "./run.ts";
 
 const RAIL: readonly RailItem<ScreenId>[] = [
   { id: "campaign", icon: "campaign", label: "Campaign" },
@@ -159,12 +86,22 @@ export function App({ engine, scenario }: { engine: Engine; scenario: Scenario |
     );
   }, [engine, run.runId]);
 
+  // the stream closed without an end event: ask the engine once how the run stands, then show what it says
+  const closedRunId = run.closed && run.runId ? run.runId : null;
+  useEffect(() => {
+    if (!closedRunId) return;
+    engine.runStatus(closedRunId).then(
+      (status) => dispatch({ type: "status-after-close", status }),
+      () => dispatch({ type: "status-after-close", status: null }),
+    );
+  }, [engine, closedRunId]);
+
   useEffect(() => {
     if (scenario?.run) startRun("bristol-mot-garages", false);
   }, [scenario, startRun]);
 
   const rail = useMemo(
-    () => RAIL.map((item) => (item.id === "run" && (run.phase === "running" || run.phase === "starting") ? { ...item, dot: "online" as const } : item)),
+    () => RAIL.map((item) => (item.id === "run" && isLive(run.phase) ? { ...item, dot: "online" as const } : item)),
     [run.phase],
   );
 

@@ -26,7 +26,9 @@ export function Run({ run, onStop, onResume, onRetry, go }: { run: RunView; onSt
     );
   }
 
-  const live = run.phase === "running" || run.phase === "starting";
+  // stopping is still live: the engine is finishing the business it is on
+  const live = run.phase === "running" || run.phase === "starting" || run.phase === "stopping";
+  const moving = run.phase === "running" || run.phase === "stopping";
   const currentIndex = run.current ? STAGES.indexOf(run.current) : run.phase === "finished" ? STAGES.length : -1;
   const counts = run.status?.counts;
   const now = run.current ? run.stages[run.current] : null;
@@ -39,7 +41,7 @@ export function Run({ run, onStop, onResume, onRetry, go }: { run: RunView; onSt
           {/* the engine's status may not know the campaign's name (null): then the run id stands for it */}
           <p className="lf-mono">{run.status ? runTitle(run.status) : run.campaign}</p>
         </div>
-        {live && (
+        {(run.phase === "running" || run.phase === "starting") && (
           <Button variant="danger-soft" size="lg" leadingIcon="stop" onClick={onStop} busy={run.stopping} disabled={run.phase === "starting"}>
             {run.stopping ? "Stopping" : "Stop the run"}
           </Button>
@@ -73,7 +75,8 @@ export function Run({ run, onStop, onResume, onRetry, go }: { run: RunView; onSt
                         {state === "next" && "Not started"}
                       </p>
                     </div>
-                    {(state === "now" || state === "held") && (
+                    {/* an ended run whose done is null (the engine could not say how far it got) shows no progress line */}
+                    {(state === "now" || (state === "held" && s.done !== null)) && (
                       <div className="lf-stage__meter">
                         {/* done null: the engine could not say how far this stage got, so the bar is indeterminate */}
                         <span className="lf-stage__count">{s.done === null ? "progress not known" : <>{formatCount(s.done)}{s.total !== null && ` of ${formatCount(s.total)}`}</>}</span>
@@ -91,22 +94,24 @@ export function Run({ run, onStop, onResume, onRetry, go }: { run: RunView; onSt
           <Card>
             {run.phase === "starting" && <StatusBanner tone="accent" icon="clock" title="Starting the engine" detail="The first progress line follows in a moment." />}
             {run.phase === "running" && <StatusBanner tone="accent" icon="play" title={run.current ? STAGE_NAME[run.current][1] : "Running"} detail={`About ${formatDuration(run.etaSeconds)} left in this stage.`} />}
+            {run.phase === "stopping" && <StatusBanner tone="neutral" icon="clock" title="Stopping the run" detail="The engine is finishing the business it is on, then it stops. This can take up to a minute and a half. Nothing found so far is lost." />}
             {run.phase === "finished" && <StatusBanner tone="success" title="The run finished" detail="The sheet is written. Open the results to see it." />}
             {run.phase === "stopped" && <StatusBanner tone="neutral" icon="stop" title="You stopped the run" detail="Nothing found so far was lost. Continue it whenever you like." />}
             {run.phase === "failed" && <ErrorBanner error={run.error} />}
-            {run.phase === "running" && now && (
+            {moving && now && (
               <ReadoutGroup divided>
                 <Readout label="Done in this stage" value={now.done === null ? "not known" : formatCount(now.done)} unit={now.done !== null && now.total !== null ? `of ${formatCount(now.total)}` : undefined} />
-                <Readout label="Time left" value={run.etaSeconds === null ? "–" : formatDuration(run.etaSeconds).split(" ")[0]} unit={run.etaSeconds === null ? undefined : formatDuration(run.etaSeconds).split(" ").slice(1).join(" ")} />
+                {/* stopping: the stage will not run to its end, so its time left says nothing */}
+                {run.phase === "running" && <Readout label="Time left" value={run.etaSeconds === null ? "–" : formatDuration(run.etaSeconds).split(" ")[0]} unit={run.etaSeconds === null ? undefined : formatDuration(run.etaSeconds).split(" ").slice(1).join(" ")} />}
               </ReadoutGroup>
             )}
-            {counts && run.phase !== "running" && (
+            {counts && !moving && (
               <ReadoutGroup divided>
                 <Readout label="Businesses" value={formatCount(counts.businesses)} />
                 <Readout label="Contact details" value={formatCount(counts.contacts)} />
               </ReadoutGroup>
             )}
-            {counts && run.phase !== "running" && cleanUpLine(counts) && <p className="lf-caption lf-cleanup">{cleanUpLine(counts)}</p>}
+            {counts && !moving && cleanUpLine(counts) && <p className="lf-caption lf-cleanup">{cleanUpLine(counts)}</p>}
           </Card>
           {run.notices.length > 0 && (
             <Card padding="md" className="lf-notice">

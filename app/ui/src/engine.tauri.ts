@@ -10,7 +10,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { EngineError } from "./engine.ts";
 import type {
   About, ActionName, Campaign, CampaignDraft, CampaignPlan, Engine, ErrorKind, ForgetResult, KeyName, KeyStatus,
-  PeoplePage, PeopleQuery, PurgeEverythingResult, PurgeReport, Retention, RunArgs, RunEvent, RunHandle, RunStatus,
+  PeoplePage, PeopleQuery, PurgeEverythingResult, PurgeReport, Retention, RunArgs, RunHandle, RunMessage, RunStatus,
   Settings, SettingsPatch, Sheet, SuppressKind, SuppressResult,
 } from "./engine.ts";
 
@@ -59,8 +59,9 @@ async function call<T>(action: ActionName, args?: Record<string, unknown>): Prom
 
 export const tauriEngine: Engine = {
   createCampaign: (draft: CampaignDraft) => call<CampaignPlan>("createCampaign", { draft }),
-  startRun: (args: RunArgs, onEvent: (event: RunEvent) => void) => {
-    const events = new Channel<RunEvent>();
+  startRun: (args: RunArgs, onEvent: (event: RunMessage) => void) => {
+    // the engine's events, and the shell's one `stream-closed` when the stream ended without an end event
+    const events = new Channel<RunMessage>();
     events.onmessage = onEvent;
     return call<RunHandle>("startRun", { args, events });
   },

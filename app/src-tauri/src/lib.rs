@@ -225,32 +225,22 @@ async fn one_shot(
         started.elapsed().as_millis(),
     ));
     if cmd == EngineCommand::RunStop {
-        let app = app.clone();
-        let _ = tauri::async_runtime::spawn_blocking(move || {
-            end_run_within(&app.state::<Core>(), Duration::from_secs(10));
-        })
-        .await;
+        // the run's engine gets STOP_WAIT to write its end event; the run loop ends it then. The answer goes back now.
+        let run = core.run.lock().ok().and_then(|r| r.clone());
+        if engine::after_stop(&result, run.as_ref(), engine::STOP_WAIT) {
+            core.log(&format!(
+                "cmd=run_stop: the run's engine has {} s to end by itself",
+                engine::STOP_WAIT.as_secs()
+            ));
+        }
     }
     result.map(Response::new)
 }
 
-/// After `run_stop`: the run's engine gets this long to end by itself, then the core ends it.
-fn end_run_within(core: &Core, grace: Duration) {
-    let handle = core.run.lock().ok().and_then(|r| r.clone());
-    if let Some(h) = handle {
-        let until = Instant::now() + grace;
-        while !h.ended() && Instant::now() < until {
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        if !h.ended() {
-            core.log("cmd=run_stop: the run's engine did not end within 10 s; the core ended it");
-            h.kill();
-        }
-    }
-}
-
-/// `run_start`: line 1 of the engine's stdout is the run handle (the command's answer); every later line is one
-/// RunEvent, relayed through `events` as it arrives. Nothing in a line is read by the core.
+/// `run_start`: the contract is [`engine::run_stream`]. Line 1 is the run handle only if it is an object with a
+/// non-empty string `runId` (the command's answer, untouched); an object with `kind` on line 1 is the engine's
+/// refusal (the rejection, untouched); every later line is one RunEvent, relayed through `events` as it arrives;
+/// a stream that ends without an end event gets the core's one `stream-closed` message.
 #[tauri::command]
 async fn run_start(
     app: AppHandle,
@@ -276,45 +266,37 @@ async fn run_start(
     let app2 = app.clone();
     std::thread::spawn(move || {
         let _held = held; // the gate stays held until the run's engine has ended
-        let mut first = Some(first_tx.clone());
-        let mut lines = 0usize;
-        let result = engine::run(
+        let summary = engine::run_stream(
             &engine,
-            cmd,
             &input,
             &dir,
+            |answer| {
+                let _ = first_tx.blocking_send(answer);
+            },
             |line| {
-                lines += 1;
-                if let Some(tx) = first.take() {
-                    let _ = tx.blocking_send(Ok(line.to_string()));
-                } else {
-                    let _ = events.send(InvokeResponseBody::Json(line.to_string()));
-                }
+                let _ = events.send(InvokeResponseBody::Json(line));
             },
             |h| {
                 let _ = htx.send(h);
             },
         );
         let core = app2.state::<Core>();
-        let outcome: Result<usize, Value> = match &result {
-            Ok(out) if out.code == Some(0) => Ok(lines),
-            Ok(out) => Err(engine::answer(out).err().unwrap_or(Value::Null)),
-            Err(e) => Err(e.to_value()),
+        let outcome: Result<usize, Value> = match &summary.rejected {
+            Some(doc) => Err(doc.clone()),
+            None if summary.closed.is_none() && summary.code == Some(0) => Ok(summary.lines),
+            None => {
+                Err(WindowError::new("failed", "the run ended without an end event").to_value())
+            }
         };
-        if first.is_some() {
-            // no handle line: the engine refused the run (its error object) or broke the contract
-            let answer = match &result {
-                Ok(out) => engine::answer(out).and_then(|_| {
-                    Err(WindowError::new("failed", "The engine started no run.").to_value())
-                }),
-                Err(e) => Err(e.to_value()),
-            };
-            let _ = first_tx.blocking_send(answer);
-        }
-        let dropped = result.as_ref().map(|o| o.dropped_lines).unwrap_or(0);
+        let closed = summary
+            .closed
+            .map(|r| format!(" closed={r}"))
+            .unwrap_or_default();
         core.log(&format!(
-            "{} lines={lines} dropped={dropped}",
-            log_entry(cmd, origin, &outcome, in_len, started.elapsed().as_millis())
+            "{} lines={} dropped={}{closed}",
+            log_entry(cmd, origin, &outcome, in_len, started.elapsed().as_millis()),
+            summary.lines,
+            summary.dropped
         ));
         let cleared = core.run.lock().map(|mut r| *r = None);
         drop(cleared);
@@ -327,9 +309,17 @@ async fn run_start(
     }
     let first = first_rx.recv().await.unwrap_or_else(|| {
         Err(WindowError::new("failed", "The run ended without an answer.").to_value())
-    })?;
-    core.log("cmd=run_start handle relayed; events follow");
-    Ok(Response::new(first))
+    });
+    match first {
+        Ok(handle) => {
+            core.log("cmd=run_start handle relayed; events follow");
+            Ok(Response::new(handle))
+        }
+        Err(doc) => {
+            core.log("cmd=run_start rejected: line 1 was not a run handle");
+            Err(doc)
+        }
+    }
 }
 
 // The 20 one-document commands. Written out one by one: the permission test reads this list and the handler list.

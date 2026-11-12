@@ -8,7 +8,7 @@ import { EngineError, STAGES } from "./engine.ts";
 import type {
   About, ActionName, Campaign, CampaignDraft, CampaignPlan, Engine, ForgetKind, ForgetResult, KeyName, KeyStatus,
   PeoplePage, PeopleQuery, Person, PurgeEverythingResult, PurgeReport, Retention, RunArgs, RunEvent, RunHandle,
-  RunStatus, Settings, SettingsPatch, Sheet, SourceId, StageId, SuppressKind, SuppressResult,
+  RunMessage, RunStatus, Settings, SettingsPatch, Sheet, SourceId, StageId, SuppressKind, SuppressResult,
 } from "./engine.ts";
 
 /** The name that makes a run answer with the engine's "unknown" fields: shared with the stand-in. */
@@ -27,6 +27,12 @@ export interface MockOptions {
   runFreezesAfter?: number;
   /** The run fails while visiting websites. */
   runFails?: boolean;
+  /** After `stopRun` answers, the run writes `stopped` after this long (ms, before `speed`). Null: never (a render of
+   *  the stopping state). Default 1500. */
+  stopTakesMs?: number | null;
+  /** The stream ends after this many events with the shell's `stream-closed` (reason `exit`) and no end event;
+   *  `runStatus` then still says `running`, as a stale engine would. */
+  runDiesAfter?: number;
   /** Actions the engine cannot do yet: they answer kind `missing`. */
   missing?: readonly ActionName[];
   /** The registers `settings_get` lists. Default both. */
@@ -218,7 +224,7 @@ export function createMockEngine(options: MockOptions = {}): Engine {
     companies_house_key: { name: "companies_house_key", saved: !options.empty, savedAt: options.empty ? null : "2026-11-03T08:50:00Z" },
     opencorporates_token: { name: "opencorporates_token", saved: false, savedAt: null },
   };
-  let run: { status: RunStatus; stopped: boolean; unknown: boolean } | null = null;
+  let run: { status: RunStatus; stopped: boolean; unknown: boolean; onEvent: (event: RunMessage) => void } | null = null;
   /** A status the way the engine sends it when it does not know: campaign, done and the clean-up counts null. */
   const shown = (status: RunStatus, unknown: boolean): RunStatus =>
     unknown ? { ...status, campaign: null, done: null, counts: { ...status.counts, purged: null, expiringIn30Days: null } } : { ...status, counts: { ...status.counts } };
@@ -271,7 +277,7 @@ export function createMockEngine(options: MockOptions = {}): Engine {
       };
     },
 
-    async startRun(args: RunArgs, onEvent: (event: RunEvent) => void): Promise<RunHandle> {
+    async startRun(args: RunArgs, onEvent: (event: RunMessage) => void): Promise<RunHandle> {
       await begin("startRun", 700);
       const runId = "r-20261112-5e90";
       const status: RunStatus = {
@@ -279,13 +285,19 @@ export function createMockEngine(options: MockOptions = {}): Engine {
         counts: { businesses: 0, contacts: 0, purged: 4, expiringIn30Days: 9 }, startedAt: stamp(), reason: null,
       };
       const unknown = options.runEndsNull === true || args.campaign === UNNAMED_RUN;
-      const mine = { status, stopped: false, unknown };
+      const mine = { status, stopped: false, unknown, onEvent };
       run = mine;
       const script = runScript(options.runFails === true);
       void (async () => {
         let sent = 0;
         for (const { wait, event } of script) {
           if (options.runFreezesAfter !== undefined && sent >= options.runFreezesAfter) return;
+          if (options.runDiesAfter !== undefined && sent >= options.runDiesAfter) {
+            // the engine died: no end event; the shell says so once, and the stale status still says running
+            await sleep(wait);
+            onEvent({ type: "stream-closed", exitCode: 1, reason: "exit" });
+            return;
+          }
           await sleep(wait);
           if (mine.stopped) return;
           sent++;
@@ -322,9 +334,17 @@ export function createMockEngine(options: MockOptions = {}): Engine {
       if (!run || run.status.runId !== runId || run.status.state !== "running") {
         throw new EngineError("stopRun", "input", "There is no run to stop.", ["No engine process is running for this workspace."], null);
       }
-      run.stopped = true;
-      run.status.state = "stopped";
-      return shown(run.status, run.unknown);
+      // the answer comes at once; the run finishes the business it is on and then writes its own `stopped`
+      const mine = run;
+      mine.stopped = true;
+      const takes = options.stopTakesMs === undefined ? 1500 : options.stopTakesMs;
+      if (takes !== null) {
+        void sleep(takes).then(() => {
+          mine.status.state = "stopped";
+          mine.onEvent({ type: "stopped", status: shown(mine.status, mine.unknown) });
+        });
+      }
+      return { ...shown(mine.status, mine.unknown), state: "stopped" };
     },
 
     async runStatus(runId?: string): Promise<RunStatus | null> {

@@ -28,6 +28,10 @@ are kept (an add-on reads its own settings from them).
   fields, three campaign fields and three person fields may be null and say "not recorded"; the window keeps its theme and accent
   itself and its version comes from the crate's `Cargo.toml`; the engine's `settings_get` and `about` no longer carry them; the People
   screen lists named people only. The mock and the stand-in answer in exactly the new shapes. The tool's behaviour is unchanged.
+- The window's run, start to end (slice L11): a start the engine refuses now shows as refused instead of a run that never moves;
+  when a run's engine ends without saying how the run ended, the window says so and asks the engine once; after Stop the window
+  shows "Stopping the run" and gives the engine up to 90 s to finish the business it is on (it was 10 s), so a stopped run can be
+  continued; the purge report gets the 10-minute limit of the other data commands. The contract is in `docs/window-actions.md`.
 
 Clean-up of the plan's debts (docs/slices/debts.md). `leadforge --version` prints the package version. Dropped the never-imported `tenacity` and `rich`
 declarations (the hashed locks are regenerated; `uv.lock` names the real project version), the `codeindex` extra, `scripts/code_index*`,

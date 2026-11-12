@@ -12,7 +12,7 @@
     "dev": "vite",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
-    "test": "node --test tests/engine.mock.test.mjs tests/window-shape.test.mjs tests/seam-decisions.test.mjs tests/seam-shape.test.mjs tests/prefs.test.mjs tests/window-version.test.mjs"
+    "test": "node --test tests/engine.mock.test.mjs tests/window-shape.test.mjs tests/seam-decisions.test.mjs tests/seam-shape.test.mjs tests/prefs.test.mjs tests/window-version.test.mjs tests/run-view.test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.4",

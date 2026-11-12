@@ -97,11 +97,23 @@ fn the_stand_in_answers_every_window_command() {
     let ch = json!({"kinds": ["Plumbing"], "places": ["Taunton"], "country": "GB", "source": "companies_house", "offer": "Online booking", "maxLeads": 50});
     let mut without = ch.clone();
     without["sicCodes"] = json!([]);
-    let err = call(&p, EngineCommand::CampaignCreate, json!({"draft": without}), &dir).unwrap_err();
+    let err = call(
+        &p,
+        EngineCommand::CampaignCreate,
+        json!({"draft": without}),
+        &dir,
+    )
+    .unwrap_err();
     assert!(err["details"].to_string().contains("sicCodes"), "{err}");
     let mut with = ch;
     with["sicCodes"] = json!(["43220"]);
-    call(&p, EngineCommand::CampaignCreate, json!({"draft": with}), &dir).expect("a Companies House draft with SIC codes");
+    call(
+        &p,
+        EngineCommand::CampaignCreate,
+        json!({"draft": with}),
+        &dir,
+    )
+    .expect("a Companies House draft with SIC codes");
     let _ = fs::remove_dir_all(&dir);
 }
 
