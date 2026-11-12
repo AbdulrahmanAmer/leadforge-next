@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "resources": {
+      "../../build/engine-embed/python/": "engine/python/"
+    }
+  }
+}
