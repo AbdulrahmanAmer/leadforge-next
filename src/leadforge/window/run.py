@@ -66,6 +66,8 @@ def status_doc(cfg: Config, conn, row, *, state: str | None = None, reason: str 
         feed = _status_progress(cfg)
         if feed and window_stage(feed.get("progress_stage")) == stage:
             done, total, eta = feed.get("progress_done"), feed.get("progress_total"), feed.get("eta_seconds")
+    elif stats.get("window_progress_stage") == stage:   # where run_start's last progress line left the run's stage
+        done, total = stats.get("window_done"), stats.get("window_total")
     rid = row["id"]
     one = lambda sql: conn.execute(sql, (rid,)).fetchone()[0]  # noqa: E731
     return {
@@ -308,7 +310,10 @@ def start(args: dict, out: TextIO) -> int:
             flag.unlink(missing_ok=True)
     try:
         conn = db.connect(cfg.db_path)
-        db.set_run_meta(conn, run_id, window_state=end["state"], window_reason=end["reason"], window_pid=None)
+        last = stream.last
+        place = {"window_progress_stage": last["stage"] if last else None, "window_done": last["done"] if last else None,
+                 "window_total": last["total"] if last else None}
+        db.set_run_meta(conn, run_id, window_state=end["state"], window_reason=end["reason"], window_pid=None, **place)
         row = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
         status = status_doc(cfg, conn, row, state=end["state"], reason=end["reason"])
     except Exception:  # noqa: BLE001 — the end event is still written, from the status read when the run began

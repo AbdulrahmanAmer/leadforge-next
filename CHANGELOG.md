@@ -39,7 +39,7 @@ The window commands now match the window's core exactly. `settings_set` accepts 
 workspace keeps them; the key commands answer the error kind `keyring` (one of the seven kinds the window knows) until the
 keyring slice is in; an arguments document over 1 MiB is refused; no `run_start` line exceeds 64 KiB (long texts are cut and
 marked); once a run exists, `run_start` ends its stream with an end event on every way out, including a failure while planning
-or while recording the end.
+or while recording the end. `run_status` of a run the window started reports where its last progress line left it.
 
 The existing command line, its digest lines and the plugin are unchanged. No version change yet.
 

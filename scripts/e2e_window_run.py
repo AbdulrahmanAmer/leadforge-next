@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -41,8 +42,10 @@ def stream_run(py: str, ws: Path, env: dict, resume: bool, stop_after_enrich: in
     t = threading.Thread(target=lambda: err.extend(p.stderr), daemon=True)
     t.start()
     lines, raw, enrich_seen, stopper = [], [], 0, None
+    stopped_at, arrived = None, []
     for line in p.stdout:
         raw.append(line)
+        arrived.append(time.monotonic())
         doc = json.loads(line)   # a line that is not JSON fails the proof here
         lines.append(doc)
         if stop_after_enrich is not None and len(lines) == 1:
@@ -54,9 +57,16 @@ def stream_run(py: str, ws: Path, env: dict, resume: bool, stop_after_enrich: in
             enrich_seen += 1
             if stopper is not None and stopper.returncode is None and enrich_seen == stop_after_enrich:
                 so, _ = stopper.communicate(json.dumps({"runId": lines[0]["runId"]}), timeout=120)
+                stopped_at = time.monotonic()
                 print(f"  run_stop exit={stopper.returncode} {so.strip()[:200]}", flush=True)
     code = p.wait(timeout=600)
+    ended_at = time.monotonic()
     t.join(timeout=10)
+    if stopped_at is not None:
+        print(f"  run_stop answered to the run's end: {ended_at - stopped_at:.2f} s", flush=True)
+    gaps = [b - a for a, b in zip(arrived[1:-1], arrived[2:], strict=True)]
+    if gaps:
+        print(f"  longest wait between two stream lines (two checks of the stop flag): {max(gaps):.2f} s", flush=True)
     log.write_text("".join(raw) + "\n--- stderr ---\n" + "".join(err), encoding="utf-8")
     return code, lines, err
 

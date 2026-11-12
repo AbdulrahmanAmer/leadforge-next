@@ -423,3 +423,198 @@ own. Fixed in this build (below). The key commands read the right keys but answe
    screens say for it; `missing` means "no command for this", which is not the case). An arguments document over 1 MiB is
    refused with `input`. No `run_start` line exceeds 64 KiB: a text field longer than 4,000 characters is cut and ends
    with `[cut]`. `sheet_open` answers `null` and calls the opener; the real opener (`util.open_artifact`) only outside tests.
+
+## Built in Build 2
+
+- `settings_set` takes `theme` and `accent` (the values of `ThemeSetting`, `AccentSetting`; anything else is `usage`) and keeps
+  them in `leadforge_data/window-settings.json`; `settings_get` answers them, `system` and `cobalt` until set. This replaces
+  Build 1's seam change 8 (the engine no longer refuses them and no longer answers null). Goldens re-recorded because of it:
+  `tests/golden/window/settings_get.json`, `tests/golden/window/settings_set.json` (theme and accent, nothing else).
+- The kind `not_available` is gone: the key commands answer `keyring` before L9 (exit 1, as the stand-in's `keyring`).
+  This replaces Build 1's seam change 4. "After L9 is in" item 4 now names
+  `test_key_commands_without_l9_answer_keyring` (renamed from `..._not_available`).
+- `KINDS` in `window/__init__.py` is `engine.ts` `ErrorKind`; `EXIT_CODES` holds exactly those seven.
+- Arguments over 1 MiB (UTF-8 bytes of stdin): `input`, "The arguments are larger than 1 MiB."
+- `run_start`: every line goes through `write_line`, which cuts any text over 4,000 characters (then 200 if the line is still
+  64 KiB or more) and marks it ` [cut]`; lists in a line keep their first 20 items. A progress message is already cut to 120
+  characters by `util.emit_progress` (util.py line 410), so in practice the cut meets a failure's details or a notice.
+- `run_start`: the handle is written as soon as the run row exists; planning (`_plan_into_db`), the run's start bookkeeping and
+  the notice are inside the `try`; `BaseException` (an interrupt) ends the stream with `failed`; when the end cannot be recorded
+  in the database the end event is built from the status read when the run began (state, reason set; done, total null).
+- `RunStatus.done`/`total` after a run: `run_start` records its last progress line (`window_progress_stage`, `window_done`,
+  `window_total` in the run's stats) and `status_doc` answers them when that stage is the run's stage. Before, a finished or
+  stopped run always answered null (`engine.ts` says `done: number`, as the stand-in does).
+- `scripts/e2e_window_run.py` prints the time from `run_stop`'s answer to the run's end and the longest wait between two
+  stream lines.
+
+## Proof (run `l11a-match`, STRIKERFORCE, Python 3.12 venv from `requirements.lock` + the hashed pytest set of `uv.lock`)
+
+What each piece should do is written above ("The five points: what must hold"); the code was read against it before the tests ran.
+
+New tests, first run against the code BEFORE this build (the source changes set aside with `git diff src > patch; git checkout
+-- src`, then `git apply`): red for the change they cover:
+
+```
+FAILED tests/test_window.py::test_key_commands_without_l9_answer_keyring
+FAILED tests/test_window.py::test_each_command_answers_what_the_screens_send[settings_get]
+FAILED tests/test_window.py::test_each_command_answers_what_the_screens_send[settings_set]
+FAILED tests/test_window.py::test_the_error_kinds_are_the_seven_the_screens_know
+FAILED tests/test_window.py::test_arguments_over_1_mib_are_refused_with_input
+FAILED tests/test_window.py::test_no_run_start_line_exceeds_64_kib
+FAILED tests/test_window.py::test_run_start_ends_with_an_end_event_on_every_way_out[planning]
+FAILED tests/test_window.py::test_run_start_ends_with_an_end_event_on_every_way_out[end_bookkeeping]
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+D:\homelab-work\l11a-match\leadforge-next\tests\test_window.py:553: KeyboardInterrupt
+```
+
+(the last two lines are `[interrupt]` on the old code: the interrupt left `run_start` without an end event and ended pytest.)
+Green already on the old code, because Build 1 had that behaviour: the other 19 `screens_send` cases, `[engine_error]`,
+`[exception]`, `test_a_start_refused_before_a_run_exists_is_one_error_document`,
+`test_after_the_run_process_is_ended_from_outside_status_is_not_running`,
+`test_run_stop_from_a_second_process_ends_the_run_within_10_s_and_status_answers_beside_it`. No break round beyond this (the
+owner's rule of 14:35). Two of the new tests failed once on the new code, both for a test-side cause, written before the fix:
+`test_no_run_start_line_exceeds_64_kib` read line 2 as the progress event (it is the start-of-run clean-up notice), then
+expected the progress message cut at 4,000 (the engine already cuts it at 120, `util.py:410`); the test now finds the progress
+line by type and checks the failure's details for the mark.
+
+`python -m pytest tests/test_window.py -p no:cacheprovider -s` (the last code change, `done` after a run, came after this run;
+the full gate below covers it):
+
+```
+..run_stop answered to the run's end: 0.00 s; run_stop started to the run's end: 1.51 s
+66 passed in 13.36s
+```
+
+(0.00 s: with the test's stand-in pipeline (one business every 0.2 s) the run had ended before the `run_stop` process exited.)
+
+`python scripts/e2e_window_run.py --out <folder>` (the real `run_start`/`run_stop`/`run_status` processes, the fake campaign's
+loopback world, every outside connection refused):
+
+```
+  run_stop exit=0 {"runId":"run_20261112_09210_fa79","campaign":"bristol-garages-fixture","state":"running","stage":"enrich","done":1,"total":8,"etaSeconds":null,"counts":{"businesses":10,"contacts":0,"purged":null,"ex
+  run_stop answered to the run's end: 8.41 s
+  longest wait between two stream lines (two checks of the stop flag): 8.28 s
+  longest wait between two stream lines (two checks of the stop flag): 5.94 s
+PASS  first run ends stopped  exit 0, last {"type": "stopped", "status": {"runId": "run_20261112_09210_fa79", "campaign": "bristol-garages-fixture", "state": "stopped", "stage": "enrich", "done": 1, "total": 8, "etaSeconds": null, "counts": {"businesses": 10, "contacts": 0, "purged": null, "expiringIn30Days": null}, "startedAt": "2026-11-12T
+PASS  run_status says stopped, stage kept  {"runId":"run_20261112_09210_fa79","campaign":"bristol-garages-fixture","state":"stopped","stage":"enrich","done":1,"total":8,"etaSeconds":null,"counts":{"businesses":10,"contacts":0,"purged":null,"expiringIn30Days":null},"startedAt":"2026-11-12T09:21:06Z","reason":null}
+PASS  no stop flag left
+PASS  resumed run ends finished, same run  exit 0, last {"type": "finished", "status": {"runId": "run_20261112_09210_fa79", "campaign": "bristol-garages-fixture", "state": "finished", "stage": "export", "done": null, "total": null, "etaSeconds": null, "counts": {"businesses": 10, "contacts": 10, "purged": 0, "expiringIn30Days": 0}, "startedAt": "2026-11-
+PASS  campaigns_list answers one JSON document  [...]
+PASS  sheet_export answers one JSON document  {...}
+PASS  people_list answers one JSON document  {...}
+PASS  no outside attempt beyond the fake campaign's known set  []
+E2E WINDOW RUN PASS
+```
+
+**run_stop from a second process: the fake campaign's run ended 8.41 s after `run_stop` answered**, with `stopped` last, and the
+workspace opened cleanly (run_status answered, no flag left, the resume finished the same run). That is inside the core's 10 s,
+by a thin margin. The longest wait between two checks of the flag was 8.28 s: one business in enrich. On a real site it can be
+longer: one business's enrich is bounded by `crawl.site_budget_s` 45 s (config.py line 72) plus rendered pages
+(`render_timeout_s` 20 s, 2 pages) and the NER call (30 s), so a stop can wait well over 10 s; then the core ends the engine and
+`run_status` answers `failed` ("The engine process ended before the run did."), not `stopped`. A check inside one site's crawl
+(between two page fetches) is where it would go, but it is NOT small: a `RunStopped` raised in a pool worker is caught by
+`except Exception` in `enrich/runner.py` (lines 414 and 590) and recorded as a failed site, and the pool's exit waits for the
+fetches in flight. Not added; seam change 11.
+
+**run_status beside a run**: the second-process test above asks `run_status` three times while the run writes its database
+every 0.2 s: each answered `running` within 30 s, no "locked" on either side's stderr. The e2e proof's `run_stop` read the
+same way during the real run.
+
+**After a killed run**: `test_after_the_run_process_is_ended_from_outside_status_is_not_running` kills the real `run_start`
+process after its first progress line; `run_status` then answers `failed`, reason "The engine process ended before the run
+did." Limit: the check is the process id being alive (`util.pid_alive`); if Windows hands the same id to another process
+before `run_status` asks, the run reads `running`. UNPROVEN either way; settling it needs the process's start time stored
+beside its id.
+
+### Sizes and times on 10,000 invented businesses
+
+`measure_and_compare.py` (run folder `D:\homelab-work\l11a-match\measure\`, not in the repo): a workspace of 10,000 invented
+businesses, each with a contact, a named person, a person-linked email and a score; each command in its own
+`python -X utf8 -I -m leadforge window <name>` process, as the core starts it, at below-normal priority on a shared laptop:
+
+| Command | arguments | exit | stdout | core limit | time | core timeout | note |
+|---|---|---|---|---|---|---|---|
+| people_list | `{"query": {"search": "", "limit": 500}}` | 0 | 141,187 B | 8,388,608 B | 1.03 s | 120 s | people 500, matching 10000, total 10000 |
+| people_list | `{"query": {"search": "priya", "limit": 50}}` | 0 | 14,148 B | 8,388,608 B | 13.27 s | 120 s | people 50, matching 1000, total 10000 |
+| sheet_export | `{"runId": "run_20261101_090000_ab12"}` | 0 | 721 B | 8,388,608 B | 28.11 s | 600 s |  |
+| purge_report | `{}` | 0 | 120 B | 8,388,608 B | 7.55 s | 120 s |  |
+| about | `{}` | 0 | 309,587 B | 8,388,608 B | 3.17 s | 30 s |  |
+
+Every one inside its limits. `people_list` cannot pass 8 MiB: `limit` is at most 500. Its search took 13 s on 10,000 people
+(ten times the plain page): linear, so near 100,000 people it would meet the 120 s timeout (seam change 12). The core gives
+`purge_report` 120 s (`engine.rs` `timeout()`), not the 600 s of "purges" in the brief; `person_forget` gets 600 s there.
+
+### Shape against the stand-in
+
+Same input to the stand-in (`leadforge_window_standin.py` of `slice/L11-window`, run as the core runs it) and to the engine
+(in one process, keys on an in-memory backend, the opener a no-op, `run_start` on a stand-in pipeline that ends at `exported`);
+keys and kinds compared at every depth (a list by its first element):
+
+```
+| campaign_create | equal |
+| run_start | $.event progress.etaSeconds: engine "null", stand-in "number" |
+| run_status | equal |
+| run_stop | $.done: engine "null", stand-in "number"; $.total: engine "null", stand-in "number" |
+| sheet_export | equal |
+| campaigns_list | equal |
+| sheet_open | equal |
+| people_list | $.people[0].foundAt: engine "null", stand-in "string"; $.people[0].phone: engine "null", stand-in "string" |
+| address_suppress | equal |
+| person_forget | equal |
+| purge_report | equal |
+| purge_apply | equal |
+| retention_get | equal |
+| retention_set | equal |
+| keys_list | $[0].savedAt: engine "null", stand-in "string" |
+| key_save | $.savedAt: engine "null", stand-in "string" |
+| key_remove | equal |
+| settings_get | equal |
+| settings_set | equal |
+| about | $.windowVersion: engine "null", stand-in "string" |
+| purge_everything | equal |
+
+equal for 15 of 21
+```
+
+Two earlier runs of the compare are part of the record: the first had 13 of 21 (`done` null after every run: fixed in the
+engine, above; `purge_everything` exit 1 on a `PermissionError` on `db.sqlite3-wal`: the compare's own process still held the
+in-process `run_start`'s connections, which a real engine process closes by ending; the compare now collects them first).
+The second had 14 of 21 (its stand-in pipeline left the run at stage `planned`; the real pipeline leaves `exported`).
+
+The six that remain, each a null where the stand-in has a value:
+
+| Command | Field | `engine.ts` | Why the engine has null | Where |
+|---|---|---|---|---|
+| run_start | progress `etaSeconds` | `number \| null` | the engine's progress line carries no estimate | allowed by the type |
+| run_stop | `done`, `total` | `done: number`, `total: number \| null` | the compare marks a run `running` without a live progress feed; the real run in the e2e proof answered `"done":1,"total":8` | the compare's set-up, not the engine |
+| people_list | `foundAt` | `string` | the engine keeps no date per person (L7, C12) | seam change 7 (Build 1) |
+| people_list | `phone` | `string \| null` | the invented person has no phone of their own | data, allowed by the type |
+| keys_list, key_save | `savedAt` | `string \| null` | the keyring keeps no date | allowed by the type |
+| about | `windowVersion` | `string` | the window's own version; the engine does not know it | seam change 9 (Build 1): the core fills it |
+
+Still null where `engine.ts` says `number`: `RunStatus.done` of a finished run whose last progress line is of an earlier stage
+(the fake campaign's resumed run: its export stage sends no progress line, so `done` and `total` are null at `finished`), and
+of a running run whose progress feed is of another stage. Seam change 5 (Build 1) stands for those.
+
+## Plan and code disagree (Build 2)
+
+- **The core takes ANY first line of `run_start` as the handle.** `lib.rs` `run_start` (slice/L11-window) sends line 1 to the
+  window as the `RunHandle` without looking inside; its comment says "no handle line: the engine refused the run (its error
+  object)", but in stream mode that error object IS line 1, so a refused start (no such campaign, the start-of-run clean-up
+  refusing) reaches the screen as a `RunHandle` with no `runId`, and the screen waits on "running". The stand-in does the same
+  (its `Refused` before the handle is written as line 1). The engine cannot fix this alone: before a run exists it has no run
+  id to hand over. Not built; seam change 13.
+- The brief: "600 s for export, purges and forget"; `engine.rs`: `PurgeReport` is not in the 600 s list (120 s).
+- The brief, point 5: "`run_stop`, `run_status` and `about`" 30 s; `engine.rs` agrees (and `version`).
+
+## Seam changes proposed (Build 2; the lead decides)
+
+11. **A stop that waits for one slow business.** The run checks the stop flag once per business; one business can take more
+    than 10 s (bounded by `crawl.site_budget_s` 45 s plus render and NER time). Either the core gives the run longer than 10 s
+    after `run_stop` (the stop is clean and resumable, the kill is not), or a later engine slice checks the flag between page
+    fetches (needs `RunStopped` re-raised before the `except Exception` of `enrich/runner.py` lines 414 and 590).
+12. **`people_list` search on a large workspace.** 13 s on 10,000 people; near 100,000 it meets the 120 s timeout. Proposed:
+    an index on the searched fields in a later engine slice, or the core's timeout for `people_list` raised; no type change.
+13. **A refused start in the core.** `lib.rs` `run_start`: when line 1 is an error object (`is_error_object`) and the engine
+    exits non-zero, reject with it instead of relaying it as the handle. The engine already writes exactly that document.
+14. **`RunStatus.done: number | null`** (extends seam change 5): a finished run's last progress line may be of an earlier stage.
