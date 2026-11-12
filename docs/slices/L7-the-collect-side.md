@@ -278,8 +278,8 @@ because no table changes).
 
 Must hold:
 1. New module `leadforge/send_rules.py`, pure functions, no I/O. `country_code(raw)` turns a business's `address_country` into ISO-2 (`GB`, `United Kingdom`,
-   `uk`, `england`... all `GB`; `Germany`, `DE`, `deutschland`?? only the names `normalize.COUNTRY_TO_REGION` knows plus ISO-2 itself), or `""` when empty / not a
-   country the tool can read.
+   `uk`, `england`... all `GB`; `Germany` and `DE` are `DE`: the names `normalize.COUNTRY_TO_REGION` knows, plus a two-letter ISO code itself), or `""`
+   when empty or not a country the tool can read.
 2. Rules known: `US` (CAN-SPAM: opt-out model, as before), `GB` (PECR: corporate subscribers; a sole trader needs consent), `DE` (UWG section 7: consent
    before any commercial e-mail). Any other country, and an unknown one, has NO rule: no send.
 3. `compliance.email_eligibility` applies it, so every caller (the sheet's `Lawful Basis` / `Next Action`, the score's contactability, the draft packet,
