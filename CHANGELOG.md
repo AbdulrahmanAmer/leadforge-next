@@ -93,6 +93,13 @@ keys sit in `leadforge.yaml`, and `config/leadforge.example.yaml` shows the defa
 
 The existing command line, its digest lines and the plugin are unchanged. No version change yet.
 
+Documentation (slice L12, docs only; no code, test, lock or version changed). `README.md` rewritten: what LeadForge is and is not, the install of the Windows app
+and from source, the first campaign in the window and on the command line, where data lives, how to delete, keys, limits. New: `docs/window.md` (the seven screens
+and the engine command behind each action), `docs/data-and-deletion.md` (what is collected, kept and deleted, and what cannot be reached; not legal advice),
+`docs/configuration.md` (every setting, keys, registers, add-on providers), `docs/development.md` (layout, set-up, gates, how a slice is recorded) and
+`docs/limits.md` (every unproven, not-done or open item of the slice files in one list). `skills/generate-leads/references/cli.md` is checked against
+`--help` and now lists `forget`, `purge`, `dedupe`, `byol`, `benchmark`, `window` and the missing options.
+
 ## [0.9.0] — 2026-11-12
 
 The collect side. A site's robots.txt answer is used for at most 24 hours and at least 500 KiB of the file is read; a redirect to another site
