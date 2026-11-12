@@ -342,6 +342,7 @@ def test_read_timeout_does_not_mark_host_dead(monkeypatch):
             raise _httpx.ReadTimeout("simulated slow server")
 
         monkeypatch.setattr(crawler.client, "get", slow)
+        monkeypatch.setattr(crawler.client, "stream", slow)  # robots.txt is read through stream() since C8
         crawler.crawl(url)
         crawler.close()
         assert SiteCrawler._host_dead_reason(host) is None
