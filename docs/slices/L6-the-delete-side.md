@@ -297,3 +297,54 @@ time is NOT MEASURED. Verdict: KEEP the script as a trial that is run by hand on
 13 of 13 jobs pass, no job re-run: Validate plugin manifests · Version strings agree · claude plugin validate · fake campaign ubuntu-latest · fake campaign windows-latest ·
 ubuntu-latest py3.11 / py3.12 / py3.13 / py3.14 · windows-latest py3.11 / py3.12 / py3.13 / py3.14 (all `pass`). This table was added in a later commit that changes only this file; that
 commit's own run is read and written in the report.
+
+# Review (0.8.0)
+
+Independent reader (run `l6-read`), fresh clone, the whole diff `master...fc52926` read line by line before anything was run.
+
+Verdict: PARTIAL dc02236 - holds as far as it goes: C4 (forget, after the reader's fix 3), C6, C7 (after the reader's fix 2), C5 for the database records with all four protections (after the reader's fix 1); missing: C5's "a business and everything attached to it expires" for the sheets in the tool's own `exports` folder (the pull request lists "deleting old export folders at expiry" as NOT DONE, so old sheets keep people's details without a time limit), and the Linux CI mutation trial (NOT DONE, entry 4)
+
+## What was checked, by reading first
+1. **`forget`.** Every place a detail can land: all tables (the row rules, the business identity and JSON columns, and the reader's own pass over the other tables), the whole
+   data folder except `bin/` and the live database, the hand-off, packet and `drafts/` files of the workspace. The test's byte scan is over the WHOLE workspace
+   (`root.rglob("*")`, also inside zip members), then over a copy without the suppression row, which must be empty: not over a list the builder chose.
+   Planted in a place the test does not name (`queries.query_text`, `runs.stats_json`): **left behind** (`{'db.sqlite3': 2}` on the copy). Fixed, fix 3.
+2. **`purge`.** Protection 1 holds for `purge`, `purge --apply` and a foreground `run`. **It failed for `run --detach`**, the skill's way to start a run: the parent made the
+   pass (armed), and the child it starts (`leadforge --json run --resume`) made a second pass seconds later that deleted. Seen: the new test, unfixed, left
+   `{'B','E','N…'}` (A, C, D deleted) after the parent had reported "nothing deleted". Fixed, fix 1. A half-upgraded workspace (missing column, unreadable marker) stops before
+   `db.connect`; a missing table is created empty by any other command first, which cannot cause a delete (no runs table means no age). The clock: `classify` and the marker
+   use only the `now` handed in; the CLI reads `util.utcnow()` once. An empty or dangling `first_run_id` counts as the workspace's first run (the plan's rule); no run at all
+   means no age, nothing expires (tested).
+3. **The refused old workspace.** `snapshot()` hashes every file under the workspace (`rglob`), before and after, with and without a live `-wal`.
+4. **C6 and C7.** A raw scrape: `gosom.fetch` deletes the output file and its query file in a `finally`; the stderr file is deleted after reading. A suppressed address: the
+   sheet, CSV, report and Drafts tab hide it (`contacts_for(hide_suppressed=True)`, the masker, the draft skip). **`draft render` still wrote it** as the To: line of
+   `drafts/<t>_<m>.txt` (probe: `HOLDS SUPPRESSED: drafts/1_1.txt`). Fixed, fix 2. `draft export` packets: the probe found no suppressed address in them.
+5. **What must not be deleted.** The forget test keeps a bystander byte for byte and the look-alikes; the purge test keeps the 11-month and the refreshed-but-young businesses.
+   Broken in the reader's clone: protection 1 (`if marker is None:` made `if False:`) turned `test_first_run_only_reports_then_13_months_go_11_stay_refresh_does_not_renew`
+   red (`assert ('purged' == 'armed')`), restored.
+6. **G2.** Prediction before the run: the reader's fixes move no cell (the fake campaign uses neither `--detach` nor `draft render`). Result on dc02236:
+   `PASS - result equals tests/fixtures/e2e/expected.json (21 refused-call entries, as saved)`. The builder's two predicted cells (`purged`, `expiring_30d`) are the only golden change.
+7. `check_versions.py`: all six copies `0.8.0`. No new package (`pyproject.toml` dependencies unchanged). `gitleaks git --log-opts="master..HEAD"`: `18 commits scanned … no leaks found`.
+   Fixtures: invented names and `.example` domains only.
+8. **Plan and code disagree.** 1 (suppression row vs "finds nothing"): real; nothing else holds the value (the copy test); the hashed list is not built. Owner's decision stays open.
+   2 (merge keeps the Maps row's `first_run_id`): real, not changed. 3 (G2 count of refused DNS entries): this laptop gave 21, as saved. 4 (Linux CI mutation trial): real,
+   NOT DONE; the in-house trial's KEEP is written down. 5 (eight places): real, the test plants more.
+
+## The reader's fixes (commit dc02236, each test seen failing first for the right reason)
+1. `run --detach`: the child carries a hidden `--retention-checked` and makes no second pass. Test `test_a_detached_run_makes_one_retention_pass_not_two`.
+2. `draft render`: no file for a draft whose To: is a suppressed address; a suppressed address quoted in another draft is masked. Test
+   `test_draft_render_writes_no_file_to_a_suppressed_address`.
+3. `forget`: `queries.query_text` and `runs.stats_json` are redacted in place (rows kept: a run row dates its businesses). Test
+   `test_forget_reaches_the_query_text_and_run_stats_and_keeps_their_rows`.
+
+## Gates on dc02236
+- `node check.mjs`: `884 passed, 6 skipped in 217.87s` and `CHECK PASS sha=dc02236 tree=clean steps=6 skipped=0 secs=222`.
+- Hosted CI, run 43168530001, read from GitHub: completed, success, **13 of 13 jobs green**: claude plugin validate · Validate plugin manifests · Version strings agree ·
+  fake campaign ubuntu-latest · fake campaign windows-latest · ubuntu-latest py3.11 / py3.12 / py3.13 / py3.14 · windows-latest py3.11 / py3.12 / py3.13 / py3.14.
+
+## Open
+- C5 for the `exports` folder (and, not examined by the reader, other cached pages under `cache/`): UNPROVEN that anything there ever expires. Needs a decision of what
+  "attached" covers, then a slice part that deletes or rewrites old sheets.
+- The owner's decision on a literal "finds nothing" (hashed suppression list).
+- The Linux CI mutation trial: NOT DONE.
+- Not merged: PARTIAL.
