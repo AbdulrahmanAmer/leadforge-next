@@ -191,3 +191,14 @@ another version, and a range put back.
 equals the lock. Red: `setuptools==84.2.0` → `AssertionError: build backend setuptools==84.2.0: requirements.lock pins 84.2.1`; `setuptools>=77` → `AssertionError: build backend
 setuptools>=77 is not an exact name==version pin`; restored → `2 passed, 1 skipped` (the skip is the POSIX-sh launcher test, as before on this laptop). An isolated build with the pin
 is exercised by the CI `pip install .` step (read it on the pull request).
+
+## CI finding — a missing request line on Windows (run 43130540313, job `fake campaign · windows-latest`, commit a84aa37)
+
+Output: `FAIL - differs from expected.json in: requests` / `.requests: expected 45 entries, got 44` / `only in expected: "northgate-tyres.example /about 200"`;
+every other part of the result (sheet, steps, report) equal. The same fixture passed on the commit before (run 43130392812) and on Linux in both.
+**Cause (written before the fix).** The fake world writes its request log from one handler thread per request, each doing `open(path, "a")` and one write.
+On Windows that is not an atomic append: two threads can write at the same offset and one line is overwritten. Measured here with 16 threads x 300 lines,
+three runs: `wrote 4800 lines, file holds 4160 / 4186 / 4133`. Adding the Companies House calls (a registry thread running next to the crawl workers)
+raised the contention enough to show it on a busy runner. It is a defect of the harness, not of the tool: the page was fetched, its log line was lost.
+**Fix at the cause.** The log writes take a module lock (`_LOG_LOCK` in `scripts/e2e_fake_campaign.py`); the same measurement with the lock: `wrote 4800, file holds 4800` ×3.
+Not done: widening or ignoring the requests list. Whether the golden is now stable on a busy Windows runner is UNPROVEN until the CI run of the last commit.

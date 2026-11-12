@@ -65,6 +65,11 @@ progress_window: false
 
 
 # ----------------------------------------------------------------------------- the fake world
+# One handler thread per request all append to the same log: on Windows a plain open(..., "a") per writer loses lines under
+# contention (measured: 4800 written, ~4150 kept), which showed as one missing request on a busy CI runner. Writes take this lock.
+_LOG_LOCK = threading.Lock()
+
+
 class World(BaseHTTPRequestHandler):
     log_path: Path
     protocol_version = "HTTP/1.0"
@@ -132,7 +137,7 @@ class World(BaseHTTPRequestHandler):
                     return self._send(200, c.read_bytes(), "text/plain" if c.suffix == ".txt" else "text/html; charset=utf-8")
             return self._send(404, b"not found")
         finally:
-            with self.log_path.open("a", encoding="utf-8") as fh:
+            with _LOG_LOCK, self.log_path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps({"host": host, "path": path, "status": status, "ua": self.headers.get("User-Agent", "")}) + "\n")
 
 
