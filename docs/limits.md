@@ -35,7 +35,8 @@ Read as of version 0.9.0 plus the unreleased work on this branch. When you settl
   a `data_dir` that is absolute or has a `..` part, or let delete-everything delete only a folder that holds LeadForge's database. (review)
 - **Forget on a person's row does not forget the person.** The People screen offers "This address" (the default), "This name" and "The whole domain",
   one value per call. Forgetting the address leaves the person's name, title and page in `people`; forgetting the name leaves their address in `contacts`
-  (review probe on the window's test workspace, 2026-11-12). Forget both values to remove both. OPEN: the change proposed is one "this person" target
+  (review probe on the window's test workspace, 2026-11-12). Forget both values to remove both. By reading, not run: an address left this way is not on
+  the suppression list, so `outreach send --live` can still mail it. OPEN: the change proposed is one "this person" target
   that forgets the name and every address tied to it. (review)
 - **The retention clean-up does not reach `outbox\` and `inbox\`** (the `.eml` files of a dry-run `outreach send` hold the recipient's address and the
   text) nor the browser profile; only forget and delete-everything do. (review, `retention.py` `EXPIRING_DIRS`)
@@ -116,6 +117,9 @@ Read as of version 0.9.0 plus the unreleased work on this branch. When you settl
   start time would have to be stored beside its id. (L11a)
 - **`people_list` reads every person.** 10,000 people answer in 1 to 2 s; beyond that UNPROVEN. A search once took 13 s on the same size and the cause was not
   found (two candidates, neither tested). (L11a)
+- **The bundle carries 13 console launchers** (`engine\python\Lib\site-packages\bin\*.exe`, from `pip install --target`) whose start line names the build
+  machine's development interpreter (`#!D:\LeadForge\wt\window\.venv\Scripts\python.exe`). Nothing starts them. OPEN: delete that folder in
+  `packaging/build-engine-embed.ps1` after the installs, then rebuild. (review, read from `target\release\engine`)
 - **The embeddable engine package carries `setuptools` and bytecode next to the sources;** trimming was not measured. PyInstaller was measured on `version` only
   and not chosen. (L10)
 
@@ -171,9 +175,16 @@ Read as of version 0.9.0 plus the unreleased work on this branch. When you settl
 - **NOT DONE:** a check of a second machine's clone for unpushed work before this reached a public repository. (L1)
 - **The old public history keeps the removed Maps code and three saved Google fixtures.** Not rewritten. (L8)
 - **Dev tools** (`pytest`, `ruff`, `pytest-xdist`, `pytest-timeout`) are installed unhashed with wheels only, as CI's `[dev]` does; they are not in the hashed lock. (L8)
+- **OPEN:** estimating a register campaign's size before the run; the plan answers "not estimated" (null) today. (L11a, ruling 15)
+- **NOT DONE:** `scripts/bench/gliner_bench.py` loads its model by name with no revision; a manual benchmark reached by no command. (L2)
+- **Owner's call:** the code-index leftovers (`scripts/code_index.py`, its eval file and test, `.githooks/post-commit`, the `codeindex` extra) and
+  `scripts/v03_gate.py` stay. (L3c)
+- **`uv.lock` names the project itself as 0.8.0** while every version string says 0.9.0. Nothing checks it. (review)
 - **Several packages in the lock were younger than 7 days when it was made** (for example `regex 2026.11.9`). Publisher not checked per package. (L3c, L7)
 
 ## Words and labels
 
 - **The README calls LeadForge an internal tool, not a product.** Whether that wording changes is the owner's decision. (L12)
+- **The default user agent says `LeadForgeBot/0.1 (internal lead research)`** (`config.py`, and the guardrail golden). It tells every site the tool is
+  internal; it changes with the label, or per user through `politeness.user_agent`. (review)
 - **No lawyer has read these pages.** [`data-and-deletion.md`](data-and-deletion.md) describes controls; it is not legal advice and claims compliance with no law. (L12)
