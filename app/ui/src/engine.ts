@@ -70,9 +70,11 @@ export interface CampaignDraft {
 export interface CampaignPlan {
   campaign: string;
   searches: number;
-  estimatedBusinesses: number;
-  estimatedSites: number;
-  estimatedMinutes: number;
+  /** The three estimates. Null: not estimated (a register campaign: the engine does not count a register before the
+   *  run; ruling 15 of 2026-11-12). The plan card then says "up to <the cap>" and shows no time. */
+  estimatedBusinesses: number | null;
+  estimatedSites: number | null;
+  estimatedMinutes: number | null;
   /** Plain sentences from the engine, e.g. a plan much larger than the cap. */
   warnings: string[];
   retentionMonths: number;
@@ -263,6 +265,9 @@ export interface KeyStatus {
   name: KeyName;
   saved: boolean;
   savedAt: string | null;
+  /** Saved AND this workspace reads the keyring (`registry.keyring` in its leadforge.yaml; ruling 16 of 2026-11-12).
+   *  TIGHTEN LATER: optional only until the engine's follow-up (slice/L11a-follow) is on master; missing reads as true. */
+  inUse?: boolean;
 }
 
 /* ------------------------------------------------------------------- settings */
@@ -290,7 +295,8 @@ export interface Licence {
 /** The engine's version and the licence notices. The window's own version is a build-time constant (version.ts). */
 export interface About {
   engineVersion: string;
-  licence: string;
+  /** Null: the engine did not find the notices file; the screen says so (never an empty box). */
+  licence: string | null;
   licences: Licence[];
 }
 

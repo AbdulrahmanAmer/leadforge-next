@@ -105,8 +105,54 @@ test("a failing run ends its event stream with one failed event that carries the
 test("a saved key never comes back: the status holds no value", async () => {
   const engine = createMockEngine({ speed: 0 });
   const status = await engine.saveKey("opencorporates_token", "made-up-token-000");
-  assert.deepEqual(Object.keys(status).sort(), ["name", "saved", "savedAt"]);
+  assert.deepEqual(Object.keys(status).sort(), ["inUse", "name", "saved", "savedAt"]);
   assert.ok(!JSON.stringify(await engine.listKeys()).includes("made-up-token-000"));
+});
+
+/* ---- rulings 15 and 16 of 2026-11-12, and About.licence null (src/follow.ts) ---- */
+import { keyBadge, keyFieldProblem, keyInUse, licenceLine, planFigures } from "../src/follow.ts";
+
+test("ruling 15: a null estimate, or today's 0/0/0 for a register, reads 'up to the cap' with no time; a count is shown", async () => {
+  const draft = { kinds: ["MOT garage"], places: ["Bristol"], country: "GB", source: "dvsa", offer: "x", sicCodes: [], maxLeads: 80 };
+  const followUp = await createMockEngine({ speed: 0 }).createCampaign(draft);
+  assert.equal(followUp.estimatedBusinesses, null);
+  const fig = planFigures(followUp, "dvsa", 80);
+  assert.equal(fig.counted, false);
+  assert.equal(fig.line, "Up to 80 businesses; this register is not counted before the run.");
+  // TIGHTEN LATER: today's engine answers 0, 0, 0 for a register campaign
+  const today = await createMockEngine({ speed: 0, estimates: "zero" }).createCampaign(draft);
+  assert.equal(today.estimatedBusinesses, 0);
+  assert.equal(planFigures(today, "companies_house", 50).counted, false);
+  assert.deepEqual(planFigures({ ...today, estimatedBusinesses: 120, estimatedSites: 77, estimatedMinutes: 5 }, "dvsa", 50),
+    { counted: true, businesses: 120, sites: 77, minutes: 5 });
+});
+
+test("ruling 16: saved and not in use reads as such, naming registry.keyring; inUse missing reads as in use; save is refused on the field; remove works", async () => {
+  const off = createMockEngine({ speed: 0, keyringOff: true });
+  const ch = (await off.listKeys()).find((k) => k.name === "companies_house_key");
+  assert.equal(ch.saved, true);
+  assert.equal(ch.inUse, false);
+  const b = keyBadge(ch);
+  assert.equal(b.text, "Saved, not in use");
+  assert.match(b.note, /^Saved, but this workspace is set not to read the keyring: registry\.keyring in the workspace's leadforge\.yaml\.$/);
+  const refused = await off.saveKey("opencorporates_token", "made-up").catch((e) => e);
+  assert.equal(refused.kind, "input");
+  assert.match(keyFieldProblem(refused), /registry\.keyring/);
+  assert.equal(keyFieldProblem({ kind: "keyring", message: "x", details: [] }), null, "other refusals stay a banner");
+  assert.equal((await off.removeKey("companies_house_key")).saved, false, "remove always works");
+  // TIGHTEN LATER: today's engine sends no inUse
+  const today = (await createMockEngine({ speed: 0, inUseMissing: true }).listKeys()).find((k) => k.saved);
+  assert.ok(!("inUse" in today));
+  assert.equal(keyInUse(today), true);
+  assert.equal(keyBadge(today).text, "Saved");
+});
+
+test("About.licence null: the screen says the notices were not found, never an empty line", async () => {
+  const about = await createMockEngine({ speed: 0, noLicence: true }).about();
+  assert.equal(about.licence, null);
+  assert.deepEqual(about.licences, []);
+  assert.equal(licenceLine(about), "The licence notices were not found in this installation.");
+  assert.equal(licenceLine({ ...about, licence: "MIT" }), "MIT");
 });
 
 test("made-up data only: every domain ends in .example and every phone is in a drama range", async () => {

@@ -386,3 +386,145 @@ is stopping until its end event, and stays live`, `expected: 'stopped' actual: '
 code 1` (the job stops at its first red step, so each break got its own run).
 **Required checks.** The repository lists required checks nowhere else, so here: a pull request that touches `app/` needs
 `window · windows-latest` green, as well as the existing jobs.
+
+## The switch: the window on the REAL engine (2026-11-12, `master` 8ea0ec0, engine 0.9.0)
+
+**Merge.** `origin/master` 8ea0ec0 merged with no conflict (git merged `CHANGELOG.md` by itself: the engine's L11a lines and the
+window's lines both stay under "Unreleased"; released sections untouched).
+
+**The switch (item 4).** `STAND_IN = false`. `EngineProgram::bundled` has no stand-in entry at all (always `-X utf8 -I -m leadforge`);
+`EngineProgram::dev_venv` likewise. The stand-in is reached only through `EngineProgram::standin()`, `#[cfg(debug_assertions)]`, used by
+`run_seam.rs`, the unit timeout test, `engine_dev.rs` (its stream and kill tests) and `key_value_never_leaks.rs`. Its line left
+`tauri.bundle.conf.json`. Seen red first: `test the_stand_in_ships_only_while_the_core_uses_it ... FAILED` / `STAND_IN is off: remove the
+stand-in's line from tauri.bundle.conf.json`; green after the line left. **How a release build is shown to start only the bundled
+engine:** (1) `interpreter_runs_isolated` pins `bundled(..).prefix` and `dev_venv().prefix` to exactly `-X utf8 -I -m leadforge`;
+(2) `locate` in a release build has one branch, `bundled(resource_dir)`; `standin()` and `dev_venv()` are compiled out
+(`cfg(debug_assertions)`); (3) the release binary was searched for the stand-in's names (below); (4) the core reads no environment
+variable, argument or file that changes the program or argv (`--selftest`/`--selftest-campaign` only choose a walk; the engine stays
+the bundled one); the environment the engine gets is the fixed `ENV_KEEP` list; (5) the bundled interpreter's `python312._pth` has no
+`import site`, so not even a `.pth` file can add code to it.
+
+**Comparing the shapes for real (item 3).** `tests/real_engine_shapes.rs` (ignored by default) runs the REAL engine's commands through
+`engine::run`/`engine::answer`/`engine::run_stream`/`engine::after_stop` in a throwaway workspace (`D:\Temp\lf-real-shapes`) whose
+`leadforge.yaml` is the fake campaign's, with the fake world on 127.0.0.1 and the fake campaign's guard
+(`packaging/fake_world.py`, `packaging/real-shapes.ps1`); the answers go to `app/ui/tests/seam-shape.test.mjs` (`LF_REAL_ANSWERS`),
+which holds each to the screens' types the way it holds the mock and the stand-in (a field that left a type absent, a nullable field
+present). Order: settings_get, the incomplete form (error), campaign_create, run_start stopped by run_stop beside it after two progress
+lines, run_start resumed to `finished`, run_status (by id and latest), campaigns_list, sheet_export, sheet_open (a path outside the
+exports: refused), people_list, person_forget, address_suppress, purge_report, purge_apply, retention_get, retention_set, keys_list,
+key_save, key_remove, settings_set, about, purge_everything. Result: `test result: ok. 1 passed`, then the shape check `pass 10, fail 0`,
+`REAL SHAPES PASS`; the guard refused and logged 25 outside attempts (the fake campaign's known set: system resolver, public resolvers).
+**No shape difference** in the 17 commands whose answer type was seen, nor in any stream line of the two runs (field lists per event type), nor in the five error documents. Not seen: `KeyStatus` (the three key
+commands answered `environment`, "the keyring package is not installed"), `sheet_open`'s `null` (it opens a program on the screen).
+The first run of the harness was red for a wrong check of mine (the second run of the same campaign had nothing left to do and ended
+before `run_stop` reached it: "There is no run to stop."); the run is now stopped and then resumed, as `scripts/e2e_window_run.py` does.
+
+**Rulings 15 and 16 and `About.licence` (item 4, window side).** Types, mock (`estimates`, `keyringOff`, `inUseMissing`, `noLicence`),
+stand-in (null estimates; `inUse`), `src/follow.ts` (the screens' rules, tested in Node), the plan card, the Keys card and About.
+`docs/window-actions.md`, "Rulings 15 and 16", has the words. **Lines to remove when `slice/L11a-follow` is on `master`** (both in
+`app/ui/src/follow.ts`, marked TIGHTEN LATER): the 0/0/0 register plan read as not estimated; `inUse` missing read as true (and
+`KeyStatus.inUse?` made required in `engine.ts`, with its assertion in `seam-shape.test.mjs`). Renders (light and dark, 1280 x 800,
+`D:\LeadForge\wt\window-shots\follow\`, looked at, all fit 800/800): `plan-not-estimated`, `plan-today-zero`, `keys-saved-not-in-use`,
+`keys-save-refused` (the refusal under the field, red), `about-licence-null`.
+
+## The fake campaign through the real window, and the self-test on the real engine (2026-11-12)
+
+**How the fakes reach the engine without weakening the switch.** The core starts the engine isolated (`-X utf8 -I`, environment
+cleared to `ENV_KEEP`), so the fake campaign's harness cannot come by `PYTHONPATH`. `packaging/selftest-window.ps1` makes ONE
+throwaway folder `D:\Temp\lf-selftest` (its full path checked, refused if it is a link; links inside removed as entries) and starts
+the app with `USERPROFILE`, `APPDATA` and `LOCALAPPDATA` pointing into it, so the app's workspace, log and WebView2 profile are fresh
+(the owner's workspace is not touched). The workspace's own `leadforge.yaml` is the fake campaign's `CONFIG_YAML`; with `-Campaign`
+the script starts the fake world and puts a two-file loader into the DEV venv's site-packages that does nothing unless the engine's
+working folder holds `.lf-e2e-harness.json` (then it loads the repository's guard, resolver and `fixture_list` provider); the loader
+is removed at the end (`loader off: files present []`). No hook in the core. The bundled engine cannot load it (`._pth` without
+`import site`), so the campaign walk is a debug-build walk; the installed app's self-test is the short walk.
+
+**The walks.** `--selftest` (short: the incomplete form, a plan, every screen's data command; no run, no key saved) and
+`--selftest-campaign` (the campaign to its end: form error, form with the offer and cap 50, plan, start, wait for "Open the results"
+(`Until`, a line every 10 s), Results, "Write it again" (`sheet_export`), People, forget the domain `millbrook-autos.example`, suppress
+`kestrel-garage.example`, Data, retention 12 -> 1 month, purge if anything is past the limit, Keys, Settings). Bounds: 20 s with no
+step in the log; the whole walk 120 s (short) or 420 s (campaign), in the script and in the core. The walk saves no key (the real
+engine would write into the account's real keyring). The stand-in's refused-start step is gone from the walk (the real engine refuses
+a start only for a campaign that does not exist, which the form cannot make); `run_seam.rs` keeps that case on the stand-in.
+**Verdict** from this run's core log, in order: the real engine started (`engine=dev-venv` or `bundled`, never a stand-in);
+`campaign_create ... error kind=input` and screen 02 showing the real engine's words "at least one kind of business"; `campaign_create
+... ok`; (campaign) `run_start handle relayed`, "the run finishes: yes", `run_start ... ok ... lines=N` (N >= 2), `sheet_export`,
+`person_forget`, `address_suppress`, `retention_set`, `purge_report` ok; the data commands ok; `keys_list` ok or `error kind=environment`;
+then (campaign) the forgotten domain gone from People and from the export files (and in them before), the suppressed domain listed as
+suppressed, and `packaging/compare_campaign.py` PASS; pictures at least 800 px wide (a minimised window's picture does not count);
+probe clean; app exit 0; no process left; the folder gone.
+
+**The fake campaign through the real window** (debug build, real engine `engine=dev-venv`, walk 3, 14:16 to 14:18, 79 s of window):
+`cmd=campaign_create ... error kind=input` (screen 02: "at least one kind of business", "at least one place", "one or two lines on what
+you offer these businesses", the engine's words), `cmd=campaign_create ... ok out=314B`, `cmd=run_start handle relayed`, "the run
+finishes: yes after 7 s", `cmd=run_start origin=dev-venv in=57B ms=10649 ok out=22B lines=22 dropped=0`, `cmd=sheet_export ... ok
+out=906B`. **Then the same campaign through the command line** (`compare_campaign.py`: the window's own `campaigns/bristol-car-repair/
+icp.yaml` in a second fresh workspace with the same fakes and guard, `leadforge --json run --icp`, then `export --icp --format
+xlsx,csv`), compared with `scripts/e2e_fake_campaign.py`'s own `read_exports` and normalizing (clock, run id, workspace path), the
+window's sheet taken at picture 06 (after "Write it again", before the delete side):
+```
+EQUAL  tabs (20701 characters normalized)
+EQUAL  csv (12996 characters normalized)
+EQUAL  report (244 characters normalized)
+EQUAL  businesses (window) = leads (digest): window 10, command line 10
+EQUAL  stage: window 'export', command line 'export'
+CAMPAIGN COMPARE PASS
+```
+The engine's digest of the command-line run: `"leads": 10, "tier_a": 2, "tier_b": 3, "tier_c": 5, "drafted": 5`. `expected.json` is
+NOT equal to either: it is the CLI campaign with `byol import` and a stop and resume (a different campaign), which the window cannot do.
+**The delete side, same walk:** forget, report first (the window has no report-first; the engine's own `window person_forget` with
+`dry_run` from the command line, just before): `{"kind":"domain","value":"millbrook-autos.example","rows":13,"filesRemoved":2,
+"filesEdited":0,"warnings":["Nothing was deleted: ..."]}`; then for real through the window (`cmd=person_forget ... ok out=232B`):
+"millbrook-autos.example or Ysolde Fenwick in people_list after the forget: False"; export files (csv, json) holding the domain:
+before 1, after 0. Suppress `kestrel-garage.example` (`cmd=address_suppress ... ok out=65B`): its person listed `"suppressed": true`
+(1); not tried in a second run. Retention 12 -> 1 month (`cmd=retention_set ... ok out=29B`): the purge report went from
+`"months":12,...,"expiringIn30Days":0` to `"months":1,...,"expiringIn30Days":9`. Purge apply: NOT through the window: nothing was past
+the limit (`"expired":0`; the button reads "Nothing to delete" and is disabled); `purge_apply` answered through the core's path in
+`real-shapes.ps1` (`"state":"armed","deleted":0`). Verdict: `shots taken: 14 of 14; probe clean: True`, `expectations missed: 0`,
+`loader off: files present []`, `processes left: 0`, `throwaway folder left: False`, `SELFTEST PASS`.
+**Walks on the owner's screen (4 allowed):** walk 1 (14:11, 79 s): SELFTEST FAIL by two wrong checks of mine (the address chosen to
+forget is only in the CLI campaign's `byol` list, so it was in no export; the digest names the count `leads`, not `businesses`), and its
+pictures were 160 x 28 title bars (the window started minimised from the lock wrapper's hidden parent); walk 2 (14:14, 79 s): one miss,
+the run's status read after the forget (9 businesses against 10): the status is now read at picture 06; pictures still title bars;
+walk 3 (14:16, 79 s, `-WindowStyle Normal`, pictures 1188 px wide): PASS; walk 4 (14:23, 36 s): the release build's short walk on
+the bundled engine 0.9.0 from `target\release`: `started (selftest=Some(Short), engine=bundled)`, `cmd=campaign_create origin=bundled
+... error kind=input`, `cmd=campaign_create origin=bundled ... ok out=600B`, the data commands `ok`, `cmd=keys_list origin=bundled ...
+error kind=environment`, `shots taken: 8 of 8; probe clean: True`, `expectations missed: 0`, `processes left: 0`, `throwaway folder
+left: False`, `SELFTEST PASS`. Not watched: the 20 s and 420 s bounds firing.
+
+**The installer.** `build-engine-embed.ps1` rebuilt the bundled engine from the merged source (`leadforge 0.9.0`), then under the heavy
+lock `run-measured.ps1` ran `tauri.js build --config tauri.bundle.conf.json --bundles nsis -- --locked`: `exit 0; duration 217 s; peak
+working set of the build's process tree 809 MB; free RAM before 1394 MB`. `D:\LeadForge\wt\target\release\bundle\nsis\
+LeadForge_0.9.0_x64-setup.exe`, 36,523,737 bytes, sha256 `424d42a054dfc076fc08d8bc7de143699db0f118b6ca1af3d7476930b3800ced`. Its NSIS
+script (`target\release\nsis\x64\installer.nsi`) names no stand-in (`standin`: 0 lines) and one engine (`leadforge-0.9.0.dist-info`
+only); the release `leadforge-window.exe` holds none of `leadforge_window_standin`, `test-resources`, `dev-standin`, `dev-venv`
+(byte search: 0). A stale `target\release\engine\standin\` from the 0.8.0 build (Tauri does not clean its target copy) was deleted.
+**The install proof, for the orchestrator with the normal token** (this session is elevated):
+`powershell -NoProfile -ExecutionPolicy Bypass -File D:\LeadForge\wt\window\app\src-tauri\packaging\install-proof.ps1 -Setup D:\LeadForge\wt\target\release\bundle\nsis\LeadForge_0.9.0_x64-setup.exe`
+It installs to `D:\Temp\lf-install\LeadForge`, runs the installed app's SHORT self-test (about 40 s of window; its own throwaway
+`D:\Temp\lf-selftest`; it needs this worktree's `.venv` to write the throwaway workspace's `leadforge.yaml`), uninstalls, and prints
+`PASS` only if the self-test passed and nothing is left. The short walk leaves out the run, the sheet and the delete side: the bundled
+Python cannot load the fakes' guard, and without it a run would reach for the real registers.
+**Keys on the real keyring (item 7): NOT RUN.** Not "a key is already saved": the engine has no keyring at all. `keys_list` through the
+window: `cmd=keys_list ... error kind=environment`, the Keys screen: "Keys cannot be kept in the keyring on this computer. the keyring
+package is not installed Install the keyring extra: pip install leadforge[keyring]"; the same from the command line. The backend never
+reported itself (no backend is loaded). Settles it: the `keyring` extra in the lock and the bundle (finding 1 below), then the guarded
+proof (`keys_list` first; stop if a key is saved).
+
+**Gates on the final tree (under the heavy lock, one at a time).** `app/src-tauri`: `cargo fmt --check` exit 0; `cargo clippy
+--all-targets --locked -- -D warnings` exit 0; `cargo test --locked`: unit `14 passed`, `engine_dev` `4 passed`, `key_value_never_leaks`
+`2 passed` (now also the real engine refusing an unknown key name, marker absent), `real_engine_shapes` `1 ignored`, `run_seam` `6
+passed`, `standin_switch` `1 passed`, `version_agrees` `1 passed`; `permission-check` `3 passed` (capability, permission test, `build.rs`,
+lockfiles: unchanged, `git diff --stat` empty). `app/ui`: `tsc --noEmit` exit 0; `vite build` exit 0; `npm test` `tests 105, pass 104,
+fail 0, skipped 1` (the real-answer test, which needs `LF_REAL_ANSWERS`). New ruling assertions seen red once (the 0/0/0 rule removed
+and `keyBadge` ignoring `inUse`: `ruling 15 ... actual: true, expected: false`, `ruling 16 ... actual: 'Saved', expected: 'Saved, not
+in use'`), then restored. `cargo fmt` (the formatter) rewrote `selftest.rs` and `real_engine_shapes.rs` once.
+
+## Findings for the engine's authors (2026-11-12)
+
+1. **The keyring cannot work in any build.** `keys_list`, `key_save`, `key_remove` answer `environment`, "the keyring package is not
+   installed": `keyring` is the optional extra of `pyproject.toml` and is in neither `requirements.lock` nor `uv.lock`, so neither the
+   bundled engine (`build-engine-embed.ps1` installs `requirements.lock`) nor a venv made the CI way has it. Expected (L11a "After L9 is
+   in", item 2): the installer carries the extra. The window shows the engine's answer; the Keys screen cannot save a key. Not patched.
+2. Not a finding, noted: a run started by `window run_start` on a fresh workspace ends with `counts.purged` and
+   `counts.expiringIn30Days` null (allowed by the type; L11a's table names only runs not started by `run_start` as null).

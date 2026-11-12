@@ -19,11 +19,11 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use serde_json::Value;
 
-/// While the real `leadforge window` commands do not exist yet, the core starts the stand-in engine
-/// (`test-resources/standin/leadforge_window_standin.py`) with the same interpreter, flags, argv tail, stdin and
-/// stdout. THE SWITCH: set this to `false` (tests/standin_switch.rs then requires the stand-in's line out of
-/// tauri.bundle.conf.json, so it is no longer shipped).
-pub const STAND_IN: bool = true;
+/// The switch, now off (2026-11-12, engine 0.9.0 has the real `leadforge window` commands): the app and the bundle
+/// start the real engine. A release build cannot start the stand-in whatever this says: [`EngineProgram::bundled`]
+/// has no stand-in entry, and the stand-in is not in the bundle (tests/standin_switch.rs). It stays a test resource,
+/// reached only through `EngineProgram::standin`, which exists in debug builds and tests only.
+pub const STAND_IN: bool = false;
 
 /// Every engine command the core can run. The window's 21 commands, plus `Version` for the core's own use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -172,29 +172,43 @@ impl EngineProgram {
         }
     }
 
-    /// The engine in a release build: python.org's embeddable Python inside the app's resources.
+    /// The engine in a release build: python.org's embeddable Python inside the app's resources, always the real
+    /// `-m leadforge` (no stand-in entry exists here; the embeddable Python's `._pth` has no `import site`, so no
+    /// `.pth` file can add code to it either).
     pub fn bundled(resource_dir: &Path) -> Self {
         let engine = resource_dir.join("engine");
-        let standin = STAND_IN.then(|| engine.join("standin").join("leadforge_window_standin.py"));
-        Self::with_entry(engine.join("python").join("python.exe"), standin, "bundled")
+        Self::with_entry(engine.join("python").join("python.exe"), None, "bundled")
     }
 
-    /// The engine in a debug build: the worktree's `.venv`. Compiled into debug builds (and tests) only.
+    /// The stand-in engine (`test-resources/standin/`), for the core's tests of the cases the real engine does
+    /// not produce on demand (a refused start, a run that dies, a slow stop, a run that never stops). Debug builds
+    /// and tests only: a release build has no way to name it.
+    #[cfg(debug_assertions)]
+    pub fn standin() -> Self {
+        let here = Path::new(env!("CARGO_MANIFEST_DIR"));
+        Self::with_entry(
+            Self::dev_venv().program,
+            Some(
+                here.join("test-resources")
+                    .join("standin")
+                    .join("leadforge_window_standin.py"),
+            ),
+            "dev-standin",
+        )
+    }
+
+    /// The engine in a debug build: the worktree's `.venv`, the real `-m leadforge`. Compiled into debug builds
+    /// (and tests) only.
     #[cfg(debug_assertions)]
     pub fn dev_venv() -> Self {
         let here = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let standin = STAND_IN.then(|| {
-            here.join("test-resources")
-                .join("standin")
-                .join("leadforge_window_standin.py")
-        });
         let program = here
             .join("..")
             .join("..")
             .join(".venv")
             .join("Scripts")
             .join("python.exe");
-        Self::with_entry(program, standin, "dev-venv")
+        Self::with_entry(program, None, "dev-venv")
     }
 
     /// The real engine module, whatever [`STAND_IN`] says (the core's own `Version`).
@@ -1043,7 +1057,7 @@ mod tests {
     /// The time limit, end to end on a run that ignores everything: `stream-closed` says `timeout`.
     #[test]
     fn a_run_past_its_time_limit_closes_the_stream_with_timeout() {
-        let p = EngineProgram::dev_venv();
+        let p = EngineProgram::standin();
         let dir =
             std::env::temp_dir().join(format!("lf-window-unit-timeout-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -1111,6 +1125,15 @@ mod tests {
                 .join("python.exe")
         );
         assert!(p.prefix.contains(&OsString::from("-I")));
+        // the bundle starts the real engine, never a script: exactly the flags, then `-m leadforge`
+        assert_eq!(
+            p.prefix,
+            ["-X", "utf8", "-I", "-m", "leadforge"].map(OsString::from)
+        );
+        assert_eq!(
+            EngineProgram::dev_venv().prefix,
+            ["-X", "utf8", "-I", "-m", "leadforge"].map(OsString::from)
+        );
         let real = p.real();
         assert_eq!(real.prefix.last(), Some(&OsString::from("leadforge")));
     }

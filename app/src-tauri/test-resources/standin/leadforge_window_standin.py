@@ -309,12 +309,10 @@ def answer(name: str, s: dict, a: dict):  # noqa: C901 - one branch per command,
             raise Refused("input", "The campaign is not complete.", problems,
                           "Fill in the marked fields and check the plan again.")
         searches = len(d["kinds"]) * len(d["places"]) * 12
-        est = min(int(d["maxLeads"]), searches * 9)
         slug = "".join(c if c.isalnum() else "-" for c in f"{d['places'][0]}-{d['kinds'][0]}s".lower()).strip("-")
-        return {"campaign": slug, "searches": searches, "estimatedBusinesses": est, "estimatedSites": round(est * 0.92),
-                "estimatedMinutes": max(4, round(est * 0.21)),
-                "warnings": [f"The plan can find more than {d['maxLeads']} businesses; the run stops at {d['maxLeads']}."]
-                if est == d["maxLeads"] else [], "retentionMonths": s["months"]}
+        # ruling 15: a register is not counted before the run, so the three estimates are null
+        return {"campaign": slug, "searches": searches, "estimatedBusinesses": None, "estimatedSites": None,
+                "estimatedMinutes": None, "warnings": [], "retentionMonths": s["months"]}
     if name == "run_stop":
         run = s.get("run")
         if not run or run.get("runId") != a.get("runId") or run.get("state") != "running":
@@ -389,7 +387,8 @@ def answer(name: str, s: dict, a: dict):  # noqa: C901 - one branch per command,
         s["months"] = m
         return {"months": m, "min": 1, "max": 12}
     if name == "keys_list":
-        return list(s["keys"].values())
+        # ruling 16: inUse = saved and this workspace reads the keyring (the stand-in's always does)
+        return [{**k, "inUse": bool(k["saved"])} for k in s["keys"].values()]
     if name == "key_save":
         key = a.get("name")
         if key not in s["keys"]:
@@ -398,13 +397,13 @@ def answer(name: str, s: dict, a: dict):  # noqa: C901 - one branch per command,
             raise Refused("usage", "The key was not saved.", ["The key is empty."])
         # the value is dropped here on purpose: the stand-in keeps nothing, returns nothing, logs nothing
         s["keys"][key] = {"name": key, "saved": True, "savedAt": now()}
-        return s["keys"][key]
+        return {**s["keys"][key], "inUse": True}
     if name == "key_remove":
         key = a.get("name")
         if key not in s["keys"]:
             raise Refused("usage", "The key was not removed.", ["There is no such key."])
         s["keys"][key] = {"name": key, "saved": False, "savedAt": None}
-        return s["keys"][key]
+        return {**s["keys"][key], "inUse": False}
     if name == "settings_get":
         return settings_doc(s)
     if name == "settings_set":

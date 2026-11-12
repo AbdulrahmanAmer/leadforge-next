@@ -69,7 +69,8 @@ fn everything(p: &EngineProgram, args: Value, dir: &std::path::Path) -> String {
 #[test]
 fn the_key_value_appears_in_no_output() {
     let dir = workdir();
-    let p = EngineProgram::dev_venv();
+    // the stand-in pretends to keep the key (no real keyring is touched by a test)
+    let p = EngineProgram::standin();
     let cases = [
         (
             "saved",
@@ -88,6 +89,20 @@ fn the_key_value_appears_in_no_output() {
             "{what}: the log line was produced"
         );
     }
+    // the real engine refusing an unknown key name (refused before it looks for a keyring, so no keyring is touched)
+    let text = everything(
+        &EngineProgram::dev_venv(),
+        json!({"name": "no_such_key", "value": MARKER}),
+        &dir,
+    );
+    assert!(
+        !text.contains(MARKER),
+        "real engine, unknown key: the marker leaked:\n{text}"
+    );
+    assert!(
+        text.contains("error kind=usage"),
+        "real engine, unknown key: refused with kind usage:\n{text}"
+    );
     // the engine missing: the core's own error path
     let missing = EngineProgram {
         program: "Z:/nowhere/python.exe".into(),

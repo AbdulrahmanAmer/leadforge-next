@@ -509,7 +509,9 @@ async fn about(
 }
 
 pub fn run() {
-    let selftest = std::env::args().any(|a| a == "--selftest");
+    let args: Vec<String> = std::env::args().collect();
+    let walk = selftest::Walk::from_args(&args);
+    let selftest = walk.is_some();
     // A second copy asks the first to come to the front and exits before it opens a window or starts an engine.
     let Some(instance) = instance::claim(IDENTIFIER) else {
         return;
@@ -527,8 +529,10 @@ pub fn run() {
                 }
             }
             core.log(&format!(
-                "started (selftest={selftest}, stand-in engine={})",
-                engine::STAND_IN
+                "started (selftest={walk:?}, engine={})",
+                EngineProgram::locate(handle.path().resource_dir().ok().as_deref())
+                    .map(|p| p.origin)
+                    .unwrap_or("not found")
             ));
             let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                 .title("LeadForge")
@@ -539,8 +543,8 @@ pub fn run() {
             }
             builder.build()?;
             instance.watch_for_focus(handle.clone());
-            if selftest {
-                selftest::start(handle.clone());
+            if let Some(w) = walk {
+                selftest::start(handle.clone(), w);
             }
             Ok(())
         })

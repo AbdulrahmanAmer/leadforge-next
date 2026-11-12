@@ -79,8 +79,9 @@ fn sample(cmd: EngineCommand) -> Value {
 
 #[test]
 fn the_stand_in_answers_every_window_command() {
-    // with STAND_IN on this is the stand-in; after the switch the same test runs against the real commands
-    let p = EngineProgram::dev_venv();
+    // the stand-in (a test resource since the switch); the real commands' answers are checked by
+    // tests/real_engine_shapes.rs against the loopback fakes
+    let p = EngineProgram::standin();
     let dir = workdir("all");
     for cmd in EngineCommand::WINDOW {
         if cmd == EngineCommand::RunStart || cmd == EngineCommand::RunStop {
@@ -119,7 +120,7 @@ fn the_stand_in_answers_every_window_command() {
 
 #[test]
 fn a_run_streams_and_run_stop_beside_it_ends_it() {
-    let p = EngineProgram::dev_venv();
+    let p = EngineProgram::standin();
     let dir = workdir("run");
     let lines: Arc<Mutex<Vec<Value>>> = Arc::default();
     let handle: Arc<Mutex<Option<KillHandle>>> = Arc::default();
@@ -179,7 +180,7 @@ fn a_run_streams_and_run_stop_beside_it_ends_it() {
 
 #[test]
 fn the_core_kills_a_run_that_does_not_stop() {
-    let p = EngineProgram::dev_venv();
+    let p = EngineProgram::standin();
     let dir = workdir("kill");
     let handle: Arc<Mutex<Option<KillHandle>>> = Arc::default();
     let h2 = handle.clone();

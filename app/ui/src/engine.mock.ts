@@ -43,6 +43,14 @@ export interface MockOptions {
   runEndsNull?: boolean;
   /** The clock the mock reads. */
   now?: () => Date;
+  /** A register campaign's plan: `null` (default, ruling 15: not estimated) or `zero` (today's engine 0.9.0: 0, 0, 0). */
+  estimates?: "null" | "zero";
+  /** The workspace does not read the keyring (`registry.keyring: false`): a saved key is not in use, `key_save` refuses. */
+  keyringOff?: boolean;
+  /** Key statuses without `inUse` (today's engine 0.9.0). */
+  inUseMissing?: boolean;
+  /** `about` finds no notices file: `licence` null, no licences. */
+  noLicence?: boolean;
 }
 
 const FIXED_NOW = "2026-11-12T10:24:00Z";
@@ -224,6 +232,11 @@ export function createMockEngine(options: MockOptions = {}): Engine {
     companies_house_key: { name: "companies_house_key", saved: !options.empty, savedAt: options.empty ? null : "2026-11-03T08:50:00Z" },
     opencorporates_token: { name: "opencorporates_token", saved: false, savedAt: null },
   };
+  // ruling 16: `inUse` is saved AND the workspace reads the keyring; today's engine (`inUseMissing`) has no such field
+  const keyOut = (k: KeyStatus): KeyStatus => {
+    const { inUse: _drop, ...plain } = k;
+    return options.inUseMissing ? { ...plain } : { ...plain, inUse: k.saved && !options.keyringOff };
+  };
   let run: { status: RunStatus; stopped: boolean; unknown: boolean; onEvent: (event: RunMessage) => void } | null = null;
   /** A status the way the engine sends it when it does not know: campaign, done and the clean-up counts null. */
   const shown = (status: RunStatus, unknown: boolean): RunStatus =>
@@ -267,13 +280,12 @@ export function createMockEngine(options: MockOptions = {}): Engine {
       }
       if (problems.length) throw new EngineError("createCampaign", "input", "The campaign is not complete.", problems, "Fill in the marked fields and check the plan again.");
       const searches = draft.kinds.length * draft.places.length * 12;
-      const estimated = Math.min(draft.maxLeads, searches * 9);
       const slug = `${draft.places[0]}-${draft.kinds[0]}s`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      // every source the window offers is a register, which the engine does not count before the run (ruling 15)
+      const est = options.estimates === "zero" ? 0 : null;
       return {
-        campaign: slug, searches, estimatedBusinesses: estimated, estimatedSites: Math.round(estimated * 0.92),
-        estimatedMinutes: Math.max(4, Math.round(estimated * 0.21)),
-        warnings: estimated === draft.maxLeads ? [`The plan can find more than ${draft.maxLeads} businesses; the run stops at ${draft.maxLeads}.`] : [],
-        retentionMonths: months,
+        campaign: slug, searches, estimatedBusinesses: est, estimatedSites: est, estimatedMinutes: est,
+        warnings: [], retentionMonths: months,
       };
     },
 
@@ -438,21 +450,26 @@ export function createMockEngine(options: MockOptions = {}): Engine {
 
     async listKeys(): Promise<KeyStatus[]> {
       await begin("listKeys", 350);
-      return Object.values(keys).map((k) => ({ ...k }));
+      return Object.values(keys).map(keyOut);
     },
 
     async saveKey(name: KeyName, value: string): Promise<KeyStatus> {
       await begin("saveKey", 600);
       if (!value.trim()) throw new EngineError("saveKey", "usage", "The key was not saved.", ["The key is empty."], null);
+      if (options.keyringOff) {
+        throw new EngineError("saveKey", "input", "The key was not saved: this workspace is set not to read the keyring.",
+          ["registry.keyring: false in this workspace's leadforge.yaml, so the engine would not use a saved key"], "Set registry.keyring to true in leadforge.yaml, then save the key again.");
+      }
       // the value is dropped here on purpose: nothing keeps it, nothing returns it
       keys[name] = { name, saved: true, savedAt: stamp() };
-      return { ...keys[name] };
+      return keyOut(keys[name]);
     },
 
     async removeKey(name: KeyName): Promise<KeyStatus> {
       await begin("removeKey", 400);
+      // remove always works, whatever the keyring switch says
       keys[name] = { name, saved: false, savedAt: null };
-      return { ...keys[name] };
+      return keyOut(keys[name]);
     },
 
     async getSettings(): Promise<Settings> {
@@ -476,8 +493,8 @@ export function createMockEngine(options: MockOptions = {}): Engine {
     async about(): Promise<About> {
       await begin("about", 400);
       return {
-        engineVersion: "0.8.0", licence: "MIT",
-        licences: options.empty ? [] : [
+        engineVersion: "0.9.0", licence: options.noLicence ? null : "MIT",
+        licences: options.empty || options.noLicence ? [] : [
           { name: "React", version: "19.3.1", licence: "MIT", notice: "Copyright (c) Meta Platforms, Inc. and affiliates. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files, to deal in the Software without restriction." },
           { name: "Tauri", version: "2.x", licence: "Apache-2.0 OR MIT", notice: "Copyright (c) The Tauri Programme within The Commons Conservancy. Licensed under Apache-2.0 or MIT, at your option." },
           { name: "Python", version: "3.12", licence: "PSF-2.0", notice: "Copyright (c) Python Software Foundation. Licensed under the Python Software Foundation License Version 2." },

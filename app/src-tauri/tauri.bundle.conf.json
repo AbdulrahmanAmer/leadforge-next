@@ -1,8 +1,7 @@
 {
   "bundle": {
     "resources": {
-      "../../build/engine-embed/python/": "engine/python/",
-      "test-resources/standin/leadforge_window_standin.py": "engine/standin/leadforge_window_standin.py"
+      "../../build/engine-embed/python/": "engine/python/"
     }
   }
 }

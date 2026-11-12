@@ -5,6 +5,7 @@ import type { RunView, ScreenId } from "../App";
 import { Button, Card, CardHeader, EmptyState, ErrorBanner, Field, KeyValueList, Readout, ReadoutGroup, SegmentedControl, Skeleton, StatusBanner, TextArea, TextInput, cx } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { formatCount, formatDuration, useAction, useLoad } from "../lib";
+import { planFigures } from "../follow.ts";
 
 const SOURCES: Record<SourceId, { name: string }> = {
   dvsa: { name: "MOT test stations" },
@@ -163,24 +164,32 @@ export function NewCampaign({ engine, run, onStart, go, autoPlan, draft: sceneNa
           {!plan.busy && !plan.error && !plan.result && (
             <EmptyState icon="search" title="The plan appears here" detail="How many searches, about how long, and how many businesses at most. Nothing is collected until you start the run." />
           )}
-          {!plan.busy && plan.result && <Plan plan={plan.result} running={running} onStart={() => onStart(plan.result!.campaign)} go={go} />}
+          {!plan.busy && plan.result && <Plan plan={plan.result} source={draft.source} cap={draft.maxLeads} running={running} onStart={() => onStart(plan.result!.campaign)} go={go} />}
         </Card>
       </div>
     </div>
   );
 }
 
-function Plan({ plan, running, onStart, go }: { plan: CampaignPlan; running: boolean; onStart: () => void; go: (s: ScreenId) => void }) {
+function Plan({ plan, source, cap, running, onStart, go }: { plan: CampaignPlan; source: SourceId; cap: number; running: boolean; onStart: () => void; go: (s: ScreenId) => void }) {
+  const fig = planFigures(plan, source, cap);
   return (
     <>
       <CardHeader title="The plan" detail={<span className="lf-mono">{plan.campaign}</span>} />
-      <ReadoutGroup>
-        <Readout label="Businesses, at most" value={formatCount(plan.estimatedBusinesses)} />
-        <Readout label="About" value={formatDuration(plan.estimatedMinutes * 60).replace(" min", "")} unit="min" />
-      </ReadoutGroup>
+      {fig.counted ? (
+        <ReadoutGroup>
+          <Readout label="Businesses, at most" value={formatCount(fig.businesses)} />
+          <Readout label="About" value={formatDuration(fig.minutes * 60).replace(" min", "")} unit="min" />
+        </ReadoutGroup>
+      ) : (
+        <ReadoutGroup>
+          <Readout label="Businesses, up to" value={formatCount(fig.upTo)} />
+        </ReadoutGroup>
+      )}
+      {!fig.counted && <p className="lf-note"><Icon name="info" size={16} />{fig.line}</p>}
       <KeyValueList rows={[
         ["Searches in the register", formatCount(plan.searches)],
-        ["Websites to read", formatCount(plan.estimatedSites)],
+        ...(fig.counted ? [["Websites to read", formatCount(fig.sites)] as [string, string]] : []),
         ["Kept for", `${plan.retentionMonths} months, then deleted`],
       ]} />
       {plan.warnings.map((w) => (

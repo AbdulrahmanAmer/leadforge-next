@@ -20,9 +20,14 @@ $p = Start-Process -FilePath $Setup -ArgumentList '/S', '/NS', "/D=$Dir" -PassTh
 $files = @(Get-ChildItem -Recurse -File $Dir -ErrorAction SilentlyContinue)
 "installed: {0} files, {1:N1} MB" -f $files.Count, (($files | Measure-Object -Sum Length).Sum / 1MB)
 
-# The installed app walks its screens on the bundled engine (about 40 s of window), pictures in %TEMP%\lf-install-shots.
+# The installed app walks its screens on the REAL bundled engine (about 40 s of window), pictures in %TEMP%\lf-install-shots.
+# It is the SHORT walk (--selftest): the incomplete form refused by the engine, a plan accepted, then every screen's data command.
+# It leaves out the run, the sheet, forget, suppress, retention and purge: a run needs the fake world's guard and resolver inside
+# the engine, and the bundled Python cannot load it (its python312._pth has no `import site`), so a run there would reach for the
+# real registers. The whole campaign walk is `selftest-window.ps1 -Campaign` on a debug build (docs/slices/L11-window.md).
+# The walk's home and workspace are the throwaway D:\Temp\lf-selftest (registers on 127.0.0.1), removed afterwards.
 & (Join-Path $PSScriptRoot 'selftest-window.ps1') -Exe $exe -Shots (Join-Path $env:TEMP 'lf-install-shots') |
-    Select-String -Pattern 'origin=bundled|SELFTEST|probe|shots taken|app exit code' | ForEach-Object { $_.Line }
+    Select-String -Pattern 'engine=bundled|origin=bundled|SELFTEST|probe|shots taken|app exit code|expectations missed|processes left|throwaway folder left' | ForEach-Object { $_.Line }
 $selftest = $LASTEXITCODE
 "installed app self-test exit: $selftest"
 

@@ -35,7 +35,15 @@ const NULLABLE_FIELDS = [
   "RunStatus.campaign", "RunStatus.done", "RunCounts.purged", "RunCounts.expiringIn30Days",
   "Campaign.name", "Campaign.source", "Campaign.keptUntil",
   "Person.source", "Person.foundAt", "Person.campaign",
+  // ruling 15 (2026-11-12): a register campaign is not estimated
+  "CampaignPlan.estimatedBusinesses", "CampaignPlan.estimatedSites", "CampaignPlan.estimatedMinutes",
 ];
+
+test("engine.ts: rulings 15 and 16 and the licence: the estimates and About.licence are nullable, KeyStatus.inUse is optional", () => {
+  for (const f of ["estimatedBusinesses", "estimatedSites", "estimatedMinutes"]) assert.ok(TYPES.CampaignPlan[f].nullable, f);
+  assert.ok(TYPES.About.licence.nullable, "About.licence");
+  assert.deepEqual(TYPES.KeyStatus.inUse, { optional: true, nullable: false }, "TIGHTEN LATER: required once the follow-up lands");
+});
 
 test("engine.ts: the types hold the decided nullable fields, and theme, accent and windowVersion are gone", () => {
   for (const key of NULLABLE_FIELDS) {
@@ -51,7 +59,11 @@ test("engine.ts: the types hold the decided nullable fields, and theme, accent a
 function exact(value, type, where, seen) {
   assert.ok(TYPES[type], `no type ${type}`);
   assert.ok(value !== null && typeof value === "object" && !Array.isArray(value), `${where}: an object`);
-  assert.deepEqual(Object.keys(value).sort(), Object.keys(TYPES[type]).sort(), `${where}: exactly the fields of ${type}`);
+  // an optional field (`name?:`) may be absent: only `KeyStatus.inUse`, until the engine's follow-up is on master
+  const required = Object.entries(TYPES[type]).filter(([, i]) => !i.optional).map(([f]) => f);
+  const extra = Object.keys(value).filter((f) => !(f in TYPES[type]));
+  assert.deepEqual(extra, [], `${where}: fields that are not in ${type}`);
+  assert.deepEqual(required.filter((f) => !(f in value)), [], `${where}: fields of ${type} missing`);
   for (const [field, info] of Object.entries(TYPES[type])) {
     if (value[field] === null) {
       assert.ok(info.nullable, `${where}.${field} is null but ${type}.${field} is not nullable`);
@@ -246,4 +258,86 @@ test("the stand-in refuses settings_set carrying a key the engine does not own (
   }
   // refused whole: nothing of the patch was applied
   assert.equal(ok("settings_get", {}, cwd).openSheetWhenDone, true);
+});
+
+/* ------------------------------------------------------------------- the real engine (2026-11-12) */
+// The 21 real commands' answers, collected through the core's own code path (app/src-tauri/tests/real_engine_shapes.rs,
+// run by packaging/real-shapes.ps1 against a throwaway workspace and the repository's loopback fakes) into one file.
+// Skipped when LF_REAL_ANSWERS is not set (CI has no fakes running). Every difference is listed, not only the first.
+const ERROR_KINDS = ["failed", "usage", "environment", "input", "source", "keyring", "missing"];
+const REAL = process.env.LF_REAL_ANSWERS;
+
+/** Every shape finding in one collected answer set, as "label | field | expected | got". */
+export function realFindings(answers) {
+  const findings = [];
+  const check = (fn) => { try { fn(); } catch (e) { findings.push(String(e.message).split("\n")[0]); } };
+  const seen = new Set();
+  const one = (label, type) => {
+    const a = answers[label];
+    if (!a) { findings.push(`${label} | (answer) | collected | not collected`); return; }
+    if (!a.ok) { findings.push(`${label} | (answer) | ${type} | error ${JSON.stringify(a.doc).slice(0, 300)}`); return; }
+    if (type === "null") { if (a.doc !== null) findings.push(`${label} | (answer) | null | ${JSON.stringify(a.doc).slice(0, 120)}`); return; }
+    const many = type.endsWith("[]");
+    const t = many ? type.slice(0, -2) : type;
+    const list = many ? a.doc : [a.doc];
+    if (many && !Array.isArray(list)) { findings.push(`${label} | (answer) | ${type} | ${typeof a.doc}`); return; }
+    list.forEach((v, i) => {
+      const where = many ? `${label}[${i}]` : label;
+      check(() => exact(v, t, where, seen));
+      if (t === "RunStatus" && v?.counts) check(() => exact(v.counts, "RunCounts", `${where}.counts`, seen));
+      if (t === "Campaign" && v?.sheet) { check(() => exact(v.sheet, "Sheet", `${where}.sheet`, seen)); (v.sheet.files ?? []).forEach((f, j) => check(() => exact(f, "SheetFile", `${where}.sheet.files[${j}]`, seen))); }
+      if (t === "Sheet") (v?.files ?? []).forEach((f, j) => check(() => exact(f, "SheetFile", `${where}.files[${j}]`, seen)));
+      if (t === "PeoplePage") (v?.people ?? []).forEach((p, j) => check(() => exact(p, "Person", `${where}.people[${j}]`, seen)));
+      if (t === "About") (v?.licences ?? []).forEach((l, j) => check(() => exact(l, "Licence", `${where}.licences[${j}]`, seen)));
+    });
+  };
+  const expected = {
+    settings_get: "Settings", campaign_create: "CampaignPlan", run_start_first_handle: "RunHandle", run_start_handle: "RunHandle", run_end_status: "RunStatus",
+    run_status: "RunStatus", run_status_latest: "RunStatus", run_stop: "RunStatus", run_stop_end_status: "RunStatus",
+    campaigns_list: "Campaign[]", sheet_export: "Sheet", people_list: "PeoplePage", person_forget: "ForgetResult",
+    address_suppress: "SuppressResult", purge_report: "PurgeReport", purge_apply: "PurgeReport", retention_get: "Retention",
+    retention_set: "Retention", keys_list: "KeyStatus[]", key_save: "KeyStatus", key_remove: "KeyStatus",
+    settings_set: "Settings", about: "About", purge_everything: "PurgeEverythingResult", sheet_open: "null",
+  };
+  for (const [label, type] of Object.entries(expected)) {
+    if (answers[label]?.expectError) continue;
+    one(label, type);
+  }
+  // the answers that are errors on purpose, and every error document: exactly {kind, message, details, next}
+  for (const [label, a] of Object.entries(answers)) {
+    if (!a || a.ok || typeof a !== "object" || !("doc" in a)) continue;
+    const d = a.doc;
+    check(() => assert.deepEqual(Object.keys(d ?? {}).sort(), ["details", "kind", "message", "next"], `${label} | error document | kind, message, details, next | ${Object.keys(d ?? {}).join(", ")}`));
+    check(() => assert.ok(ERROR_KINDS.includes(d?.kind), `${label} | kind | one of ${ERROR_KINDS.join(" ")} | ${d?.kind}`));
+  }
+  // the stream: every progress line, and the end events' status
+  for (const [i, e] of (answers.run_start_events ?? []).entries()) {
+    const keys = { progress: ["at", "done", "etaSeconds", "message", "stage", "total", "type"], "stage-done": ["at", "stage", "summary", "type"],
+      notice: ["at", "text", "type"], finished: ["status", "type"], stopped: ["status", "type"], failed: ["error", "status", "type"] }[e.type];
+    if (!keys) { findings.push(`run_start line ${i + 2} | type | a RunEvent type | ${e.type}`); continue; }
+    check(() => assert.deepEqual(Object.keys(e).sort(), keys, `run_start line ${i + 2} (${e.type}) | fields | ${keys.join(", ")} | ${Object.keys(e).sort().join(", ")}`));
+  }
+  return findings;
+}
+
+test("the REAL engine's 21 commands answer in exactly the screens' types (LF_REAL_ANSWERS)", { skip: !REAL && "LF_REAL_ANSWERS not set" }, () => {
+  const answers = JSON.parse(readFileSync(join(REAL, "answers.json"), "utf8"));
+  const findings = realFindings(answers);
+  for (const f of findings) console.log(`FINDING ${f}`);
+  for (const [label, a] of Object.entries(answers)) {
+    if (a?.expectError) console.log(`ANSWERED WITH AN ERROR (on purpose or for want of a keyring, so its type was not seen): ${label} ${JSON.stringify(a.doc).slice(0, 200)}`);
+  }
+  assert.deepEqual(findings, [], `${findings.length} finding(s)`);
+});
+
+test("the real-answer check can fail: a planted extra field, a missing field and a wrong null are each a finding", () => {
+  const good = { ok: true, doc: { months: 6, min: 1, max: 12 } };
+  const answers = { retention_get: good, retention_set: { ok: true, doc: { months: 6, min: 1, max: 12, extra: 1 } },
+    purge_everything: { ok: true, doc: {} }, sheet_open: { ok: true, doc: null },
+    about: { ok: true, doc: { engineVersion: null, licence: null, licences: [] } } };
+  const f = realFindings(answers);
+  assert.ok(f.some((x) => x.startsWith("retention_set: fields that are not in Retention")), f.join("\n"));
+  assert.ok(f.some((x) => x.startsWith("purge_everything: fields of PurgeEverythingResult missing")), f.join("\n"));
+  assert.ok(f.some((x) => x.includes("about.engineVersion is null")), f.join("\n"));
+  assert.ok(!f.some((x) => x.includes("about.licence")), "About.licence may be null");
 });

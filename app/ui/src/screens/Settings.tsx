@@ -5,6 +5,7 @@ import { WINDOW_VERSION } from "../version.ts";
 import { Button, Card, CardHeader, EmptyState, ErrorBanner, KeyValueList, Skeleton, SegmentedControl, Switch, cx } from "../components/ui";
 import { Logo } from "../components/Logo";
 import { useAction, useLoad } from "../lib";
+import { licenceLine } from "../follow.ts";
 
 const SOURCE_NAME: Record<SourceId, string> = { dvsa: "MOT test stations", companies_house: "Companies House" };
 
@@ -93,13 +94,15 @@ export function SettingsScreen({ engine, theme, accent, onTheme, onAccent, initi
               <p>Finds businesses in public registers, reads their own websites for contact details, and writes a sheet. The data stays on this computer.</p>
               {about.state === "error" && <ErrorBanner compact error={about.error} onRetry={about.reload} />}
               {/* the window's version is the build's own constant: it shows even when the engine does not answer */}
-              <KeyValueList rows={[["Window", WINDOW_VERSION], ["Engine", about.data ? about.data.engineVersion : about.state === "loading" ? "asking the engine" : "not answered"], ...(about.data ? [["Licence", about.data.licence] as [string, string]] : [])]} />
+              <KeyValueList rows={[["Window", WINDOW_VERSION], ["Engine", about.data ? about.data.engineVersion : about.state === "loading" ? "asking the engine" : "not answered"], ...(about.data ? [["Licence", licenceLine(about.data)] as [string, string]] : [])]} />
             </div>
           </Card>
           <Card label="Licences" padding="none">
             <div className="lf-people__pad"><CardHeader title="Licences" detail="The software that ships inside LeadForge, with the notice each one asks for." /></div>
             {about.state === "loading" && <div className="lf-people__pad"><Skeleton lines={4} label="Loading the licences" /></div>}
-            {about.data && about.data.licences.length === 0 && <EmptyState icon="info" title="No notices in this build" detail="The installer adds the notices file. A development build has none." />}
+            {about.data && about.data.licences.length === 0 && (about.data.licence === null
+              ? <EmptyState icon="info" title="The licence notices were not found" detail="The engine did not find the notices file in this installation. The installer carries it; reinstalling LeadForge puts it back." />
+              : <EmptyState icon="info" title="No notices in this build" detail="The installer adds the notices file. A development build has none." />)}
             {about.data && about.data.licences.length > 0 && (
               <ul className="lf-licences">
                 {about.data.licences.map((l) => (

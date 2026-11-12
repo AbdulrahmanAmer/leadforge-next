@@ -47,6 +47,9 @@ Two things `run` does by itself today, which the shell has to settle before row 
   `export.auto_open` is true (pipeline.py:550 to 553). That is the "Open the sheet when a run finishes" switch in Settings,
   so the engine, not the window, does the opening after a run.
 
+**Since 2026-11-12 the table above is history:** every row is the engine's own `leadforge window <name>` command (engine 0.9.0,
+`src/leadforge/window/`), and the window starts that real engine; the stand-in is a test resource only. The contract below holds.
+
 ## The seam's contract (decisions of 2026-11-12, final)
 
 The real commands are `leadforge window <name>`: the arguments as one JSON document on stdin, one JSON document on stdout and
@@ -105,6 +108,17 @@ exit 0, or a non-zero exit and `{"kind","message","details":[...],"next":null|st
 - **Nullable:** `RunStatus.campaign`, `RunStatus.done`, `RunCounts.purged`, `RunCounts.expiringIn30Days`; `Campaign.name`,
   `Campaign.source`, `Campaign.keptUntil`; `Person.source`, `Person.foundAt`, `Person.campaign`. What each null shows is the table
   in `docs/slices/L11-window.md`, "Seam decisions of 2026-11-12".
+- **Rulings 15 and 16 (2026-11-12, after the engine's commands were merged; engine side on `slice/L11a-follow`).**
+  15: `CampaignPlan.estimatedBusinesses`, `estimatedSites`, `estimatedMinutes` are `number | null`; null means not estimated (a
+  register campaign: `dvsa`, `companies_house`). The plan card then says "Up to <the cap> businesses; this register is not counted
+  before the run." and shows no time and no websites figure. 16: `KeyStatus.inUse: boolean` = saved AND this workspace reads the
+  keyring (`registry.keyring` in its `leadforge.yaml`); saved and not in use reads "Saved, but this workspace is set not to read
+  the keyring: registry.keyring in the workspace's leadforge.yaml."; `key_save` then refuses with kind `input` naming
+  `registry.keyring`, shown on the key's field; `key_remove` always works. **Until the follow-up is on `master` (lines to remove
+  then, `app/ui/src/follow.ts`):** a register plan whose three estimates are all 0 reads as not estimated (engine 0.9.0 answers 0);
+  `inUse` missing reads as true (engine 0.9.0 sends none; `KeyStatus.inUse` is optional in `engine.ts` until then).
+- **`About.licence: string | null`.** Null: the engine did not find the notices file; the About page says "The licence notices
+  were not found in this installation." and its licence list says so, never an empty box.
 
 ## Tauri commands (for the shell's author)
 

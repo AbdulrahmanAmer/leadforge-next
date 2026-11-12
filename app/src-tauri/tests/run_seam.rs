@@ -29,7 +29,7 @@ struct Started {
 }
 
 fn start(campaign: &str, dir: &Path) -> Started {
-    let p = EngineProgram::dev_venv();
+    let p = EngineProgram::standin();
     let input =
         EngineInput::from_args(&json!({"args": {"campaign": campaign, "resume": false}})).unwrap();
     let relayed: Arc<Mutex<Vec<Value>>> = Arc::default();
@@ -66,7 +66,7 @@ fn start(campaign: &str, dir: &Path) -> Started {
 }
 
 fn stop(dir: &Path, run: &KillHandle, wait: Duration) -> Value {
-    let p = EngineProgram::dev_venv();
+    let p = EngineProgram::standin();
     let input = EngineInput::from_args(&json!({"runId": "r-20261112-5e90"})).unwrap();
     let out =
         engine::run(&p, EngineCommand::RunStop, &input, dir, |_| {}, |_| {}).expect("run_stop ran");
