@@ -206,7 +206,10 @@ See [`docs/07-compliance.md`](docs/07-compliance.md) for the practical GDPR/PECR
   elsewhere with `--out`, cannot be reached from here.
 - **Data expires after 12 months** (`retention.months`, 1 to 12). A business and everything attached to it is deleted when it is 12 months
   past the run that first found it (a refresh does not renew): its records, and every file under the data folder's own `exports` and `cache`
-  that holds it (a sheet is deleted whole). Files you wrote **outside** the data folder with `--out` are yours and are never touched.
+  that holds it. A sheet is deleted whole, so the rows it holds of businesses that have **not** expired go with it (also a sheet that
+  only names a business whose name contains an expired one's, such as "Brindlewick Motors Ltd" for "Brindlewick Motors"); their records stay in the
+  workspace, and `leadforge export` writes the latest run's sheet again. `leadforge purge` lists the files before anything goes.
+  Files you wrote **outside** the data folder with `--out` are yours and are never touched.
 - `purge` runs at the start of every `run`, with three protections: the first run after an upgrade only reports (records and files);
   every run says how many records and files expire in the next 30 days; an automatic purge never deletes when more than half of the
   businesses, or more than half of the files in `exports` and `cache`, are past the limit (it stops and names `leadforge purge --apply`).
