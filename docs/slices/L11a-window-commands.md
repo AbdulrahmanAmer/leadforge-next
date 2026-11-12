@@ -1124,3 +1124,124 @@ For the lead:
   start-of-run protection and run_start keeps it; an explicit purge_apply has no such stop, as `leadforge purge --apply`.
 - Wording: `scripts/e2e_window_run.py` line 3 names Maps in a docstring ("registers and Maps listings"); it describes the fake
   world, which on master holds no Maps provider. Not changed by the reader (one word in a test script).
+
+# Build 4: rulings 15 and 16 (run `l11a-follow`, 2026-11-12, branch `slice/L11a-follow` from master `8ea0ec0`)
+
+The lead's rulings of 2026-11-12 13:33 on "Seam changes proposed (2)":
+15. ACCEPTED as nullable: CampaignPlan.estimatedBusinesses, estimatedSites and estimatedMinutes become number | null, and for a
+    register campaign (dvsa, companies_house) the engine answers null for each, never 0. A text-search campaign keeps its numbers.
+    Estimating register queries stays an open item for a later slice.
+16. Each KeyStatus keeps `saved` = what the keyring really holds (so a stored key can always be seen and removed) and gains
+    `inUse: boolean` = saved AND this workspace reads the keyring (registry.keyring is on). key_save refuses with `input` naming
+    `registry.keyring`, and a `next` saying how to switch it on, while the switch is off; key_remove always works, switch on or
+    off. The window does not offer the switch in this release. `inUse` is always present.
+
+## What must hold (written before the code; the diff was read against it after)
+
+- 15: `campaign_create` answers `estimatedBusinesses`, `estimatedSites`, `estimatedMinutes` = null when its plan holds register
+  queries only: a Companies House campaign (target mode `company`: every query is a Companies House search) or a plan whose every
+  query names a register provider (`PlannedQuery.provider`, today `dvsa`). A plan that holds text-search queries (a workspace that
+  also configures a text-search provider) keeps the three numbers from `grid.plan_counts` as before. `searches`, `warnings`,
+  `retentionMonths` do not change. The command line's `plan` is not touched.
+- 16: `inUse` = `saved` and `cfg.registry.keyring` of this workspace (`load_config`, so `LEADFORGE_REGISTRY__KEYRING` counts as it
+  does for a run). `saved` keeps reading through L9's `config._keyring_get`. `key_save` with the switch off: `input`, a detail
+  naming `registry.keyring`, a `next` with `leadforge config set registry.keyring true`, and the backend's `set_password` is never
+  called. The `keyring` package check comes first, as before (no package: `environment`, whatever the switch). `key_remove` and
+  `keys_list` work with the switch on or off.
+- Tests: a dvsa plan and a companies_house plan answer null three times, a plan with text-search queries answers numbers; switch on:
+  a saved key is `saved: true, inUse: true`; switch off: `saved: true, inUse: false`, key_save refused as above and the fake store
+  unchanged, key_remove removes; the shape check (`TYPES["KeyStatus"]`) holds `inUse` as a present boolean in every KeyStatus.
+- The key commands' goldens and the shape tests run with the switch on (conftest's default turns it off for every test).
+
+## The two changed types, final keys (P = present, never null; N = present, may be null)
+
+| Type | Keys |
+|---|---|
+| CampaignPlan | campaign P, searches P, estimatedBusinesses N, estimatedSites N, estimatedMinutes N, warnings P, retentionMonths P |
+| KeyStatus | name P, saved P, inUse P (boolean), savedAt N (always null) |
+
+## Built in Build 4, and the diff read against "What must hold"
+
+- `commands.campaign_create`: `registers_only = icp.target.mode == "company" or all(q.provider for q in queries)`; the three
+  estimates are None when it holds, else `plan_counts` as before. Holds: Companies House compiles to mode `company`
+  (`build_company_plan`, every query provider None, so the mode test is needed); `build_plan` with only register providers
+  returns the register queries alone (each has `provider`); a text-search provider beside `dvsa` adds queries without
+  `provider`. `searches`, `warnings`, `retentionMonths` unchanged; `cli.plan` and `grid.plan_counts` not touched.
+- `keys.Keys(backend, reads_keyring)`; `status` returns `{name, saved, inUse, savedAt}` with `inUse = saved and reads_keyring`;
+  `saved` still from `config._keyring_get`. `commands._keys` reads `load_cfg().registry.keyring` (environment included, as
+  `load_config` does for a run) and then `keys.make_keys(reads_keyring)`, whose `default_backend()` still gives `environment`
+  without the package (`test_key_commands_without_the_keyring_package_answer_environment` unchanged and green with the switch
+  off). `key_save` checks the switch after the name, the value and the package, and before `_in_keyring`, so `set_password` is
+  never called while it is off. `key_remove` and `keys_list` have no switch check. Holds.
+- Tests: `test_a_register_plan_answers_null_estimates_and_a_text_search_plan_numbers`,
+  `test_in_use_follows_the_keyring_switch_and_key_save_is_refused_while_it_is_off`; `TYPES` gains `(NULL, N)` for the three
+  estimates and `inUse: B`; the golden/shape test and the screens test turn the switch on for the three key commands;
+  `test_a_planted_key_appears_in_no_output_and_no_log` uses `keyring_fake` (switch on: it saves); the stale `make_keys` stand-in
+  in the stdout test takes the new argument. Fake keyring only.
+- Goldens changed (4): `campaign_create.json` (three estimates 0 -> null), `keys_list.json`, `key_save.json`, `key_remove.json`
+  (`inUse` added). No other golden, no command-line golden, no plugin contract file.
+- Decision of this run: "register campaign" is read from the plan, not from the draft's `source`. The window's draft always
+  names a register (`dvsa` or `companies_house`), so a text-search plan from the window is a `dvsa` draft in a workspace that also
+  configures a text-search provider; its numbers estimate the text searches only (the register part is not estimated, as in
+  `leadforge plan`).
+- Not changed: `_plan_warnings` still reads `plan_counts` for a register plan (a Companies House plan counts its searches as
+  text searches there, as before); `engine.ts` lives with the window, not here (its CampaignPlan and KeyStatus need the same two
+  changes on the window's side).
+
+## Open items (agreed with the lead, 2026-11-12; word for word from the lead's note)
+
+Open items of the window commands, as agreed with the lead on 2026-11-12:
+- After a stop, a worker waits only for its step in flight: at most 52.6 s under the defaults (one rendered page with its NER). The window waits 90 s. Two exceptions are UNPROVEN as wall clock: the wait for the render gate (enrich.browser_concurrency 4; no setting bounds it), and httpx's timeouts being per phase and per chunk, so a server that answers slowly but steadily can pass the configured figure (it would need a total deadline per fetch).
+- Without a stop, one whole business can take 338.8 s under the defaults (crawl 53.6 s + NER 30 s x 6 pages = 180 s + rendered fallback 105.2 s), before render-gate waits.
+- people_list with a search: 13.27 s was measured once on 10,000 people and NOT reproduced (0.84 s and 1.05 s later). Nothing was built; no index, no query change.
+- A register campaign's plan is not estimated (the three estimates are null); estimating register queries is for a later slice.
+- The window does not offer the registry.keyring switch in this release.
+- campaign_create never ran against the real geocoder; the real keyring of a machine was never touched by a test.
+
+## Review of Build 4 (run `l11a-follow-read`, the independent reader, 2026-11-12, STRIKERFORCE)
+
+Read: the diff of `4cb675a` against `origin/master` `8ea0ec0` (master is in the branch), against rulings 15 and 16 and Build 4's
+"What must hold". Python 3.12 venv from `requirements.lock`; pytest 9.2.0, pytest-timeout 2.4.0, pytest-xdist 3.8.0 from
+`uv.lock`'s hashes; ruff 0.17.3 (the lock's 0.17.4 is under 7 days old, so the reader took the release before it).
+
+- 15, from a real process: `python -m leadforge window campaign_create` in a made-up workspace (keyring switch off, a box for the
+  area, so no geocoder), the reader's own probe:
+
+  ```
+  dvsa: exit 0 searches=1 {"estimatedBusinesses": null, "estimatedSites": null, "estimatedMinutes": null}
+  companies_house: exit 0 searches=1 {"estimatedBusinesses": null, "estimatedSites": null, "estimatedMinutes": null}
+  dvsa+fakelist (text search): exit 0 searches=2 {"estimatedBusinesses": 120, "estimatedSites": 77, "estimatedMinutes": 5}
+  ```
+
+  Present and null for both registers, never 0 and never absent; numbers for a plan with text searches. Holds.
+- 16, by reading and by the tests with the fake backend: `inUse = saved and reads_keyring`, present in every KeyStatus (also
+  `false` for a key not saved; `TYPES["KeyStatus"]` holds it as a present boolean); switch on `(True, True)`, switch off
+  `(True, False)`; `key_save` with the switch off answers `input`, a detail `registry.keyring: off in this workspace`, a `next`
+  with `leadforge config set registry.keyring true`, and the fake store equals what it was before; `key_remove` with the switch
+  off removes (store empty). The switch is read through `load_config`, so the environment variable counts as for a run. Holds.
+- Nothing else moved: files changed are `commands.py`, `keys.py`, `test_window.py`, four goldens under `tests/golden/window/`
+  (`campaign_create`, `keys_list`, `key_save`, `key_remove`), `CHANGELOG.md` (under `## [Unreleased]`), this file. No command-line
+  golden, no plugin contract file, nothing under `app/`, no name changed (`make_keys` and `Keys` gain an argument); versions
+  agree at 0.9.0, unchanged.
+- Seen red by the reader: `keys.py` `"inUse": saved` (the switch ignored) turns
+  `test_in_use_follows_the_keyring_switch_and_key_save_is_refused_while_it_is_off` red at
+  `At index 0 diff: (True, True) != (True, False)`; restored, green.
+- `tests/test_window.py`: 77 passed, 1 deselected (56.58 s, below-normal priority). The deselected one,
+  `test_run_stop_from_a_second_process_ends_the_run_within_10_s_and_status_answers_beside_it` (not touched by Build 4), hit the
+  60 s pytest timeout in the whole-file run with 12 `python` and 8 `node` processes on the laptop; alone at normal priority:
+  `1 passed in 15.36s`.
+- `ruff check` on the touched files: `All checks passed!`. `gitleaks git` over `origin/master..HEAD`: `no leaks found`.
+- Observation, not a defect against the rulings: the key commands now read `leadforge.yaml` (`load_cfg`) to learn the switch, so a
+  workspace whose settings file cannot be read answers `usage` for `keys_list` and `key_remove` too, as every other command does.
+
+Fixed by the reader (the two leftovers the reader of pull request 14 named):
+- `scripts/e2e_window_run.py`: the docstring said "registers and Maps listings"; now "registers and listings". L8's search
+  (`git grep -n -i -E "gosom|maps_list|maps-list|google[_-]maps[_-]scraper|proxies" -- . ':!docs' ':!icm' ':!CHANGELOG.md'
+  ':!.claude/POSITION-HISTORY.md'`): no output, exit 1, 0 hits.
+- `About.licence`: `_own_licence()` returns `str | None` (None when the installed package has no metadata or no licence field),
+  so the code guarantees no string. Correction to the final-keys table above (left as its builder wrote it): row 21 `About.licence`
+  is N (present, may be null); and, after Build 4, rows 1 and 16 to 18 read as Build 4's own table says (the three estimates N,
+  `inUse` P). `engine.ts` under `app/` is the window's and is not touched here.
+
+Verdict: PASS 4cb675a (the builder's code), with the reader's two wording fixes in the commit that adds this review. The local gate
+and hosted CI of that commit are in the reader's run report, outside the repository.

@@ -41,14 +41,14 @@ def entry(name: str) -> str:
 
 
 class Keys:
-    def __init__(self, backend: Backend):
+    def __init__(self, backend: Backend, reads_keyring: bool):
         self._backend = backend
+        self.reads_keyring = reads_keyring   # L9's switch registry.keyring of this workspace
 
-    @staticmethod
-    def status(name: str) -> dict:
-        saved = bool((config._keyring_get(name) or "").strip())   # L9's own read: what a run will find
-        # savedAt: the keyring keeps no date (KeyStatus.savedAt may be null)
-        return {"name": name, "saved": saved, "savedAt": None}
+    def status(self, name: str) -> dict:
+        saved = bool((config._keyring_get(name) or "").strip())   # what the keyring holds, whatever the switch
+        # inUse: a run of this workspace reads it; savedAt: the keyring keeps no date (KeyStatus.savedAt may be null)
+        return {"name": name, "saved": saved, "inUse": saved and self.reads_keyring, "savedAt": None}
 
     def list(self) -> list[dict]:
         return [self.status(n) for n in KEY_NAMES]
@@ -63,6 +63,6 @@ class Keys:
         return self.status(name)
 
 
-def make_keys() -> Keys:
+def make_keys(reads_keyring: bool) -> Keys:
     """The adapter the window uses. Raises KeyringMissing without the keyring package."""
-    return Keys(default_backend())
+    return Keys(default_backend(), reads_keyring)
