@@ -156,3 +156,62 @@ credit (business facts the decision-maker step uses).
 counts, scoring, outreach) behaves as if the address did not exist. A last net in `export_run`: any cell of any tab or CSV, and any Drafts-tab
 row, that still holds a suppressed address (a draft body, a `To`) has it replaced by `[suppressed]`, and a Drafts row addressed to it is dropped.
 Domain-suppressed businesses are already out of the sheet (`scores_for_run`); unchanged.
+
+## Items 3 to 6 — check of the code against the text above, by reading (after the code)
+
+- **`forget`** (`retention.py`, `cli.forget`): `make_needle` classifies by `@` / dot-without-space / else, lower-cases an email or domain, builds a
+  pattern with word edges (an address is not matched inside a longer address, a name not inside a longer word) over the raw and the JSON-escaped
+  spelling. `forget_in_database` deletes by `ROW_RULES` and `BUSINESS_IDENTITY`, with dependents in `_delete_everything_on` (person → observations,
+  contact → outcomes, targets → messages → events), redacts `enrich_json`/`hours_json`, adds the suppression row, then `_scrub_database_file`
+  (checkpoint truncate, `VACUUM`) with `secure_delete` on for the deletes. `forget_in_files` walks `leadforge_data/` minus `bin/`, the stamp and the live
+  database, plus the hand-off and packet files and `drafts/` of the workspace folder; line files lose lines, everything else (also a sheet whose text is
+  compressed inside) is deleted. `db.add_contact` returns 0 for a suppressed email, `db.add_person` skips a suppressed name; a domain was already skipped by
+  discovery and enrichment. The value is never printed or logged: the human line and the digest carry kind and counts, the digest lists relative paths.
+- **`purge`**: `classify` ages from `runs.started_at` of `first_run_id` (empty/dangling = earliest run; none = never), `due <= now` expires, `due <= now+30d`
+  counts as soon. `purge()` order: no database → `no_workspace`; `check_schema_before_write` (old schema stops); `schema_gaps` + marker readable (half upgraded
+  stops); marker absent → write it and report only; nothing expired → `nothing`; `auto` and more than half → `stopped_over_half`; else delete and scrub.
+  `cli._start_of_run_purge` runs before `--detach` and before `run_pipeline`, prints the 30-day line to stderr, and puts `purged` and `expiring_30d` in the digest.
+  `purge --everything --yes` never opens the database (the test makes both `db.connect` and `sqlite3.connect` raise).
+- **C6** (`providers/gosom.py`): `fetch` is a wrapper whose `finally` deletes `out_path` and the `.queries.txt` after `_fetch` returned or raised.
+- **C7** (`db.contacts_for`, `export.py`): see the item text; the draft columns and the Drafts tab drop a draft whose target contact is suppressed; `_masker` replaces a
+  suppressed address anywhere in any cell, in any case.
+
+## Tests of this slice (each seen failing for the right reason first)
+
+| File | Pass line it carries | Seen red because |
+|---|---|---|
+| `tests/test_l6_schema_first.py` | old workspace refused, every file's hash equal (with and without a live `-wal`); tables without a version refused; new, zero-byte and hollow files open | `-wal`/`-shm` appeared and changed, the DDL ran first, the log file appeared; with the temp-copy branch off the live-`-wal` case failed |
+| `tests/test_l6_forget.py` | C4: planted person in tables, cache, logs (also rotated), progress, outbox, inbox, hand-off files, packets, sheets (`.xlsx` read inside), exports; the scan finds the value only in the suppression row; a bystander's rows, lines and files byte for byte; look-alike address and name stay; not collected again | each of: line-edit off, zip read off, word edges off, suppression off, secure-delete and VACUUM both off made it fail (removing only one of the last two does not: they back each other up) |
+| `tests/test_l6_purge.py` | C5: 13 months gone, 11 stay, refreshed 13 gone; first run only reports; the 30-day line; a clock a year ahead deletes nothing and stops (exit 4; `purge --apply` is what deletes); half-upgraded stops with the file unchanged; old schema refused unchanged; `--everything` without opening the database; period shortened, never lengthened; boundaries | six changes to `retention.py` (first-run report, half rule, half-upgrade check, refresh renews, empty `first_run_id`, 30 days) each failed it |
+| `tests/test_l6_raw_scrapes.py` | C6: raw file gone after parse, after a salvage, after nothing parsed, after a failure that wrote no file; the reviewer's name in no file of the workspace | with the old `fetch` the two raw files stayed |
+| `tests/test_l6_suppressed_export.py` | C7: suppressed address in no file of the export, also inside the sheet; its draft off the sheet; other rows stay; a quoted address masked | the address was in the Leads tab, the Drafts tab and the CSV |
+
+## Plan and code disagree
+
+1. **C4's own two sentences.** The row says `forget` "adds a suppression row", and its test says a byte scan of the database file, its side files and the data
+   folder "finds nothing". A suppression row must hold the identifier, or the objection cannot be honoured on the next run. *Plan:* both. *Code:* the
+   identifier is stored once, in clear, in `suppression` (`db.py`, `db.suppress`); the test proves nothing else holds it (a copy with that row deleted and
+   rewritten has zero hits). Not built: a hashed suppression list (`is_suppressed` and four SQL sub-selects would change). **Owner's decision needed** if
+   "finds nothing" is to be literal.
+2. **"first entered the workspace" (C5).** *Plan:* the 12 months run from when the business first entered. *Code:* `businesses.first_run_id` is the run that created
+   the row it sits in; `db.merge_phone_duplicates` keeps the Maps row and folds the register row into it, so a business first found through a register can carry its
+   younger twin's `first_run_id`. Not changed (the plan says no change to the tables); the expiry can come later than 12 months after the very first sighting in that case.
+3. **G2 is red before this slice on this laptop** (Item 1's baseline): the saved result has 21 refused DNS entries, this laptop produces 20 at 1050687. *Plan:* "the digest
+   and sheet match the goldens". *Code:* the refused list's count depends on DNS retries. Not changed by this slice.
+4. **ADOPT section 3 and SPEC 3.4 name a Linux CI trial of the mutation tool; mutmut does not run on Windows.** A small in-house trial (`scripts/mutation_trial.py`) was run here
+   instead; the Linux CI trial is NOT DONE.
+5. **The plan counts "eight" places; the row lists more** (tables, cache, logs, progress file, outbox and inbox, hand-off files, packets, sheets). The test plants 14 files and a dozen
+   rows and asserts the scan sees the value in at least 12 places before the command and only in the suppression row after.
+
+## Decisions taken on my own
+
+- A stop of the automatic purge for more than half stops the whole `run` (exit 4) and names `purge --apply`; the plan says "it stops and names the explicit command".
+- `leadforge purge` alone only reports and never writes (not even the marker); `--apply` is the explicit command and follows protections 1 and 4 but not 3.
+- Half-upgraded = a table or column this version expects is missing, or the retention marker is unreadable. Checked read-only before connecting.
+- `forget` in an old-schema workspace is refused like every command (nothing changed); `purge --everything --yes` is the way out for such a workspace.
+- Files `forget` and `purge --everything` leave alone: `bin/` and the doctor stamp (not personal data), and anything written outside the data folder by `--out`.
+- Exports: purge does not delete old export folders (C5's row names the business and what is attached); `forget` does remove sheets that hold the person.
+- Sole-trader rule: a business whose name, address or web columns hold the forgotten value is deleted whole. `scores` rows that quote the value are deleted (recomputed by `score`).
+- `retention.months` is 1 to 12 (shorten only); `leadforge.example.yaml` lists it.
+- The log folder and file are created at the first record, so a refused command leaves the workspace unchanged.
+- `uv.lock`'s own entry still says 0.6.14 (an L4 debt that `check_versions.py` does not read); left as is.
