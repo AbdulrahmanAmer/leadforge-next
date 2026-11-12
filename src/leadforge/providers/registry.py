@@ -32,7 +32,6 @@ import time
 from leadforge.models import Evidence, Person
 from leadforge.util import LOG, natural_name, now_iso
 
-CH_BASE = "https://api.company-information.service.gov.uk"
 OC_BASE = "https://api.opencorporates.com/v0.4"
 
 
@@ -86,6 +85,7 @@ class CompaniesHouseRegistry:
 
     def __init__(self, cfg):
         self.key = cfg.registry.companies_house_key
+        self.base = cfg.registry.companies_house_url
         self.min_similarity = cfg.registry.min_name_similarity
         self.active_only = cfg.registry.active_only
         self.disabled = False
@@ -112,7 +112,7 @@ class CompaniesHouseRegistry:
         try:
             auth = (self.key, "")
             _CH_BUCKET.wait()
-            r = httpx.get(f"{CH_BASE}/search/companies",
+            r = httpx.get(f"{self.base}/search/companies",
                           params={"q": business_row["name"], "items_per_page": 3},
                           auth=auth, timeout=15.0)
             if r.status_code == 429:
@@ -140,7 +140,7 @@ class CompaniesHouseRegistry:
                     continue  # dissolved/liquidated, known from the search hit itself — no profile fetch needed
                 try:
                     _CH_BUCKET.wait()
-                    rp = httpx.get(f"{CH_BASE}/company/{number}", auth=auth, timeout=15.0)
+                    rp = httpx.get(f"{self.base}/company/{number}", auth=auth, timeout=15.0)
                     if rp.status_code == 200:
                         pj = rp.json()
                         profile["sic_codes"] = pj.get("sic_codes") or []
@@ -151,7 +151,7 @@ class CompaniesHouseRegistry:
                 if self.active_only and (profile["company_status"] or "").casefold() != "active":
                     continue  # dissolved/liquidated, only knowable from the profile fetch
                 _CH_BUCKET.wait()
-                ro = httpx.get(f"{CH_BASE}/company/{number}/officers",
+                ro = httpx.get(f"{self.base}/company/{number}/officers",
                                params={"register_type": "directors"}, auth=auth, timeout=15.0)
                 if ro.status_code == 429:
                     time.sleep(60)

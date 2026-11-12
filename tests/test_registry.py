@@ -414,3 +414,58 @@ def test_name_similarity_threshold_real_shaped_pairs(business_name, company_name
         f"{business_name!r} vs {company_name!r} scored {score} "
         f"({'accepted' if accepted else 'rejected'}, expected {'accept' if expect_accept else 'reject'})"
     )
+
+
+# ---- registry.companies_house_url: the address is a setting; only the default or a loopback address is accepted ----
+DEFAULT_CH = "https://api.company-information.service.gov.uk"
+
+
+def test_companies_house_url_defaults_to_the_real_address(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert load_config(tmp_path).registry.companies_house_url == DEFAULT_CH
+
+
+@pytest.mark.parametrize("url", [
+    "http://127.0.0.1:18765/ch", "http://localhost:8080", "https://127.0.0.1", "http://[::1]:9/", DEFAULT_CH + "/",
+])
+def test_companies_house_url_accepts_default_and_loopback(tmp_path, monkeypatch, url):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "leadforge.yaml").write_text(f"registry:\n  companies_house_url: '{url}'\n", encoding="utf-8")
+    assert load_config(tmp_path).registry.companies_house_url == url.rstrip("/")
+
+
+@pytest.mark.parametrize("url", [
+    "https://evil.example", "http://api.company-information.service.gov.uk", "https://127.0.0.1.evil.example",
+    "http://user:pw@127.0.0.1", "http://127.0.0.1/?x=1", "ftp://127.0.0.1", "http://192.168.1.5:80", "http://127.0.0.1:99999",
+])
+def test_companies_house_url_refuses_any_other_address(tmp_path, monkeypatch, url):
+    """The key is sent with every request, so any other host would receive it."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "leadforge.yaml").write_text(f"registry:\n  companies_house_url: '{url}'\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="companies_house_url"):
+        load_config(tmp_path)
+
+
+def test_companies_house_url_env_override_is_checked_too(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LEADFORGE_REGISTRY__COMPANIES_HOUSE_URL", "https://evil.example")
+    with pytest.raises(ValueError, match="companies_house_url"):
+        load_config(tmp_path)
+
+
+def test_officer_lookup_and_discovery_request_the_configured_address(tmp_path, monkeypatch):
+    cfg = _cfg_with_key(tmp_path, monkeypatch)
+    cfg.registry.companies_house_url = "http://127.0.0.1:18765/ch"
+    seen = []
+
+    def fake_get(url, *a, **k):
+        seen.append(url)
+        return _Resp({"items": [], "sic_codes": []})
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    CompaniesHouseRegistry(cfg).lookup_with_profile(BIZ)
+    from leadforge.grid import PlannedQuery
+    from leadforge.providers.companies_house import CompaniesHouseDiscovery
+    CompaniesHouseDiscovery(cfg).fetch(PlannedQuery(text="sic:45200 loc:Leeds", category="45200", area="Leeds"))
+    assert seen and all(u.startswith("http://127.0.0.1:18765/ch/") for u in seen), seen
+    assert any("/search/companies" in u for u in seen) and any("advanced-search" in u for u in seen), seen

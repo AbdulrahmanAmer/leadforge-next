@@ -37,3 +37,31 @@ probe's ephemeral loopback listener are untouched. The log entry has the same sh
 
 **Seen red first.** `harness/probe.py` gets two cases (UDP `sendto` and TCP connect to `127.0.0.53:53`) and `--probe` demands that the
 guard log holds both (TCP to a closed loopback port is refused by the OS anyway, so the log, not the exception, is the evidence).
+
+## Item 1 — Companies House's address as a setting
+
+**Must do (written before the change).** New setting `registry.companies_house_url` (yaml, or `LEADFORGE_REGISTRY__COMPANIES_HOUSE_URL`,
+read the way every other setting is: the `RegistryCfg` pydantic model fed by `leadforge.yaml` then the env overrides). Default is
+exactly today's address `https://api.company-information.service.gov.uk`, so with no setting nothing changes. Both users of the
+address read it from the config instead of the constant: the officer lookup (`providers/registry.py`, `CompaniesHouseRegistry`,
+three requests) and the discovery provider (`providers/companies_house.py`, two requests).
+Decision on other values (own decision, reason): the DVSA setting (`discovery.dvsa.url`) accepts any address because the request
+carries nothing secret. This one carries the Companies House API key as basic-auth user name on every request, so a setting that
+pointed to a stranger's host would send the key there. Therefore the config refuses at load (`ValueError` from a pydantic
+validator, which `load_config` and `config set` both go through) every address except the default and an `http`/`https` address
+whose host is `localhost` or a loopback IP (with or without a port or a path prefix); an address with embedded credentials, a query
+or a fragment is refused too. A trailing `/` is dropped. No change anywhere else.
+Seen red first: a test that sets a non-default, non-loopback value and expects a refusal, and a test that a loopback value reaches
+the officer lookup's request (checked via an httpx transport double: URL of the request). Break: validator accepts everything /
+code still reads the constant → each test fails.
+
+**Check by reading, after.** `RegistryCfg.companies_house_url` (config.py) matches the text: default = the real address; validator drops a
+trailing `/`, returns the default unchanged, accepts only http/https + `localhost`/loopback IP (`urlsplit().hostname`, so
+`127.0.0.1.evil.example` and `user@` forms are refused) with no credentials/query/fragment, refuses a bad port. One addition not in the
+text above: an empty value means the default. `config set` validates through `load_config` before writing, so a refused value is never
+saved. `CH_BASE` is gone (nothing else read it; `git grep CH_BASE` finds only this file). The five request sites read `self.base` /
+`cfg.registry.companies_house_url`. Red/green: with the validator's default-return removed and the officer search pinned to the real
+address again, 10 of the new tests failed (refusal ×8, env override, configured-address request); restored → 43 passed in test_registry.py.
+New dev packages for local test runs only (nothing added to the project): `pytest 9.2.0` (uploaded 2026-10-27), `pytest-timeout 2.4.0`
+(2025-05-05), `iniconfig 2.3.1` (2026-10-06), `pluggy 1.7.0` (2026-10-15), exactly the versions in the repo's own `uv.lock`,
+all older than 7 days, published on PyPI by pytest-dev; `osv-scanner` on `uv.lock`: no issues.

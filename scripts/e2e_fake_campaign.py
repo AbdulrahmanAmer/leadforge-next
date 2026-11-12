@@ -285,7 +285,7 @@ def leaf_diffs(exp, got, path: str = "", out: list | None = None) -> list[str]:
                 leaf_diffs(exp[k], got[k], f"{path}.{k}", out)
     elif isinstance(exp, list) and isinstance(got, list):
         if len(exp) == len(got):
-            for i, (x, y) in enumerate(zip(exp, got)):
+            for i, (x, y) in enumerate(zip(exp, got, strict=True)):
                 leaf_diffs(x, y, f"{path}[{i}]", out)
         else:
             ex, go = [json.dumps(x, sort_keys=True) for x in exp], [json.dumps(x, sort_keys=True) for x in got]

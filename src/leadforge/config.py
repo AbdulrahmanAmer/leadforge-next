@@ -6,12 +6,16 @@ All runtime state lives under `data_dir` (default ./leadforge_data). Nothing her
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
+
+CH_BASE_DEFAULT = "https://api.company-information.service.gov.uk"
 
 
 class DvsaCfg(BaseModel):
@@ -165,9 +169,40 @@ class EnrichCfg(BaseModel):
 
 class RegistryCfg(BaseModel):
     companies_house_key: str = ""
+    # Every request to this address carries companies_house_key (basic auth), so only the default or a loopback address
+    # (a local stand-in server) is accepted; DVSA's url takes any host because it sends no secret.
+    companies_house_url: str = CH_BASE_DEFAULT
     opencorporates_token: str = ""
     min_name_similarity: float = 0.45  # v0.3: a registry hit must also resemble the business name
     active_only: bool = True           # v0.3: dissolved/liquidated companies are never matched
+
+    @field_validator("companies_house_url", mode="before")
+    @classmethod
+    def _companies_house_url_is_default_or_loopback(cls, v: Any) -> Any:
+        if not isinstance(v, str):
+            return v  # pydantic rejects a non-string itself
+        url = v.strip().rstrip("/") or CH_BASE_DEFAULT
+        if url == CH_BASE_DEFAULT:
+            return url
+        parts = urlsplit(url)
+        try:
+            host = parts.hostname
+            parts.port  # noqa: B018 - raises ValueError on a bad port
+        except ValueError as e:
+            raise ValueError(f"registry.companies_house_url is not a valid address: {e}") from e
+        loopback = False
+        if host:
+            try:
+                loopback = ipaddress.ip_address(host).is_loopback
+            except ValueError:
+                loopback = host.lower() == "localhost"
+        if (parts.scheme not in ("http", "https") or not loopback or parts.username is not None
+                or parts.password is not None or parts.query or parts.fragment):
+            raise ValueError(
+                "registry.companies_house_url must be the default (" + CH_BASE_DEFAULT + ") or an http(s) address on this "
+                "machine (localhost or a loopback IP, no credentials, query or fragment): the Companies House key is sent "
+                "with every request to it")
+        return url
 
 
 class OutreachCfg(BaseModel):
