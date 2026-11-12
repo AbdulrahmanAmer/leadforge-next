@@ -39,7 +39,7 @@ export function Data({ engine, go, openDialog }: { engine: Engine; go: (s: Scree
                 <p className="lf-stepper__value" aria-live="polite"><span>{months}</span> {months === 1 ? "month" : "months"}</p>
                 <Button variant="soft" aria-label="One month more" disabled={months >= limits.max} onClick={() => setMonths(months + 1)}><Icon name="plus" size={16} /></Button>
               </div>
-              <p className="lf-caption">Counted from the day a business first entered the workspace. Finding it again does not extend it. {limits.max} months is the longest the engine allows.</p>
+              <p className="lf-caption">Counted from the start of the run that first found the business (the workspace's first run, if that run is not recorded). Finding it again does not extend it. {limits.max} months is the longest the engine allows.</p>
               {save.error !== null && <ErrorBanner compact error={save.error} />}
               <div className="lf-card__actions">
                 {months === saved ? (

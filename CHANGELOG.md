@@ -77,6 +77,20 @@ keys where the engine reads them (the OS keyring entries of the keys slice); wit
 `environment`. `people_list` says where and when each person was found, from what the engine records (none: null). A run the
 window stops now stops between two page fetches of one site, not only between two businesses.
 
+Two last rulings on the window commands. `campaign_create` answers null for `estimatedBusinesses`, `estimatedSites` and
+`estimatedMinutes` when the plan holds register queries only (DVSA, Companies House), instead of 0; a plan with text searches
+keeps its numbers. Each key status gains `inUse`: the key is saved and this workspace reads the keyring (`registry.keyring`);
+`saved` still says what the keyring holds. `key_save` is refused (`input`, naming `registry.keyring`) while the workspace does not
+read the keyring; `key_remove` works either way.
+
+The window, last batch before its review (slice L11, no engine change). Forget shows what it will delete first: the People screen
+asks the engine for a dry run (`person_forget` with `dry_run: true`, for the "someone asked to be removed" box and a row's Forget
+alike), the confirmation shows the engine's own numbers (rows, files removed, files edited) and its warnings, only the confirm
+control makes the real call, and a dry run that finds nothing says nothing is held and offers no delete. The window no longer reads
+an older engine's answers (a register plan of 0, 0, 0; a key status without `inUse`). Three wordings now say what the code does:
+the Data screen counts retention from the start of the run that first found a business, `docs/window-actions.md` no longer says
+keys sit in `leadforge.yaml`, and `config/leadforge.example.yaml` shows the default `crawl.timeout_s` (10.0).
+
 The existing command line, its digest lines and the plugin are unchanged. No version change yet.
 
 Documentation (slice L12, docs only; no code, test, lock or version changed). `README.md` rewritten: what LeadForge is and is not, the install of the Windows app

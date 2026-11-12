@@ -108,15 +108,21 @@ exit 0, or a non-zero exit and `{"kind","message","details":[...],"next":null|st
 - **Nullable:** `RunStatus.campaign`, `RunStatus.done`, `RunCounts.purged`, `RunCounts.expiringIn30Days`; `Campaign.name`,
   `Campaign.source`, `Campaign.keptUntil`; `Person.source`, `Person.foundAt`, `Person.campaign`. What each null shows is the table
   in `docs/slices/L11-window.md`, "Seam decisions of 2026-11-12".
-- **Rulings 15 and 16 (2026-11-12, after the engine's commands were merged; engine side on `slice/L11a-follow`).**
+- **Rulings 15 and 16 (2026-11-12; engine side on `master` since `2fb6b93`, no tolerance for the older engine left in the window).**
   15: `CampaignPlan.estimatedBusinesses`, `estimatedSites`, `estimatedMinutes` are `number | null`; null means not estimated (a
   register campaign: `dvsa`, `companies_house`). The plan card then says "Up to <the cap> businesses; this register is not counted
   before the run." and shows no time and no websites figure. 16: `KeyStatus.inUse: boolean` = saved AND this workspace reads the
   keyring (`registry.keyring` in its `leadforge.yaml`); saved and not in use reads "Saved, but this workspace is set not to read
   the keyring: registry.keyring in the workspace's leadforge.yaml."; `key_save` then refuses with kind `input` naming
-  `registry.keyring`, shown on the key's field; `key_remove` always works. **Until the follow-up is on `master` (lines to remove
-  then, `app/ui/src/follow.ts`):** a register plan whose three estimates are all 0 reads as not estimated (engine 0.9.0 answers 0);
-  `inUse` missing reads as true (engine 0.9.0 sends none; `KeyStatus.inUse` is optional in `engine.ts` until then).
+  `registry.keyring`, shown on the key's field; `key_remove` always works. A zero estimate is a count and is shown as one;
+  `KeyStatus.inUse` is required in `engine.ts` and never inferred (a missing one is a shape error, held by `tests/seam-shape.test.mjs`).
+- **Forget is report-first (2026-11-12).** `forgetPerson(value, dryRun)` sends `{value, dry_run}` (`dry_run`, snake_case, the engine's
+  own key). The People screen (`app/ui/src/forget.ts`, `ForgetFlow`) always asks with `dry_run: true` first, for the "someone asked to
+  be removed" box and for a row's Forget control alike (and again when another target is chosen in the row's dialog). The confirmation
+  shows the engine's own numbers (rows, files that would be removed, files that would be edited) and its warnings as it worded them.
+  Only the confirm control makes the real call (`dry_run: false`); the real result is then shown. A dry run that finds nothing
+  (0 rows, 0 files removed, 0 files edited) says nothing is held for the value and offers no delete control; a dry run that fails
+  shows the engine's error, with "Try again", and deletes nothing.
 - **`About.licence: string | null`.** Null: the engine did not find the notices file; the About page says "The licence notices
   were not found in this installation." and its licence list says so, never an empty box.
 
@@ -134,7 +140,7 @@ Types are those of `app/ui/src/engine.ts`. Every command rejects with `{ kind, m
 | `sheet_export` | `runId: string` | `Sheet` |
 | `sheet_open` | `path: string` | nothing |
 | `people_list` | `query: PeopleQuery` | `PeoplePage` |
-| `person_forget` | `value: string` | `ForgetResult` |
+| `person_forget` | `value: string`, `dry_run: boolean` (the screens always send it: `true` first, then `false` only from the confirm control) | `ForgetResult` |
 | `address_suppress` | `value: string`, `kind: "email" \| "domain" \| null` | `SuppressResult` |
 | `purge_report` | none | `PurgeReport` |
 | `purge_apply` | none | `PurgeReport` |
@@ -161,12 +167,14 @@ Said plainly; the window does not pretend. Until each exists, its command answer
    always writes the latest run: it has no `--run`. So Results can be true for one campaign only.
 3. **No command returns contacts** (name, role, address, phone, source page, date found), with or without a search. The People
    list has nothing to read. `export` writes them to files only, and the window reads no files.
-4. **`forget` has no report-first mode**, and `purge` reports counts but not which businesses. The forget confirmation therefore
+4. **`forget` has no report-first mode** (history: `window person_forget` now takes `dry_run`, and the People screen uses it, see "Forget is report-first"), and `purge` reports counts but not which businesses. The forget confirmation therefore
    names the kinds of things deleted (from the command's own description, L6:574), not a count.
 5. **`config get` puts no value in the digest** (master:699 to 700: the value goes to the human line, which `--json` suppresses),
    and an unset key reads as `{}`, not as its default. The shell would have to parse human output to read `retention.months`.
-6. **Keys in the Windows keyring** are slice L7. Today a key is a plain value in `leadforge.yaml` (`config set
-   registry.companies_house_key`); the engine cannot take a key from the keyring or from the shell without it touching that file.
+6. **Keys in the Windows keyring** (history; settled by L9 and L11a). The engine now reads a registry key only from its
+   environment variable or the OS keyring (service `leadforge`, entry `registry.<name>`) and refuses a key written in
+   `leadforge.yaml` (`config.key_refusal`). The window's three key commands save, list and remove through the engine's
+   keyring adapter (`src/leadforge/window/keys.py`); the `keyring` package must be installed for them (until it is in the bundle they answer kind `environment`).
 7. **`version` puts no version in the digest** (master:886: `counts` is empty; the number is in the human line only).
 8. **`suppress list` returns only a count under `--json`** (master:620 to 622), and there is no `suppress remove`. The window
    shows the count and offers no way to lift a suppression.

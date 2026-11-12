@@ -200,12 +200,32 @@ fn the_real_engine_answers_all_21_commands() {
         })
         .unwrap_or_else(|| "nobody@nowhere.example".into());
     put("people_list", people);
+    // report first, as the People screen does: the dry run (`dry_run`, snake_case) changes nothing and answers the same
+    // shape; then the real call, with the same value
+    put(
+        "person_forget_dry",
+        call(
+            &p,
+            EngineCommand::PersonForget,
+            json!({"value": someone, "dry_run": true}),
+            &ws,
+        ),
+    );
+    put(
+        "person_forget_dry_again",
+        call(
+            &p,
+            EngineCommand::PersonForget,
+            json!({"value": someone, "dry_run": true}),
+            &ws,
+        ),
+    );
     put(
         "person_forget",
         call(
             &p,
             EngineCommand::PersonForget,
-            json!({"value": someone}),
+            json!({"value": someone, "dry_run": false}),
             &ws,
         ),
     );

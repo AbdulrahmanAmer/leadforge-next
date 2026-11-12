@@ -39,10 +39,10 @@ const NULLABLE_FIELDS = [
   "CampaignPlan.estimatedBusinesses", "CampaignPlan.estimatedSites", "CampaignPlan.estimatedMinutes",
 ];
 
-test("engine.ts: rulings 15 and 16 and the licence: the estimates and About.licence are nullable, KeyStatus.inUse is optional", () => {
+test("engine.ts: rulings 15 and 16 and the licence: the estimates and About.licence are nullable, KeyStatus.inUse is required", () => {
   for (const f of ["estimatedBusinesses", "estimatedSites", "estimatedMinutes"]) assert.ok(TYPES.CampaignPlan[f].nullable, f);
   assert.ok(TYPES.About.licence.nullable, "About.licence");
-  assert.deepEqual(TYPES.KeyStatus.inUse, { optional: true, nullable: false }, "TIGHTEN LATER: required once the follow-up lands");
+  assert.deepEqual(TYPES.KeyStatus.inUse, { optional: false, nullable: false }, "inUse is required and never null");
 });
 
 test("engine.ts: the types hold the decided nullable fields, and theme, accent and windowVersion are gone", () => {
@@ -59,7 +59,7 @@ test("engine.ts: the types hold the decided nullable fields, and theme, accent a
 function exact(value, type, where, seen) {
   assert.ok(TYPES[type], `no type ${type}`);
   assert.ok(value !== null && typeof value === "object" && !Array.isArray(value), `${where}: an object`);
-  // an optional field (`name?:`) may be absent: only `KeyStatus.inUse`, until the engine's follow-up is on master
+  // an optional field (`name?:`) may be absent (none today)
   const required = Object.entries(TYPES[type]).filter(([, i]) => !i.optional).map(([f]) => f);
   const extra = Object.keys(value).filter((f) => !(f in TYPES[type]));
   assert.deepEqual(extra, [], `${where}: fields that are not in ${type}`);
@@ -238,6 +238,23 @@ test("the stand-in's settings carry no theme and no accent, whatever an old stat
   assert.ok(!JSON.stringify(about).match(/theme|accent|windowVersion/), "about carries no theme, accent or windowVersion");
 });
 
+test("the stand-in's person_forget honours dry_run: a dry run changes nothing and answers the real call's numbers; the real call deletes; a non-boolean dry_run is refused", () => {
+  const cwd = mkdtempSync(join(work, "dry-"));
+  const value = "rhys@fishpondsroad.example"; // a person the made-up workspace holds
+  const before = JSON.stringify(ok("people_list", { query: { search: "", limit: 50 } }, cwd));
+  const dry = ok("person_forget", { value, dry_run: true }, cwd);
+  const again = ok("person_forget", { value, dry_run: true }, cwd);
+  assert.equal(JSON.stringify(ok("people_list", { query: { search: "", limit: 50 } }, cwd)), before, "a dry run changed the workspace");
+  assert.deepEqual(again, dry, "the same report twice");
+  assert.ok(dry.rows > 0 && dry.warnings.some((w) => w.startsWith("Nothing was deleted")));
+  const real = ok("person_forget", { value, dry_run: false }, cwd);
+  assert.deepEqual([real.kind, real.value, real.rows, real.filesRemoved, real.filesEdited], [dry.kind, dry.value, dry.rows, dry.filesRemoved, dry.filesEdited]);
+  assert.notEqual(JSON.stringify(ok("people_list", { query: { search: "", limit: 50 } }, cwd)), before, "the real call deleted");
+  const bad = standin("person_forget", { value, dry_run: "yes" }, cwd);
+  assert.notEqual(bad.code, 0);
+  assert.equal(bad.doc.kind, "usage");
+});
+
 test("the stand-in refuses a campaign draft with no `offer` key at all, kind input, naming `offer`", () => {
   const cwd = mkdtempSync(join(work, "no-offer-key-"));
   const { offer: _gone, ...noKey } = { kinds: ["MOT garage"], places: ["Bristol"], country: "GB", source: "dvsa", offer: "x", sicCodes: [], maxLeads: 50 };
@@ -295,6 +312,7 @@ export function realFindings(answers) {
     settings_get: "Settings", campaign_create: "CampaignPlan", run_start_first_handle: "RunHandle", run_start_handle: "RunHandle", run_end_status: "RunStatus",
     run_status: "RunStatus", run_status_latest: "RunStatus", run_stop: "RunStatus", run_stop_end_status: "RunStatus",
     campaigns_list: "Campaign[]", sheet_export: "Sheet", people_list: "PeoplePage", person_forget: "ForgetResult",
+    person_forget_dry: "ForgetResult", person_forget_dry_again: "ForgetResult",
     address_suppress: "SuppressResult", purge_report: "PurgeReport", purge_apply: "PurgeReport", retention_get: "Retention",
     retention_set: "Retention", keys_list: "KeyStatus[]", key_save: "KeyStatus", key_remove: "KeyStatus",
     settings_set: "Settings", about: "About", purge_everything: "PurgeEverythingResult", sheet_open: "null",
@@ -309,6 +327,13 @@ export function realFindings(answers) {
     const d = a.doc;
     check(() => assert.deepEqual(Object.keys(d ?? {}).sort(), ["details", "kind", "message", "next"], `${label} | error document | kind, message, details, next | ${Object.keys(d ?? {}).join(", ")}`));
     check(() => assert.ok(ERROR_KINDS.includes(d?.kind), `${label} | kind | one of ${ERROR_KINDS.join(" ")} | ${d?.kind}`));
+  }
+  // forget is report-first: the dry run, asked twice, says the same (it changed nothing), and its numbers are what the real call then did
+  const dry = answers.person_forget_dry, again = answers.person_forget_dry_again, real = answers.person_forget;
+  if (dry?.ok && again?.ok && real?.ok) {
+    const nums = (a) => JSON.stringify([a.doc.kind, a.doc.value, a.doc.rows, a.doc.filesRemoved, a.doc.filesEdited]);
+    check(() => assert.equal(nums(again), nums(dry), "person_forget_dry | a dry run changes nothing | the same numbers twice | " + nums(again) + " after " + nums(dry)));
+    check(() => assert.equal(nums(real), nums(dry), "person_forget | the real call | the dry run's numbers | " + nums(real) + " after " + nums(dry)));
   }
   // the stream: every progress line, and the end events' status
   for (const [i, e] of (answers.run_start_events ?? []).entries()) {
@@ -340,4 +365,11 @@ test("the real-answer check can fail: a planted extra field, a missing field and
   assert.ok(f.some((x) => x.startsWith("purge_everything: fields of PurgeEverythingResult missing")), f.join("\n"));
   assert.ok(f.some((x) => x.includes("about.engineVersion is null")), f.join("\n"));
   assert.ok(!f.some((x) => x.includes("about.licence")), "About.licence may be null");
+  // a dry run that is not a report of what the real call then does is a finding
+  const fg = (rows) => ({ ok: true, doc: { kind: "domain", value: "x.example", rows, filesRemoved: 1, filesEdited: 0, warnings: [] } });
+  const same = realFindings({ person_forget_dry: fg(3), person_forget_dry_again: fg(3), person_forget: fg(3) });
+  assert.ok(!same.some((x) => x.includes("a dry run changes nothing") || x.startsWith("person_forget | the real call")), same.join("\n"));
+  const moved = realFindings({ person_forget_dry: fg(3), person_forget_dry_again: fg(2), person_forget: fg(5) });
+  assert.ok(moved.some((x) => x.includes("a dry run changes nothing")), moved.join("\n"));
+  assert.ok(moved.some((x) => x.startsWith("person_forget | the real call")), moved.join("\n"));
 });

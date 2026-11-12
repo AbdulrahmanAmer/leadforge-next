@@ -1,7 +1,6 @@
 /**
- * What the screens show for the two rulings made after the engine's window commands were merged (2026-11-12),
- * kept out of the screens so Node tests it. The screens must work with today's engine (0.9.0) and with its
- * follow-up (slice/L11a-follow); each "TIGHTEN LATER" line goes once the follow-up is on master.
+ * What the screens show for rulings 15 and 16 of 2026-11-12 (the engine side is on master), kept out of the
+ * screens so Node tests it. No tolerance for an older engine: a register plan is null, `inUse` is always there.
  */
 import type { About, CampaignPlan, KeyStatus, SourceId } from "./engine.ts";
 
@@ -10,17 +9,10 @@ export type PlanFigures =
   | { counted: true; businesses: number; sites: number; minutes: number }
   | { counted: false; upTo: number; line: string };
 
-const REGISTERS: readonly SourceId[] = ["dvsa", "companies_house"];
-
-/**
- * Ruling 15: an estimate of null means "not estimated". TIGHTEN LATER: today's engine answers 0 for all three on a
- * register campaign; until the follow-up lands, a register campaign whose three estimates are all 0 reads the same.
- */
-export function planFigures(plan: CampaignPlan, source: SourceId, cap: number): PlanFigures {
+/** Ruling 15: an estimate of null means "not estimated"; a zero is a count and is shown. */
+export function planFigures(plan: CampaignPlan, _source: SourceId, cap: number): PlanFigures {
   const b = plan.estimatedBusinesses, s = plan.estimatedSites, m = plan.estimatedMinutes;
-  const notEstimated = b === null || s === null || m === null
-    || (REGISTERS.includes(source) && b === 0 && s === 0 && m === 0);
-  if (notEstimated) {
+  if (b === null || s === null || m === null) {
     return { counted: false, upTo: cap, line: `Up to ${cap} businesses; this register is not counted before the run.` };
   }
   return { counted: true, businesses: b, sites: s, minutes: m };
@@ -29,9 +21,9 @@ export function planFigures(plan: CampaignPlan, source: SourceId, cap: number): 
 /** Where a workspace says whether the engine reads the keyring. */
 export const KEYRING_SWITCH = "registry.keyring";
 
-/** Ruling 16. TIGHTEN LATER: `inUse` missing (today's engine) reads as true. */
+/** Ruling 16: `inUse` is the engine's own (saved AND the workspace reads the keyring). */
 export function keyInUse(k: KeyStatus): boolean {
-  return k.saved && k.inUse !== false;
+  return k.saved && k.inUse;
 }
 
 export type KeyBadge = { tone: "success" | "warn" | "neutral"; text: string; note: string | null };

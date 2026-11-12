@@ -186,8 +186,13 @@ def campaign_create(args: dict) -> dict:
     counts = plan_counts(queries, cfg)
     from leadforge.cli import _plan_warnings
 
-    return {"campaign": icp.campaign, "searches": counts["queries"], "estimatedBusinesses": counts["est_max_results"],
-            "estimatedSites": counts["est_enrich_sites"], "estimatedMinutes": counts["est_total_min"],
+    # ruling 15: plan_counts estimates text searches only, so a plan of register queries alone (Companies House, or
+    # register providers such as dvsa) answers null for the three estimates, never 0
+    registers_only = icp.target.mode == "company" or all(q.provider for q in queries)
+    return {"campaign": icp.campaign, "searches": counts["queries"],
+            "estimatedBusinesses": None if registers_only else counts["est_max_results"],
+            "estimatedSites": None if registers_only else counts["est_enrich_sites"],
+            "estimatedMinutes": None if registers_only else counts["est_total_min"],
             "warnings": list(warns) + _plan_warnings(counts, icp, cfg), "retentionMonths": cfg.retention.months}
 
 
@@ -497,8 +502,10 @@ def retention_set(args: dict) -> dict:
 
 # ------------------------------------------------------------------ 16 to 18 keys
 def _keys() -> keys.Keys:
+    """The adapter, told whether this workspace reads the keyring (L9's switch registry.keyring, as a run loads it)."""
+    reads_keyring = load_cfg().registry.keyring
     try:
-        return keys.make_keys()
+        return keys.make_keys(reads_keyring)
     except keys.KeyringMissing as e:
         raise WindowError("environment", "Keys cannot be kept in the keyring on this computer.", [str(e)],
                           "Install the keyring extra: pip install leadforge[keyring]") from None
@@ -532,6 +539,11 @@ def key_save(args: dict) -> dict:
     if not isinstance(value, str) or not value.strip():
         raise usage("The key was not saved.", "The key is empty.")
     store = _keys()
+    if not store.reads_keyring:   # ruling 16: a key saved now would not be used by this workspace's runs
+        raise WindowError("input", "The key was not saved: this workspace does not read the keyring.",
+                          ["registry.keyring: off in this workspace"],
+                          "Switch it on with `leadforge config set registry.keyring true` in the workspace folder (and leave "
+                          "the environment variable LEADFORGE_REGISTRY__KEYRING unset), then save the key again.")
     return _in_keyring(lambda: store.save(name, value.strip()))
 
 

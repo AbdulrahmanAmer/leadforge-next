@@ -41,6 +41,15 @@ public static class LfWin {
         }, IntPtr.Zero);
         return found;
     }
+    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
+    // a window that is minimised (started from a hidden parent, or minimised by whoever sits at the screen) pictures as a 160 x 24
+    // title bar: bring it back first. SW_SHOWNOACTIVATE (4) restores it without taking the keyboard from the owner.
+    public static bool Restore(IntPtr h) {
+        if (!IsIconic(h)) return false;
+        ShowWindow(h, 4);
+        return true;
+    }
 }
 '@
 $here = $PSScriptRoot
@@ -93,6 +102,7 @@ function Read-New {
 function Shot([Diagnostics.Process]$proc, [string]$file) {
     $h = [LfWin]::AppWindow([uint32]$proc.Id)
     if ($h -eq [IntPtr]::Zero) { return $false }
+    if ([LfWin]::Restore($h)) { Start-Sleep -Milliseconds 600 }
     $r = New-Object LfWin+RECT; [LfWin]::GetWindowRect($h, [ref]$r) | Out-Null
     $bmp = New-Object Drawing.Bitmap ($r.Right - $r.Left), ($r.Bottom - $r.Top)
     $g = [Drawing.Graphics]::FromImage($bmp); $hdc = $g.GetHdc()
@@ -111,7 +121,8 @@ function Engine([string]$name, [string]$json) {
 $taken = @{}
 $bounded = ''
 $walkSeconds = 120; if ($Campaign) { $walkSeconds = 420 }
-$expectShots = 8; if ($Campaign) { $expectShots = 14 }
+$expectShots = 8; if ($Campaign) { $expectShots = 15 }
+$refDry = $null   # the engine's own dry run of the forget, taken from its command line before the window's: the numbers the screen must show
 try {
     $env:USERPROFILE = $home2; $env:APPDATA = (Join-Path $home2 'AppData\Roaming'); $env:LOCALAPPDATA = $local
     $arg = '--selftest'; if ($Campaign) { $arg = '--selftest-campaign' }
@@ -143,8 +154,12 @@ try {
                     [IO.File]::WriteAllText((Join-Path $root 'window-status.json'), $status, (New-Object Text.UTF8Encoding $false))
                     "window run's status at 06, before the delete side (run_status): $status"
                 }
-                # the report first: the engine's own dry run of the forget the walk does next (the window has no report-first)
-                if ($Campaign -and $name -eq '07-people') { "forget, report first (window person_forget dry_run): $(Engine 'person_forget' '{"value":"millbrook-autos.example","dry_run":true}')" }
+                # the engine's own dry run of the forget the walk does next, from its command line: the reference the window's
+                # report (picture 07a) is compared with. The window's forget is report-first itself.
+                if ($Campaign -and $name -eq '07-people') {
+                    $script:refDry = Engine 'person_forget' '{"value":"millbrook-autos.example","dry_run":true}'
+                    "forget, engine's own dry run from the command line (reference): $($script:refDry)"
+                }
                 if ($Campaign -and $name -eq '08-data') { "purge report before the retention change: $(Engine 'purge_report' '{}')" }
             }
         }
@@ -184,7 +199,31 @@ try {
         $null = Expect 'the run finished on screen (05: Open the results)' 'selftest: the run finishes: yes' $s
         $r = Expect 'run_start ended ok with its stream (lines=2 or more)' 'cmd=run_start .* ok out=\d+B lines=([2-9]|\d\d+) ' $s
         $x = Expect 'sheet_export answered ok (Write it again)' 'cmd=sheet_export .* ok out=' $r
-        $f = Expect 'person_forget answered ok' 'cmd=person_forget .* ok out=' $x
+        # forget is report-first: two person_forget answers in order (the dry run, then the real call), and the engine's numbers
+        # on screen (picture 07a) BETWEEN them
+        $f1 = Expect 'person_forget answered ok (first: the dry run)' 'cmd=person_forget .* ok out=' $x
+        $shows = Expect 'the forget report is on screen after the dry run (07a: the engine numbers and the words)' 'selftest: shows 07a-forget-report: .*DIALOG: .*database rows? .*files? that would be removed.*files? that would be edited' $f1
+        $f = Expect 'person_forget answered ok (second: the real call, after the report was on screen)' 'cmd=person_forget .* ok out=' $shows
+        $null = Expect 'the real result is on screen after the real call (07b: Forgotten:)' 'selftest: shows 07b-people-forgotten: .*Forgotten: millbrook-autos\.example' $f
+        $ref = $null
+        try { $ref = $refDry | ConvertFrom-Json } catch { $ref = $null }
+        if ($null -eq $ref -or $null -eq $ref.rows) { $missed += "SELFTEST EXPECTATION MISSED: the engine's own dry run (reference) was not read: $refDry" }
+        else {
+            $showLine = ''
+            if ($shows -ge 0) { $showLine = $rows[$shows] }
+            $nRows = '{0:N0}' -f [int]$ref.rows
+            $wantRows = "$nRows database " + $(if ([int]$ref.rows -eq 1) { 'row' } else { 'rows' })
+            $wantRemoved = "$($ref.filesRemoved) " + $(if ([int]$ref.filesRemoved -eq 1) { 'file' } else { 'files' }) + ' that would be removed'
+            $wantEdited = "$($ref.filesEdited) " + $(if ([int]$ref.filesEdited -eq 1) { 'file' } else { 'files' }) + ' that would be edited'
+            "forget report on screen must hold: '$wantRows', '$wantRemoved', '$wantEdited'"
+            foreach ($want in $wantRows, $wantRemoved, $wantEdited) {
+                if (-not $showLine.Contains($want)) { $missed += "SELFTEST EXPECTATION MISSED: the forget report on screen holds the engine's number '$want'" }
+            }
+            foreach ($w in $ref.warnings) {
+                $head = ([string]$w).Substring(0, [Math]::Min(40, ([string]$w).Length))
+                if (-not $showLine.Contains($head)) { $missed += "SELFTEST EXPECTATION MISSED: the forget report on screen holds the engine's warning '$head...'" }
+            }
+        }
         $u = Expect 'address_suppress answered ok' 'cmd=address_suppress .* ok out=' $f
         $t = Expect 'retention_set answered ok (1 month)' 'cmd=retention_set .* ok out=' $u
         $null = Expect 'purge_report asked again after the retention change' 'cmd=purge_report .* ok out=' $t

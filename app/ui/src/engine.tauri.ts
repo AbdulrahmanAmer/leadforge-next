@@ -71,7 +71,8 @@ export const tauriEngine: Engine = {
   exportSheet: (runId: string) => call<Sheet>("exportSheet", { runId }),
   openSheet: (path: string) => call<void>("openSheet", { path }),
   listPeople: (query: PeopleQuery) => call<PeoplePage>("listPeople", { query }),
-  forgetPerson: (value: string) => call<ForgetResult>("forgetPerson", { value }),
+  // the engine's own key is `dry_run` (snake_case), the one argument the window sends in that spelling
+  forgetPerson: (value: string, dryRun: boolean) => call<ForgetResult>("forgetPerson", { value, dry_run: dryRun }),
   suppressAddress: (value: string, kind?: SuppressKind) => call<SuppressResult>("suppressAddress", { value, kind: kind ?? null }),
   purgeReport: () => call<PurgeReport>("purgeReport"),
   purgeApply: () => call<PurgeReport>("purgeApply"),

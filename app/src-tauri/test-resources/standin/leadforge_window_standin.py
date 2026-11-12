@@ -350,11 +350,18 @@ def answer(name: str, s: dict, a: dict):  # noqa: C901 - one branch per command,
         kind = "email" if "@" in v else "domain" if "." in v and " " not in v else "name"
         field = {"email": "email", "domain": "domain", "name": "name"}[kind]
         gone = [p for p in s["people"] if str(p.get(field) or "").lower() == v]
-        s["people"] = [p for p in s["people"] if p not in gone]
-        s["suppressed"] += 1
+        warnings = ["Sheets already handed out, or written outside this folder, cannot be reached from here."]
+        dry = a.get("dry_run")
+        if dry is not None and not isinstance(dry, bool):
+            raise Refused("usage", "Nothing was changed.", ["dry_run must be true or false"], "nothing was changed")
+        if dry:
+            # a report: the same answer, and the stand-in's state is not touched (as the real engine's dry run)
+            warnings = ["Nothing was deleted: this is what forgetting it would delete."] + warnings
+        else:
+            s["people"] = [p for p in s["people"] if p not in gone]
+            s["suppressed"] += 1
         return {"kind": kind, "value": str(a.get("value")).strip(), "rows": len(gone) * 7,
-                "filesRemoved": 2 if gone else 0, "filesEdited": 3 if gone else 0,
-                "warnings": ["Sheets already handed out, or written outside this folder, cannot be reached from here."]}
+                "filesRemoved": 2 if gone else 0, "filesEdited": 3 if gone else 0, "warnings": warnings}
     if name == "address_suppress":
         v = str(a.get("value") or "").strip().lower()
         if not v:

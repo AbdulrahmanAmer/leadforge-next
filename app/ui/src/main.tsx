@@ -18,10 +18,9 @@ import { tauriEngine } from "./engine.tauri.ts";
  *   &sources=dvsa,companies_house|dvsa|none   the registers `settings_get` lists
  *   &configured=dvsa        the registers the engine really accepts (differs from `sources`: a refused register)
  *   &draft=no-offer|ch|ch-no-sic|stale-source   the New campaign form pre-filled for a render
- *   &missing=keys           the key commands answer kind `missing`
- *   &estimates=zero         the plan's estimates are 0, 0, 0 (today's engine; the default is null: ruling 15)
+ *   &forget=fail|hang       the dry run of Forget fails (kind input) / never answers (the "checking" state)
+ *   &missing=keys          the key commands answer kind `missing`
  *   &keyring=off            the workspace does not read the keyring: a saved key is not in use, saving is refused (ruling 16)
- *   &inuse=missing          key statuses carry no `inUse` (today's engine)
  *   &licence=none           `about` found no notices file (`licence` null)
  */
 function pick(): { engine: Engine; scenario: Scenario | null } {
@@ -41,8 +40,8 @@ function pick(): { engine: Engine; scenario: Scenario | null } {
   const options: MockOptions = {
     speed: asked ? 0 : 1,
     empty: mock === "empty",
-    fail: mock === "error" ? "all" : undefined,
-    hang: mock === "loading" ? "all" : undefined,
+    fail: mock === "error" ? "all" : q.get("forget") === "fail" ? ["forgetPerson"] : undefined,
+    hang: mock === "loading" ? "all" : q.get("forget") === "hang" ? ["forgetPerson"] : undefined,
     missing: q.get("missing") === "keys" ? ["listKeys", "saveKey", "removeKey"] : undefined,
     sources: registers("sources"),
     configured: registers("configured"),
@@ -51,9 +50,7 @@ function pick(): { engine: Engine; scenario: Scenario | null } {
     stopTakesMs: runMode === "stopping" ? null : undefined,
     runDiesAfter: runMode === "dies" ? 21 : undefined,
     runEndsNull: q.get("runnull") === "1",
-    estimates: q.get("estimates") === "zero" ? "zero" : undefined,
     keyringOff: q.get("keyring") === "off",
-    inUseMissing: q.get("inuse") === "missing",
     noLicence: q.get("licence") === "none",
   };
   const screen = q.get("screen") as ScreenId | null;
