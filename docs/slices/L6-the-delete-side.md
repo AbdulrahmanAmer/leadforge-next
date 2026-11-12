@@ -102,3 +102,57 @@ defence for a caller that bypasses `connect`). `util.setup_logging` uses a handl
 **Seen red first (right reasons).** Before the change: `db.sqlite3-wal` and `db.sqlite3-shm` appeared, the `-shm` hash changed, the DDL raised
 `no such column: domain` on a file with tables and no version; after the DB fix alone, `leadforge_data/logs/leadforge.log` (empty) appeared. With the
 temp-copy branch disabled the live-`-wal` case fails (an immutable read ignores the log), restored.
+
+## Items 3 and 4 — `forget` (C4) and `purge` (C5): what each must do (written before the code)
+
+Where a person's detail can land (read from the code; the plan counts eight): 1 the database tables (`people`, `contacts`, `evidence`,
+`enrichment_observations`, `outcomes`, `messages`, `events`, `outreach_targets`, `scores`, `businesses.enrich_json` and the business's own name,
+address and web columns); 2 the cache (`gosom_*.json`, `geocode.json`, the DVSA register copy); 3 the logs (`leadforge.log` and its 3 rotated
+copies, `agent_runner.log`, `<run>.detach.log`); 4 the progress feed (`progress.jsonl`, `pace.json`); 5 the outbox (`.eml`) and the inbox (webhook
+spool `.json`); 6 the hand-off files in the workspace folder (`dm_batch*`, `dm_labels*`); 7 the draft packets (`drafts_packets*.ndjson`, `drafts/*.txt`);
+8 the sheets in the tool's own `exports` folder (`.xlsx`, `.csv`, `report.json`). The database file itself also keeps deleted rows readable
+until it is rewritten (free pages, `-wal`).
+
+**`leadforge forget <email | domain | name>`.** The value is classified: contains `@` = email; no space and a dot = domain; else a name. The match is
+case-insensitive with word edges (an email does not match inside a longer address, a name not inside a longer word); in JSON text the
+escaped spelling is tried too.
+- Database: every row that holds the value in a scanned column is deleted (people, contacts, evidence, observations, outcomes, messages, events,
+  scores, targets), together with what hangs on it (a deleted person takes their observations, a deleted contact takes its outcomes, targets and
+  messages). A business whose own name, address or web columns hold the value (a sole trader named after themself; every business at a forgotten
+  domain) is deleted with everything attached. A value found only inside a business's `enrich_json` / `hours_json` is replaced there by
+  `[forgotten]`. Not touched: the user's own `sending_identities` and `mailboxes`; the `suppression` table, which must keep the identifier or the objection is
+  lost (see "Plan and code disagree").
+- A `suppression` row is added (kind `email`, `domain` or `name`) with a blank reason; `add_contact`, `add_person` and discovery then skip a
+  suppressed email, name or domain, so a new run does not collect them again.
+- Files: under `leadforge_data/` (except `bin/` and the live database) and the hand-off and packet files and `drafts/` of the workspace folder: a
+  line-oriented file (`*.log*`, `*.jsonl`, `*.ndjson`, `*.tsv`) loses the lines that hold the value, every other file that holds it (also inside an
+  `.xlsx`) is deleted. The command lists the files changed and removed by relative path, never their content.
+- Then the database file is cleaned: `secure_delete` on for the deletes, commit, `wal_checkpoint(TRUNCATE)`, `VACUUM`, checkpoint again.
+- It says plainly that sheets already handed out cannot be reached. What must stay: another person's row, line and file are untouched.
+
+**Expiry (`purge`).** Age of a business = now minus the `started_at` of its `first_run_id` run (item 1: empty or dangling = the earliest run; no
+run = no age = never expires). A business expires when that age is 12 calendar months or more (`retention.months`, 1 to 12; the user can shorten,
+not lengthen). A refresh (`last_seen_at`, a merge) never renews. Expiry removes the business and everything attached (same cascade as `forget`).
+Protections of the automatic purge, which runs at the start of every `run` (also `run --detach` and `--resume`):
+1. **First run after the upgrade only reports.** A workspace without the `retention_armed_at` marker in `meta` gets the marker and a report of what *would*
+   expire; nothing is deleted. The explicit command follows the same rule on an unarmed workspace.
+2. **Every run prints how many records expire in the next 30 days** (human line and digest `expiring_30d`).
+3. **Never more than half.** If the expired businesses are more than half of all businesses the automatic purge deletes nothing, the run stops with exit 4,
+   and the message names `leadforge purge --apply` (a clock a year ahead lands here).
+4. **A half-upgraded workspace stops the command.** Before anything is deleted the file is checked against the tables and columns this version expects
+   (read-only); a missing table or column, or an unreadable marker: the command stops, exit 4, the file unchanged.
+`leadforge purge` alone only reports. `purge --apply` is the explicit command (no half limit; same protections 1 and 4). `purge --everything --yes` deletes the
+files of the workspace's own data folder without opening the database (any age, any schema); `bin/` (the pinned helper program) stays.
+Time comes only from `util.utcnow()` and the `now` argument: tests never sleep.
+
+## Item 5 — raw scrapes (C6): what it must do (written before the code)
+The raw file of the Maps scraper (`cache/gosom_*.json`, its `.queries.txt`) is deleted as soon as it was parsed, also when the run stalls and the
+parse salvages part of it, and also when nothing could be parsed. Resuming does not need it: a finished query's listings are already rows in the
+database. Reviewers' own names and review texts are in that file only; the database keeps the staff first names the owner signs with or customers
+credit (business facts the decision-maker step uses).
+
+## Item 6 — a suppressed address is in no export and no tab (C7): what it must do (written before the code)
+`db.contacts_for` leaves out email contacts that are suppressed, so every reader (the Leads tab and CSV `Email` and `Email (Inferred)` columns, the
+counts, scoring, outreach) behaves as if the address did not exist. A last net in `export_run`: any cell of any tab or CSV, and any Drafts-tab
+row, that still holds a suppressed address (a draft body, a `To`) has it replaced by `[suppressed]`, and a Drafts row addressed to it is dropped.
+Domain-suppressed businesses are already out of the sheet (`scores_for_run`); unchanged.
