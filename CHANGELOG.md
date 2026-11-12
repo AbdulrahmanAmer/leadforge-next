@@ -49,6 +49,12 @@ keys where the engine reads them (the OS keyring entries of the keys slice); wit
 `environment`. `people_list` says where and when each person was found, from what the engine records (none: null). A run the
 window stops now stops between two page fetches of one site, not only between two businesses.
 
+Two last rulings on the window commands. `campaign_create` answers null for `estimatedBusinesses`, `estimatedSites` and
+`estimatedMinutes` when the plan holds register queries only (DVSA, Companies House), instead of 0; a plan with text searches
+keeps its numbers. Each key status gains `inUse`: the key is saved and this workspace reads the keyring (`registry.keyring`);
+`saved` still says what the keyring holds. `key_save` is refused (`input`, naming `registry.keyring`) while the workspace does not
+read the keyring; `key_remove` works either way.
+
 The existing command line, its digest lines and the plugin are unchanged. No version change yet.
 
 ## [0.9.0] — 2026-11-12

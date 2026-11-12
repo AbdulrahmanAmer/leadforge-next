@@ -1,8 +1,8 @@
 {
   "campaign": "bristol-mot-garage",
-  "estimatedBusinesses": 0,
-  "estimatedMinutes": 0,
-  "estimatedSites": 0,
+  "estimatedBusinesses": null,
+  "estimatedMinutes": null,
+  "estimatedSites": null,
   "retentionMonths": 12,
   "searches": 1,
   "warnings": [

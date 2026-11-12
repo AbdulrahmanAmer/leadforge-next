@@ -41,7 +41,9 @@ def gap(t):
 
 
 TYPES = {
-    "CampaignPlan": {"campaign": S, "searches": N, "estimatedBusinesses": N, "estimatedSites": N, "estimatedMinutes": N,
+    # Build 4, ruling 15: the three estimates are null for a plan of register queries only
+    "CampaignPlan": {"campaign": S, "searches": N, "estimatedBusinesses": (NULL, N), "estimatedSites": (NULL, N),
+                     "estimatedMinutes": (NULL, N),
                      "warnings": [S], "retentionMonths": N},
     "RunCounts": {"businesses": N, "contacts": N, "purged": gap(N), "expiringIn30Days": gap(N)},
     "RunStatus": {"runId": S, "campaign": gap(S), "state": STATE, "stage": STAGE, "done": gap(N), "total": (NULL, N),
@@ -61,7 +63,8 @@ TYPES = {
                     "expiringIn30Days": N, "deleted": N, "armed": B, "suppressed": N},
     "PurgeEverythingResult": {"filesRemoved": N},
     "Retention": {"months": N, "min": N, "max": N},
-    "KeyStatus": {"name": {"companies_house_key", "opencorporates_token"}, "saved": B, "savedAt": (NULL, S)},
+    # Build 4, ruling 16: inUse = saved and this workspace reads the keyring
+    "KeyStatus": {"name": {"companies_house_key", "opencorporates_token"}, "saved": B, "inUse": B, "savedAt": (NULL, S)},
     # Build 3, decision 8: theme and accent are the window's own and absent here; decision 3: the configured sources
     "Settings": {"workspace": S, "sheetFormats": [{"xlsx", "csv"}], "openSheetWhenDone": B, "sources": [{"dvsa", "companies_house"}]},
     "Licence": {"name": S, "version": S, "licence": S, "notice": S},
@@ -271,6 +274,9 @@ ARGS = {
 }
 
 
+KEY_COMMANDS = ("keys_list", "key_save", "key_remove")
+
+
 def test_the_seam_names_exactly_the_21():
     assert set(win.NAMES) == set(RESULT) | {"run_start"} and len(win.NAMES) == 21
     assert not any(w in n for n in win.NAMES for w in ("send", "outreach", "mail"))   # C14: no sending from the window
@@ -279,6 +285,8 @@ def test_the_seam_names_exactly_the_21():
 @pytest.mark.parametrize("name", sorted(RESULT))
 def test_command_golden_and_shape(ws, monkeypatch, _never_the_real_keyring, name):
     _never_the_real_keyring["registry.opencorporates_token"] = "fixture-token"
+    if name in KEY_COMMANDS:   # the keyring switch on (conftest turns it off): key_save is refused while it is off
+        monkeypatch.delenv("LEADFORGE_REGISTRY__KEYRING", raising=False)
     monkeypatch.setattr(keys, "default_backend", lambda: FakeKeyring(_never_the_real_keyring))
     opened = []
     monkeypatch.setattr(commands, "_default_opener", opened.append)
@@ -322,7 +330,7 @@ def test_stdout_is_one_json_document_even_when_the_engine_prints_and_logs(ws, mo
         return real(stdin)
 
     monkeypatch.setattr(win, "read_arguments", noisy)
-    monkeypatch.setattr(keys, "make_keys", lambda: keys.Keys(FakeKeyring(), "leadforge"))
+    monkeypatch.setattr(keys, "make_keys", lambda reads_keyring: keys.Keys(FakeKeyring({}), reads_keyring))
     fake_pipeline(monkeypatch)
     for name in [*sorted(RESULT), "run_start"]:
         args = ARGS.get(name, {"args": {"campaign": CAMPAIGN, "resume": False}})
@@ -385,9 +393,9 @@ def test_sheet_open_refuses_what_is_not_in_exports(ws, monkeypatch, case):
     assert opened == []
 
 
-def test_a_planted_key_appears_in_no_output_and_no_log(ws, monkeypatch, capsys, _never_the_real_keyring):
+def test_a_planted_key_appears_in_no_output_and_no_log(ws, monkeypatch, capsys, keyring_fake):
     planted = "".join(["lf", "PLANTED", "k3y", str(31337 * 7)])   # built at run time, never written in the source
-    store = _never_the_real_keyring
+    store = keyring_fake
     monkeypatch.setattr(keys, "default_backend", lambda: FakeKeyring(store))
     seen = []
     for name, args in (("key_save", {"name": "companies_house_key", "value": planted}), ("keys_list", {}),
@@ -415,7 +423,7 @@ def test_key_commands_keep_the_key_where_l9_reads_it(ws, monkeypatch, keyring_fa
     value = "".join(["fixture", "-", "ch", "-", "key"])
     monkeypatch.setattr(keys, "default_backend", lambda: FakeKeyring(keyring_fake))
     code, out = call("key_save", {"name": "companies_house_key", "value": value})
-    assert code == 0 and one_doc(out) == {"name": "companies_house_key", "saved": True, "savedAt": None}
+    assert code == 0 and one_doc(out) == {"name": "companies_house_key", "saved": True, "inUse": True, "savedAt": None}
     assert config._keyring_get("companies_house_key") == value
     assert config.load_config(ws).registry.companies_house_key == value   # what a run would use
     code, out = call("keys_list", {})
@@ -504,6 +512,8 @@ def screen_args(ws: Path) -> dict:
 
 @pytest.mark.parametrize("name", win.NAMES)
 def test_each_command_answers_what_the_screens_send(ws, monkeypatch, _never_the_real_keyring, name):
+    if name in KEY_COMMANDS:
+        monkeypatch.delenv("LEADFORGE_REGISTRY__KEYRING", raising=False)
     monkeypatch.setattr(keys, "default_backend", lambda: FakeKeyring(_never_the_real_keyring))
     opened = []
     monkeypatch.setattr(commands, "_default_opener", opened.append)
@@ -741,6 +751,48 @@ def test_campaign_create_keeps_the_offer_and_makes_a_companies_house_campaign(ws
     assert code == 0, out
     answers = yaml.safe_load((ws / "campaigns" / one_doc(out)["campaign"] / "answers.yaml").read_text(encoding="utf-8"))
     assert (answers["target"]["mode"], answers["target"]["sic_codes"]) == ("company", ["45200"])
+
+
+ESTIMATES = ("estimatedBusinesses", "estimatedSites", "estimatedMinutes")
+
+
+def test_a_register_plan_answers_null_estimates_and_a_text_search_plan_numbers(ws):
+    """Ruling 15: dvsa alone and Companies House are register queries only, so the three estimates are null, never 0; a
+    workspace that also configures a text-search provider gets a plan with text searches, and keeps its numbers."""
+    code, out = call("campaign_create", {"draft": DRAFT})
+    assert code == 0, out
+    assert [one_doc(out)[k] for k in ESTIMATES] == [None, None, None]
+    set_providers(ws, ["companies_house"])
+    code, out = call("campaign_create", {"draft": {**DRAFT, "source": "companies_house", "sicCodes": ["45200"]}})
+    assert code == 0, out
+    assert [one_doc(out)[k] for k in ESTIMATES] == [None, None, None]
+    set_providers(ws, ["dvsa", "fakelist"])
+    code, out = call("campaign_create", {"draft": DRAFT})
+    assert code == 0, out
+    numbers = [one_doc(out)[k] for k in ESTIMATES]
+    assert all(isinstance(n, int) and not isinstance(n, bool) for n in numbers) and numbers[0] > 0, numbers
+
+
+def test_in_use_follows_the_keyring_switch_and_key_save_is_refused_while_it_is_off(ws, monkeypatch, keyring_fake):
+    """Ruling 16: `saved` is what the keyring holds, `inUse` is saved and this workspace reads the keyring. With the switch off
+    key_save is refused (`input`, naming registry.keyring) and stores nothing; key_remove still removes."""
+    monkeypatch.setattr(keys, "default_backend", lambda: FakeKeyring(keyring_fake))
+    keyring_fake["registry.companies_house_key"] = "fixture-ch-key"
+    code, out = call("keys_list", {})
+    assert code == 0 and [(k["saved"], k["inUse"]) for k in one_doc(out)] == [(True, True), (False, False)]
+    data = yaml.safe_load((ws / "leadforge.yaml").read_text(encoding="utf-8"))
+    (ws / "leadforge.yaml").write_text(yaml.safe_dump({**data, "registry": {"keyring": False}}), encoding="utf-8")
+    code, out = call("keys_list", {})
+    assert code == 0 and [(k["saved"], k["inUse"]) for k in one_doc(out)] == [(True, False), (False, False)]
+    before = dict(keyring_fake)
+    code, out = call("key_save", {"name": "opencorporates_token", "value": "fixture-token"})
+    doc = one_doc(out)
+    assert (code, doc["kind"]) == (4, "input"), doc
+    assert any("registry.keyring" in d for d in doc["details"]) and "registry.keyring true" in doc["next"], doc
+    assert keyring_fake == before
+    code, out = call("key_remove", {"name": "companies_house_key"})
+    assert code == 0 and one_doc(out) == {"name": "companies_house_key", "saved": False, "inUse": False, "savedAt": None}
+    assert keyring_fake == {}
 
 
 def test_settings_carry_the_configured_sources_and_not_the_windows_own(ws):

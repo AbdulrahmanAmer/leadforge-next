@@ -1,10 +1,12 @@
 [
   {
+    "inUse": false,
     "name": "companies_house_key",
     "saved": false,
     "savedAt": null
   },
   {
+    "inUse": true,
     "name": "opencorporates_token",
     "saved": true,
     "savedAt": null
