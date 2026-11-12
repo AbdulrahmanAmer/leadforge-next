@@ -30,7 +30,7 @@ def sheet(path: Path, *cells: str) -> Path:
 
 def text(path: Path, body: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(body, encoding="utf-8")
+    path.write_bytes(body.encode("utf-8"))   # no newline translation: the bytes are what is compared
     return path
 
 
@@ -222,3 +222,45 @@ def test_a_file_that_cannot_be_read_is_not_guessed_about(tmp_path, monkeypatch):
         res = purge(cfg, NOW, "apply")
     assert res["state"] == "files_locked" and res["files_failed"] == ["exports/run_mid/leads.xlsx"]
     assert ids(path) == ALL and f["mid_sheet"].exists()                      # nothing was deleted from the database
+
+
+def test_the_in_place_rewrite_cleans_a_file_that_can_be_neither_replaced_nor_deleted(tmp_path, monkeypatch):
+    """The Linux mutation trial found no test reaching `_rewrite_in_place` (a held file can be replaced there): pinned here."""
+    from leadforge import retention
+    needle = retention.make_needle("zora@quillfeather.example")
+    mine, other = "INFO a zora@quillfeather.example\n", "INFO b mavis@underhill.example\n"
+    log = text(tmp_path / "run.detach.log", mine + other + mine)
+    sheet_csv = text(tmp_path / "leads.csv", "zora@quillfeather.example,x\n")
+
+    def refuse(*a, **k):
+        raise PermissionError("held open by another program")
+
+    block_unlink(monkeypatch, sheet_csv)                                     # only the sheet is held; the side file is ours
+    monkeypatch.setattr(retention.os, "replace", refuse)
+    assert retention._scrub_file(log, needle, log.read_bytes()) == "edited"
+    assert log.read_bytes() == other.encode()                                # the value's lines gone, the other line kept, file cut short
+    assert retention._scrub_file(sheet_csv, needle, sheet_csv.read_bytes()) == "edited"   # could not be deleted: emptied in place
+    assert sheet_csv.read_bytes() == b""
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_each_kind_of_identifier_finds_its_file_and_a_short_one_does_not(tmp_path):
+    """Domain, website host, maps address, a phone and a person's name each condemn a file alone; a 2-letter name condemns none."""
+    path = make_workspace(tmp_path)
+    c = db.connect(path)
+    c.execute("UPDATE businesses SET domain='old-a-works.example', website='https://www.a-site.example/contact', "
+              "maps_url='https://maps.example/place/AAA111' WHERE id='A'")
+    c.execute("INSERT INTO contacts(business_id,kind,value) VALUES('A','phone','+447700900123')")
+    c.execute("INSERT INTO people(business_id,name) VALUES('A','Al')")
+    c.commit()
+    c.close()
+    ex = tmp_path / "leadforge_data" / "exports" / "r"
+    holds = {k: text(ex / f"{k}.txt", body) for k, body in {
+        "domain": "see old-a-works.example\n", "site": "www.a-site.example\n", "maps": "https://maps.example/place/AAA111\n",
+        "phone": "call +447700900123\n"}.items()}
+    short = text(ex / "short.txt", "Al was here\n")
+    cfg = load_config(tmp_path)
+    purge(cfg, NOW, "auto")
+    res = purge(cfg, NOW, "apply")                                           # apply: the half rule is not what is tested here
+    assert res["state"] == "purged" and res["files_deleted"] == 4
+    assert not any(p.exists() for p in holds.values()) and short.exists()

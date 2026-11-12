@@ -218,7 +218,10 @@ def _scrub_file(p: Path, needle: Needle, raw: bytes) -> str:
         tmp.write_bytes(keep)
         os.replace(tmp, p)
     except OSError:
-        tmp.unlink(missing_ok=True)
+        try:
+            tmp.unlink(missing_ok=True)   # best effort: the side file is ours, the rewrite below is what counts
+        except OSError:
+            pass
         _rewrite_in_place(p, keep)
     return action
 

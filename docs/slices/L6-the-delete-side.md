@@ -439,3 +439,31 @@ Scope asked for: all of `retention.py`, the schema check of `db.py` (`check_sche
 test the names on Windows): the raw-file wrapper in `providers/gosom.py` and `db.add_contact` / `add_person`; they stay with the in-house trial. Summary of the log per module and outcome: `.github/mutation/summarize.py` (tried here on a made-up
 results file, including the "nothing matched" exit 1). Keep-or-cut rule (SPEC 3.4): keep only if it found a real gap the in-house trial did not, and ends under 20 minutes in CI.
 If it cannot be started from the branch, or does not end in 25 minutes: NOT DONE, with the reason.
+
+## Item 3 — result (hosted Linux, read from GitHub)
+
+Started once, by pushing commit f07f5b8 (the commit that adds the workflow; the push trigger fired, no hand start was needed): run 43171737338, `Mutation trial (Linux)`, status completed, conclusion **success**,
+job `mutmut on the delete modules · ubuntu-latest`, 06:57:22Z to 07:02:56Z = **5 min 34 s** including the install (limit 25). The unmutated tests passed first (`46 passed in 2.64s`). The existing `CI` run of the same commit:
+13 of 13 jobs success (the mutation trial is a separate workflow, so those stay 13). Result table, as the workflow's own summary step printed it (I counted the per-mutant lines of the log again with a script: the same 1197 / 934 / 252 / 7 / 4):
+
+| module | mutants | killed | survived | no tests | timeout |
+|---|---|---|---|---|---|
+| `leadforge.retention` (all of it) | 1082 | 853 | 218 | 7 | 4 |
+| `leadforge.db` (schema check: `check_schema_before_write`, `peek_schema_version`, `_version_of`, `schema_gaps`) | 83 | 58 | 25 | 0 | 0 |
+| `leadforge.export` (`_masker`) | 32 | 23 | 9 | 0 | 0 |
+| all | 1197 | 934 | 252 | 7 | 4 |
+
+Not covered by the vendor tool (see the item text): the raw-file wrapper of `providers/gosom.py`, `db.add_contact` / `add_person`; they were only in the in-house trial.
+
+**Real gaps it showed (not seen by the in-house trial), each now closed:**
+1. `retention._rewrite_in_place`: all 7 mutants "no tests". On Linux a held-open file can simply be replaced, so no test reached the in-place rewrite that item 2 added (on Windows only the real held-file test reaches it). New test
+   `test_the_in_place_rewrite_cleans_a_file_that_can_be_neither_replaced_nor_deleted`; with `fh.truncate()` replaced by `pass` it fails (`assert ... == other.encode()`), restored. Writing it also showed a real fragility: if the side file's own clean-up
+   raised, the in-place fallback was never reached; that clean-up is now best effort.
+2. New code of this run: `_identifiers` (25 of 57 survived), `_patterns_for` (10 of 40), `_scrub_file` (23 of 43). The tests used names, people and emails only; domain, website host, maps address and phone were each unpinned, and so was the 4-character minimum.
+   New test `test_each_kind_of_identifier_finds_its_file_and_a_short_one_does_not`; with `domain` dropped from the columns, or the minimum lowered to 1, it fails; restored.
+**Not read one by one (UNPROVEN equivalent):** the other survivors, mostly `make_needle` (26), `_delete_everything_on` (26), `purge` (23), `forget_in_database` (22), `classify` (13), `peek_schema_version` (11 of 13), `masker` (9). The in-house trial's reading of the same code
+said equivalent or outside the slice (chunk sizes, error-path `rollback`, back-up steps); mutmut makes finer changes (text of messages, each argument), so its counts are higher and are not comparable to the in-house 223. The log has only names, not the changes; a next run can print
+`mutmut show <name>` for them (not done: the brief says once).
+
+**Keep or cut (SPEC 3.4: keep only if it finds a real gap and ends under 20 minutes in CI): KEEP.** It found real gaps (two, above), it ends in 5.5 minutes, and it is not on every push (it starts by hand once the file is on the default branch, or when a commit changes
+its own files). The in-house `scripts/mutation_trial.py` stays as the Windows-side trial.
