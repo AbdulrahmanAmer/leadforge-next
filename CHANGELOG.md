@@ -1,10 +1,11 @@
 # Changelog
 
-## [0.7.3] � 2026-11-12
+## [0.7.3] — 2026-11-12
 
-The fake-campaign check now also runs on Linux (its network guard refuses a DNS question to a loopback stub resolver too).
-Companies House's address is a setting (default unchanged) and the fake campaign serves it. The speed test no longer races the clock.
-`send-outreach` installed alone keeps its guardrail files beside it. (Draft; finalised at the end of the run.)
+The fake-campaign check runs on Linux too (its network guard now refuses any DNS question, even to a loopback stub resolver) and
+serves an invented Companies House. New setting `registry.companies_house_url` (default unchanged; only the default or a loopback address
+is accepted, since the API key goes with every request). `send-outreach` carries its own copies of the guardrail files, so it works
+installed alone; the build backend is pinned exactly; a speed test no longer races the clock.
 
 ## [0.7.2] — 2026-11-11
 

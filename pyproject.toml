@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77"]  # >=77 for SPDX license string (PEP 639)
+requires = ["setuptools==84.2.1"]  # exact, as in requirements.lock (>=77 is what the SPDX license string, PEP 639, needs)
 build-backend = "setuptools.build_meta"
 
 [project]

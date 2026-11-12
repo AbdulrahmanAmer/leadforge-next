@@ -46,7 +46,11 @@ def test_lock_agrees_with_uv_lock():
         assert name in entries, f"runtime dependency {name} is missing from requirements.lock"
     build = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["build-system"]["requires"]
     for req in build:
-        assert re.match(r"[A-Za-z0-9_.\-]+", req).group(0).lower() in entries, f"build backend {req} not locked"
+        pin = re.fullmatch(r"([A-Za-z0-9_.\-]+)==([0-9][A-Za-z0-9_.+!\-]*)", req)
+        assert pin, f"build backend {req} is not an exact name==version pin"
+        name, version = pin.group(1).lower(), pin.group(2)
+        assert name in entries, f"build backend {req} not locked"
+        assert entries[name][0] == version, f"build backend {req}: requirements.lock pins {entries[name][0]}"
 
 
 def test_launcher_installs_from_the_lock_with_hashes():

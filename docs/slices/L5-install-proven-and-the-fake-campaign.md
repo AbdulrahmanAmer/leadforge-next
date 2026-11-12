@@ -174,3 +174,20 @@ restored:                                  ok: 2 skills open every file they nam
 ```
 Not covered (carried over): `outreach.md` names two repo docs (`docs/06-token-contract.md`, `docs/07-compliance.md`) that are in no skill folder; the check
 looks at what `SKILL.md` names, as the brief says.
+
+## Item 5 (extra, started at minute 14 of the box) — the build backend pinned exactly
+
+**Choice and reason.** From the plan's L5 paragraph I took "the build backend pinned exactly" because it is small, closes a hole on its own
+(`pip install .` in CI and any isolated build fetch whatever `setuptools>=77` resolves to today, unhashed), and the hashed lock already carries
+`setuptools==84.2.1`. Not taken: `doctor --fix` installing from hashed locks — it needs a new hashed extras lock for torch/GLiNER/crawl4ai/yt-dlp
+generated from `uv.lock`, a job of hours: carried over.
+
+**Must do (written before the change).** `[build-system] requires = ["setuptools==84.2.1"]` (the version `requirements.lock` and `uv.lock` pin; uploaded
+2026-10-20, older than 7 days; >= 77 so the SPDX licence string still builds). `tests/test_plugin_lock.py` is extended: every build requirement is an
+exact `name==version` pin and that version equals the one in `requirements.lock`, so a pin and the lock cannot drift apart. Seen red first: a pin to
+another version, and a range put back.
+
+**Check by reading, after; red/green.** `pyproject.toml` `requires = ["setuptools==84.2.1"]` equals the pin in `requirements.lock`; the test now needs an exact pin that
+equals the lock. Red: `setuptools==84.2.0` → `AssertionError: build backend setuptools==84.2.0: requirements.lock pins 84.2.1`; `setuptools>=77` → `AssertionError: build backend
+setuptools>=77 is not an exact name==version pin`; restored → `2 passed, 1 skipped` (the skip is the POSIX-sh launcher test, as before on this laptop). An isolated build with the pin
+is exercised by the CI `pip install .` step (read it on the pull request).
