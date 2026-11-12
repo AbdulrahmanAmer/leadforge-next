@@ -116,8 +116,8 @@ registry officers, press/speaker pages, and existing lawful Google Business Prof
 typed as `switchboard`, `main_line`, `direct`, `mobile`, or `unknown`; emails retain their stage: published personal,
 published role, inferred pattern, or licensed-provider verification.
 
-The default path remains OSS and keyless. Paid enrichment adapters are optional and disabled unless explicitly
-configured. No LinkedIn scraping or SMTP mailbox probing is used. MX validation confirms that a domain can receive
+The default path remains OSS and keyless; there is no paid-provider code in the tool (the unused adapter hook was removed
+in 0.7.1). No LinkedIn scraping or SMTP mailbox probing is used. MX validation confirms that a domain can receive
 mail; it does not claim that a particular mailbox exists.
 
 For stricter outreach, require confirmation evidence in `leadforge.yaml`:
@@ -259,7 +259,7 @@ booking" on sites that were never read); a freemail address never outranks the b
 matches require a name-similarity gate and an active company; Google Business Profile facts (booking links,
 appointment attributes, owner reply signatures) are kept; the DVSA MOT-station register is a discovery provider
 merged into Maps rows by phone; tiled Maps queries subdivide when they saturate and `--resume` finishes a run's
-pending queries; the geocoder resolves bare city names to the city. Release gate: `python scripts/v03_gate.py`.
+pending queries; the geocoder resolves bare city names to the city. Release gate: `node check.mjs --ci`.
 
 **v0.1.4 — shipped and live-validated** with a 709-lead UK auto-repair campaign (2026-08-31). Every ICM unit
 is implemented and tested. Since v0.1.1: a **registry stage** that covers site-less businesses and adds a

@@ -223,6 +223,15 @@ def test_version_digest_contract(offline):
     assert d["cmd"] == "version" and d["ok"] is True
 
 
+def test_version_flag_prints_package_version(tmp_path):
+    from leadforge import __version__
+
+    r = _run(["--version"], tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.splitlines()[0] == f"leadforge {__version__}"
+    assert _digest(r.stdout)["cmd"] == "version"
+
+
 def test_doctor_digest_contract(offline, monkeypatch):
     # no --fix: checks may fail (no binary in tmp workspace) but the digest contract must hold
     res = offline.invoke(app, ["--json", "doctor"])

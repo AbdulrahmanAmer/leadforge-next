@@ -111,10 +111,10 @@ def test_dvsa_fetch_yields_exactly_leeds_rows(tmp_path, monkeypatch):
     assert len(out) == 3
     assert all(isinstance(x, RawListing) and x.provider == "dvsa" for x in out)
     names = {x.data["name"] for x in out}
-    assert names == {"Speedy MOT Centre", "M and T Transmissions Limited", "Northside Tyres and Exhausts"}
+    assert names == {"Harbour Lane MOT Centre", "Q and Z Transmissions Limited", "Ashby Mews Tyres and Exhausts"}
     # 'MOT' (<=3 chars, all caps, not a stopword) stays upper; 'AND' (a stopword) is lowercased.
-    assert "Speedy MOT Centre" in names
-    assert "M and T Transmissions Limited" in names
+    assert "Harbour Lane MOT Centre" in names
+    assert "Q and Z Transmissions Limited" in names
 
     for listing in out:
         assert listing.data["category"] == "MOT test station"
@@ -136,9 +136,9 @@ def test_dvsa_cp1252_byte_decodes_correctly(tmp_path, monkeypatch):
     monkeypatch.setattr(dvsa, "_download_csv", _counting_downloader(counter))
     prov = DvsaProvider(cfg)
     out = prov.fetch(PlannedQuery(text="x in Leeds", category="", area="Leeds"))
-    row = next(x for x in out if x.data["name"] == "Northside Tyres and Exhausts")
+    row = next(x for x in out if x.data["name"] == "Ashby Mews Tyres and Exhausts")
     assert "’" in row.data["complete_address"]["street"]
-    assert "St James’s Court" in row.data["complete_address"]["street"]
+    assert "Abbot’s Court" in row.data["complete_address"]["street"]
 
 
 def test_dvsa_categories_include_enabled_classes(tmp_path, monkeypatch):
@@ -147,9 +147,9 @@ def test_dvsa_categories_include_enabled_classes(tmp_path, monkeypatch):
     monkeypatch.setattr(dvsa, "_download_csv", _counting_downloader([0]))
     prov = DvsaProvider(cfg)
     out = prov.fetch(PlannedQuery(text="x in Leeds", category="", area="Leeds"))
-    speedy = next(x for x in out if x.data["name"] == "Speedy MOT Centre")
+    speedy = next(x for x in out if x.data["name"] == "Harbour Lane MOT Centre")
     assert speedy.data["categories"] == ["MOT test station", "MOT class 4"]
-    northside = next(x for x in out if x.data["name"] == "Northside Tyres and Exhausts")
+    northside = next(x for x in out if x.data["name"] == "Ashby Mews Tyres and Exhausts")
     assert northside.data["categories"] == ["MOT test station", "MOT class 4", "MOT class 7"]
 
 
@@ -169,7 +169,7 @@ def test_dvsa_locality_parsed_from_text_when_area_empty(tmp_path, monkeypatch):
     prov = DvsaProvider(cfg)
     out = prov.fetch(PlannedQuery(text="MOT test station in Sheffield, South Yorkshire", category="", area=""))
     assert len(out) == 2
-    assert {x.data["name"] for x in out} == {"Sheffield Auto Care", "Steel City MOT"}
+    assert {x.data["name"] for x in out} == {"Elmstone Quay Auto Care", "Bracken MOT"}
 
 
 def test_dvsa_bristol_locality_single_row(tmp_path, monkeypatch):
@@ -179,7 +179,7 @@ def test_dvsa_bristol_locality_single_row(tmp_path, monkeypatch):
     prov = DvsaProvider(cfg)
     out = prov.fetch(PlannedQuery(text="x in Bristol", category="", area="Bristol"))
     assert len(out) == 1
-    assert out[0].data["name"] == "West Country Garage Services Limited"
+    assert out[0].data["name"] == "Quarryside Garage Services Limited"
 
 
 # --- normalize.to_business integration (phone -> E.164) ------------------------------------------
@@ -190,7 +190,7 @@ def test_dvsa_row_normalizes_to_e164_phone(tmp_path, monkeypatch):
     monkeypatch.setattr(dvsa, "_download_csv", _counting_downloader([0]))
     prov = DvsaProvider(cfg)
     out = prov.fetch(PlannedQuery(text="x in Leeds", category="", area="Leeds"))
-    speedy = next(x for x in out if x.data["name"] == "Speedy MOT Centre")
+    speedy = next(x for x in out if x.data["name"] == "Harbour Lane MOT Centre")
     biz = to_business(speedy, "run_x", None, "GB")
     assert biz is not None
     assert biz.phone_e164 is not None

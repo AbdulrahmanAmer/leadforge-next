@@ -71,7 +71,7 @@ Required workflow
    - preserve phone types and email stages;
    - preserve conservative BYOL matching and WESCORE workbook benchmark import;
    - preserve source/provider/contact-type outreach attribution and coverage metrics;
-   - preserve the optional paid-adapter boundary and default-disabled behavior;
+   - there is no paid-adapter code (removed in 0.7.1); do not add a paid-provider path while merging;
    - do not silently migrate or destroy an older database if the current project instructions require a
      fail-closed schema policy. Report the exact schema action and require the documented migration path.
 

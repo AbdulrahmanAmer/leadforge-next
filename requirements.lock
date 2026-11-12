@@ -696,9 +696,7 @@ regex==2026.11.9 \
 rich==15.0.0 \
     --hash=sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb \
     --hash=sha256:edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36
-    # via
-    #   leadforge
-    #   typer
+    # via typer
 selectolax==0.4.13 \
     --hash=sha256:04675e7f1e98b04e42d92593f7522f13f590783f824f275aa9e63b6463291756 \
     --hash=sha256:053c1a62ca2f34339ae69b5ab9b4906c4ff9f911737f9b7afa16ce7f450ecb46 \
@@ -751,10 +749,6 @@ shellingham==1.5.4 \
     --hash=sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686 \
     --hash=sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de
     # via typer
-tenacity==9.2.1 \
-    --hash=sha256:9e56f17539296baab7beabb08b92f6ee3d7be92d8be72d763360677c2ad6580e \
-    --hash=sha256:a606b5c808d0cded4a359d5b9932d867ff2a6a6b64d37350260fd01bbdf83839
-    # via leadforge
 tld==0.13.2 \
     --hash=sha256:9b8fdbdb880e7ba65b216a4937f2c94c49a7226723783d5838fc958ac76f4e0c \
     --hash=sha256:d983fa92b9d717400742fca844e29d5e18271079c7bcfabf66d01b39b4a14345

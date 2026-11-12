@@ -25,9 +25,9 @@ Status: 2026-10-14. This document records the baseline before behavior changes.
 | Outreach attribution | `outcomes` had no source/provider/contact-type columns | nullable additive attribution columns + extended `add_outcome` |
 | Measurement | No reusable coverage/source-hit/cost metrics | read-only `enrich.metrics` functions |
 | Phone typing | Phones were stored as generic `Contact(kind='phone')` | `switchboard|main_line|direct|mobile|unknown` classification and observation projection |
-| Email waterfall | Published vs inferred was partly represented by labels/tiers | explicit contact `email_stage` plus published→role→inferred labels; licensed adapters remain opt-in |
+| Email waterfall | Published vs inferred was partly represented by labels/tiers | explicit contact `email_stage` plus published→role→inferred labels; the adapter hook this row once named was removed in 0.7.1 (unused) |
 | Coverage expansion | Team/about and structured people were not explicit | Schema.org Person, vCard, and structured Person extraction is additive; registry/GBP paths retain existing guards |
-| Paid providers | No unified opt-in adapter contract | adapter protocol/registry; no built-in provider and disabled by default |
+| Paid providers | No unified opt-in adapter contract | (was: adapter protocol/registry, never used; removed in 0.7.1, no paid-provider code remains) |
 | BYOL | No conservative CSV import path | dry-run-first CSV importer with unique ID/domain/phone/exact name+locality matching |
 | Compliance | Region profile was coarse (`us|uk|eu`) and provenance was not field-level | conservative US/GB/EU policy profiles plus observation jurisdiction/provenance |
 | Benchmark | No hand-checked outreach benchmark workflow | CSV/TSV/XLSX importer, WESCORE workbook tab mapping, canonical dispositions, attribution and idempotent re-import |
