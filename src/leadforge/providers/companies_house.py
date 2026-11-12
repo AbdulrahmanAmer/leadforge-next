@@ -54,8 +54,9 @@ class CompaniesHouseDiscovery(DiscoveryProvider):
     def available(self) -> tuple[bool, str]:
         if not self.cfg.registry.companies_house_key:
             return False, ("no registry.companies_house_key configured — get a free key at "
-                          "https://developer.company-information.service.gov.uk then run: "
-                          "leadforge config set registry.companies_house_key <KEY>")
+                          "https://developer.company-information.service.gov.uk then set the environment variable "
+                          "LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY or the OS keyring: "
+                          "`keyring set leadforge registry.companies_house_key`")
         return True, "companies house advanced search"
 
     def _shard_cfg(self) -> tuple[int, int, set[str]]:

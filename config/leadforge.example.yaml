@@ -42,10 +42,11 @@ validation:
   dns_timeout_s: 5.0
   staleness_days: 90
 
-registry:                         # optional free-registration keys; leave empty to disable (ADR-007)
-  companies_house_key: ""
+registry:                         # the keys are NOT set here (refused): environment LEADFORGE_REGISTRY__<NAME> or the OS keyring
+  # LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY / LEADFORGE_REGISTRY__OPENCORPORATES_TOKEN, or `keyring set leadforge registry.<name>`
   # companies_house_url: only the default address or a loopback one is accepted (the key goes with every request)
-  opencorporates_token: ""
+  keyring: true                   # look in the OS keyring when the environment has no key (extra `keyring`)
+  opencorporates_enabled: false   # its API takes the token only in the web address, so it is off unless you switch it on
 
 social:                           # social/video presence signals (unit U4.8)
   enabled: true                   # on by default; silently skipped when the tooling is absent

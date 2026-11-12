@@ -140,6 +140,8 @@ about coverage.
 
 ## 6. Security & privacy
 
-- No credentials required or stored by default; optional registry keys live in workspace `leadforge.yaml` (gitignored) or env vars.
+- No credentials required or stored by default; optional registry keys come only from the environment
+  (`LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY`, `LEADFORGE_REGISTRY__OPENCORPORATES_TOKEN`) or the OS keyring
+  (service `leadforge`, extra `keyring`); a key in `leadforge.yaml` is refused (L9, C2).
 - `leadforge_data/` is gitignored — scraped personal data never lands in the shared repo.
 - Suppression table filters opted-out domains/emails at crawl, score, and export time.

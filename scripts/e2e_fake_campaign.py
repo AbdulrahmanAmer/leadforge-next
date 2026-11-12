@@ -47,7 +47,7 @@ CONFIG_YAML = f"""discovery:
   dvsa:
     url: http://127.0.0.1:{WORLD['port']}/dvsa/active-mot-stations.csv
 registry:
-  companies_house_key: {CH['key']}
+  keyring: false
   companies_house_url: http://127.0.0.1:{WORLD['port']}/ch
 politeness:
   delay_s: 0.2
@@ -157,6 +157,8 @@ def child_env(ws: Path, guard_log: Path) -> dict:
         "PYTHONPATH": str(HARNESS), "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "COLUMNS": "200", "NO_COLOR": "1",
         "HOME": str(home), "USERPROFILE": str(home), "APPDATA": str(home / "AppData"), "LOCALAPPDATA": str(home / "Local"),
         "LF_GUARD_LOG": str(guard_log), "LF_GUARD_HOSTS": ",".join(HOSTS), "LF_FAKE_MAPS": str(FIX / "maps_listings.json"),
+        # L9: a key is read only from the environment or the OS keyring (the campaign switches the keyring off)
+        "LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY": CH["key"],
     })
     return env
 

@@ -73,7 +73,7 @@ leadforge dm export --max 60              # (only needed with --no-autopilot, or
 leadforge dm apply --in dm_labels.ndjson
 leadforge run    --icp icp.yaml --resume  # score + export
 leadforge status
-leadforge config set registry.companies_house_key XXX  # read/write one leadforge.yaml value (set|get)
+leadforge config set agent.model sonnet  # read/write one leadforge.yaml value (set|get); keys: environment or keyring
 leadforge export --icp icp.yaml --format xlsx,csv      # re-export the latest run
 leadforge suppress add someone@example.com   # opt-outs, honored everywhere (--kind domain|email|place_id)
 leadforge render-check https://site.example  # diagnose one site: robots -> plain fetch -> browser -> contacts

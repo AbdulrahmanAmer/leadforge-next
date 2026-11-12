@@ -133,8 +133,9 @@ What's different from the default `local_business` mode:
   House advanced-search needs a location string; a bbox alone isn't usable here) and `country` must be
   `GB` — the API only covers UK-registered companies.
 - **Discovery provider**: set `discovery: { providers: [companies_house] }` in `leadforge.yaml`
-  (workspace config, not the ICP) and `registry: { companies_house_key: "<key>" }` — the same free key
-  from https://developer.company-information.service.gov.uk that the registry cross-check already uses.
+  (workspace config, not the ICP); the key (the same free key from https://developer.company-information.service.gov.uk
+  that the registry cross-check already uses) goes in the environment variable `LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY`
+  or the OS keyring, never in `leadforge.yaml` and never on a command line you run.
   Query plan is (SIC-code shards of <=5 codes) x areas — see `leadforge.company.build_company_plan`.
 - **Scoring**: `scoring.profile` is set to `company` automatically by intake when target.mode is
   `company` and no profile was set explicitly. The rubric is SIC overlap with your target list

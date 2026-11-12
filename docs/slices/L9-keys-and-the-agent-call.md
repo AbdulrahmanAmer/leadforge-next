@@ -85,6 +85,63 @@ E           api_token=FAKE-oc-token-0123456789-not-real&jurisdiction_code=gb "HT
   keyring is never read or written.
 - Every message that told the user to `config set` a key now says the environment variable or the keyring.
 
+**Supply chain (read `supply-chain-2026-10.md` first).** `keyring==25.7.0`: uploaded 2025-11-16 (360 days old), the newest release,
+publisher the long-standing jaraco/keyring project (maintainer Jason R. Coombs), not on the never-install list. Added only as the
+optional extra `keyring`; NOT installed anywhere in this run (the tests never import it: they use a fake module or the fake lookup).
+`osv-scanner` was not run on it: there is no lockfile entry for it (requirements.lock does not carry extras). `uv.lock` was NOT
+regenerated (it would need a network resolve; nothing checks it — the L2 review already notes it lags). Test tools installed into
+this run's venv (not in the lock): pytest 9.2.0 (2026-10-27, 15 days), pytest-timeout 2.4.0 (2025-05-05), iniconfig 2.3.1
+(2026-10-06), pluggy 1.7.0 (2026-10-15): all older than 7 days.
+
+**Check by reading (after the code).**
+- `load_config`: the file is read; a non-empty `registry.companies_house_key` / `registry.opencorporates_token` raises
+  `KeyInConfigFile(key_refusal(name))` before anything is merged or validated (so pydantic's own error, which can echo an input value,
+  is never reached for a key). `key_refusal` is built from the name only. Holds.
+- The two names are popped from the YAML-parsed environment overrides and read again from `os.environ` as written (stripped); if
+  empty and `registry.keyring`, from `_keyring_get`. Sources recorded in `cfg._key_sources` (a fresh dict per load). Holds.
+- `_keyring_get`: `ImportError` -> None; any backend error -> None plus one warning with the exception's type only. Holds.
+- Root callback: `KeyInConfigFile` keeps its whole message (others still cut at 100). `config set`: the validation load of the
+  would-be file raises `KeyInConfigFile` for a direct or a section set; the message is printed and nothing is written; setting `""`
+  still works (it clears an old key). `config get registry.<key>`: from the loaded config, "<hidden, n chars> (from the ...)" or
+  "'' (not set; ...)". `config get registry` (the section) reads the file and hides as before. Holds.
+- `Config` is never dumped to disk or output anywhere in `src` (searched `model_dump`, `.dict()`, `vars(cfg`): the key read from the
+  environment reaches only the two providers.
+- Not changed: `discovery.proxies` may still carry `user:password@` in `leadforge.yaml` (printed hidden since L2); it is not a registry
+  key and the plan's item names registry keys only.
+- Deliberate contract changes in older tests: `tests/test_config_secrets.py` (a key set is now refused and nothing is written, where
+  before it was written and only not echoed; the section-hiding check now plants the key by writing the file, as an old workspace
+  would have it) and `tests/test_cli_contract.py::test_config_set_get_roundtrip` (round trip on `agent.model`; a key set is refused,
+  `get` reports `key_set: 0`).
+
+**Proof.** `tests/test_l9_keys_from_env_or_keyring.py` (8 tests) plus the two changed tests: `32 passed in 29.72s` (with
+`tests/test_config_secrets.py` and `tests/test_cli_contract.py`). Each new test seen red first (`breakrun.py`, the break applied,
+the test run, the file restored byte for byte):
+```
+### yaml refusal removed (broken: src/leadforge/config.py)
+E       Failed: DID NOT RAISE KeyInConfigFile
+### environment not read (broken: src/leadforge/config.py)
+E       AssertionError: assert '' == 'FAKE-registr...cdef-not-real'
+### keyring switch ignored (broken: src/leadforge/config.py)
+E       AssertionError: assert 'FAKE-registr...cdef-not-real' == ''
+### config set refusal branch removed (broken: src/leadforge/cli.py)
+E           assert ('must not be in leadforge.yaml' in 'LF_DIGEST {"ok":false,"cmd":"config","run":null,"counts":{},"warnings":["invalid value for registry.companies_house_key: KeyInConfigFile"],"artifacts":[],"next":null}\n')
+### config get key branch removed (broken: src/leadforge/cli.py)
+E       assert (0 == 0 and 'not set' in 'registry.companies_house_key = {}\nLF_DIGEST {"ok":true,"cmd":"config","run":null,"counts":{},"warnings":[],"artifacts":[],"next":null}\n')
+### keyring import failure not caught (broken: src/leadforge/config.py)
+E           ModuleNotFoundError: import of keyring halted; None in sys.modules
+restored all
+```
+The first commit of this item carried a fake value with a hex run that `gitleaks` flags (`generic-api-key`, the fake built from
+pieces in the test; not a real key). The constant was changed to plain words and the commit rewritten on this branch before any
+review; the two checks that print the constant were seen red again with the new value:
+```
+### environment not read (broken: src/leadforge/config.py)
+E       AssertionError: assert '' == 'FAKE-registr...scan-not-real'
+### keyring switch ignored (broken: src/leadforge/config.py)
+E       AssertionError: assert 'FAKE-registr...scan-not-real' == ''
+restored all
+```
+
 ### Item 3 — `AgentFailed` redacts the arguments of `agent.command`
 
 **Must hold (written before the code).**

@@ -108,8 +108,9 @@ def _warnings(icp: ICP) -> list[str]:
         from leadforge.config import load_config
         if not load_config(".").registry.companies_house_key:
             w.append("UK campaign: a free Companies House key adds registry-verified directors — "
-                     "get one at https://developer.company-information.service.gov.uk then run: "
-                     "leadforge config set registry.companies_house_key <KEY>")
+                     "get one at https://developer.company-information.service.gov.uk then set the environment "
+                     "variable LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY or the OS keyring: "
+                     "`keyring set leadforge registry.companies_house_key`")
     if icp.target.mode == "company":
         w.append("company mode: set discovery.providers: [companies_house] in leadforge.yaml so "
                  "discovery uses the Companies House advanced-search provider (not gosom/Maps)")

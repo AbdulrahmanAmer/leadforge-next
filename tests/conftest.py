@@ -56,3 +56,24 @@ def _never_autodetect_claude(monkeypatch):
     `agent.command` lists (the fake scripts in test_agent_runner.py) still work."""
     import leadforge.agent_runner as _ar
     monkeypatch.setattr(_ar.shutil, "which", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
+def _never_the_real_keyring(monkeypatch):
+    """L9 (C2): the registry keys may come from the OS keyring. No test ever reads or writes the real one: the
+    lookup is replaced by a fake that holds nothing (a test fills `keyring_fake` to plant a key), the switch is off
+    for `python -m leadforge` children, and the operator's own keys in the environment never reach a test."""
+    import leadforge.config as _cfg
+    store: dict[str, str] = {}
+    monkeypatch.setattr(_cfg, "_keyring_get", lambda name: store.get(f"registry.{name}"))
+    monkeypatch.setenv("LEADFORGE_REGISTRY__KEYRING", "false")
+    for name in _cfg.KEY_SETTINGS:
+        monkeypatch.delenv(_cfg.key_env_name(name), raising=False)
+    return store
+
+
+@pytest.fixture
+def keyring_fake(_never_the_real_keyring, monkeypatch):
+    """The fake keyring's store, with the keyring lookup switched on for this test (in this process only)."""
+    monkeypatch.delenv("LEADFORGE_REGISTRY__KEYRING", raising=False)
+    return _never_the_real_keyring

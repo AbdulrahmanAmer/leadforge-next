@@ -18,14 +18,13 @@ def test_config_set_and_get_never_print_a_key(tmp_path, monkeypatch):
     runner = CliRunner()
     for key in ("registry.companies_house_key", "registry.opencorporates_token"):
         res = runner.invoke(app, ["config", "set", key, FAKE])
-        assert res.exit_code == 0, _out(res)
+        assert res.exit_code == 2, _out(res)  # L9: a key is refused in leadforge.yaml (environment or keyring only)
         assert FAKE not in _out(res)
-        assert "hidden" in _out(res)
         res = runner.invoke(app, ["config", "get", key])
         assert res.exit_code == 0, _out(res)
         assert FAKE not in _out(res)
-    # the value is still written: the command works, it only stops echoing it
-    assert FAKE in (tmp_path / "leadforge.yaml").read_text(encoding="utf-8")
+    # L9: nothing is written
+    assert not (tmp_path / "leadforge.yaml").exists()
 
 
 def test_config_still_prints_ordinary_values(tmp_path, monkeypatch):
@@ -54,9 +53,11 @@ def test_config_never_prints_a_key_through_its_parent_or_a_proxy_address(tmp_pat
     for args in calls:
         res = runner.invoke(app, args)
         assert FAKE not in _out(res), f"{' '.join(args[:3])} printed the key: {_out(res)}"
-    res = runner.invoke(app, ["config", "get", "registry"])
-    assert "opencorporates_token" in _out(res) and "hidden" in _out(res)
     assert "proxy.example:8080" in _out(runner.invoke(app, ["config", "get", "discovery.proxies"]))
+    # a workspace written before L9 may still hold a key: `config get` of its section hides it
+    (tmp_path / "leadforge.yaml").write_text(f"registry:\n  opencorporates_token: {FAKE}\n", encoding="utf-8")
+    res = runner.invoke(app, ["config", "get", "registry"])
+    assert "opencorporates_token" in _out(res) and "hidden" in _out(res) and FAKE not in _out(res)
 
 
 def test_config_hides_every_shape_of_proxy_password_and_plural_key_names(tmp_path, monkeypatch):
