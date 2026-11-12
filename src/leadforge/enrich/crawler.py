@@ -44,6 +44,10 @@ _TRACKING_PARAMS = {
     "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
     "fbclid", "gclid", "msclkid", "ref", "source",
 }
+# C8 (RFC 9309): a robots.txt answer is kept at most 24 hours, and at least 500 KiB of the file is read. The
+# bound is above the minimum so a rule at 500 KiB is never cut; the cut falls at a line end.
+ROBOTS_TTL_S = 24 * 60 * 60
+ROBOTS_MAX_BYTES = 512 * 1024
 _CURRENT_YEAR = date.today().year  # staleness threshold = current - crawl.stale_after_years
 
 # v0.3 unit C1: broadened booking_hint — "book" + a booking-shaped word within 4 words either side
@@ -149,7 +153,7 @@ class CrawlResult:
     needs_browser: bool = False
     signals: dict = field(default_factory=dict)  # https, status, copyright_year, stale_site, has_booking_hint, careers
     error: str = ""
-
+    refused: bool = False  # C9: the site answered 403 or 429 to the plain client; no browser follows
 
 
 # v0.3 speed unit (2026-09-02): a DNS/connection failure means the HOST is unreachable, not just this
@@ -175,10 +179,12 @@ class SiteCrawler:
     _dead_hosts: dict[str, str] = {}  # host -> reason, shared process-wide across all instances
     _dead_hosts_lock = threading.Lock()
 
-    def __init__(self, cfg: Config, throttle: HostThrottle | None = None):
+    def __init__(self, cfg: Config, throttle: HostThrottle | None = None, clock=time.monotonic):
         self.cfg = cfg
         self.throttle = throttle or HostThrottle(cfg.politeness.delay_s)
+        self._clock = clock  # injected in tests: the robots answer's 24 hour life
         self._robots: dict[str, urllib.robotparser.RobotFileParser] = {}
+        self._robots_at: dict[str, float] = {}
         self._fetching_robots = False
         self.client = httpx.Client(
             follow_redirects=True,
@@ -223,24 +229,27 @@ class SiteCrawler:
     def _robots_for(self, base: str) -> urllib.robotparser.RobotFileParser:
         host = site_key(base)
         rp = self._robots.get(host)
-        if rp is not None:
+        now = self._clock()
+        if rp is not None and now - self._robots_at[host] < ROBOTS_TTL_S:
             return rp
         rp = urllib.robotparser.RobotFileParser()
         dead = self._host_dead_reason(host)
         if dead is not None:
             rp.parse(["User-agent: *", "Disallow: /"])  # known-dead host -> unreachable -> disallow
             self._robots[host] = rp
+            self._robots_at[host] = now
             return rp
         fetching, self._fetching_robots = self._fetching_robots, True
         try:
-            resp = self.client.get(urljoin(base, "/robots.txt"))  # paced by _pace
-            if resp.status_code == 200:
-                rp.parse(resp.text.splitlines())
-            elif resp.status_code >= 500:
-                # RFC 9309 §2.3.1.4: an UNREACHABLE robots.txt means assume complete disallow
-                rp.parse(["User-agent: *", "Disallow: /"])
-            else:
-                rp.parse([])  # 4xx = 'unavailable' -> no robots published -> allow
+            # streamed, so a huge file is never held whole; redirects of this one request are followed
+            with self.client.stream("GET", urljoin(base, "/robots.txt")) as resp:  # paced by _pace
+                if resp.status_code == 200:
+                    rp.parse(self._robots_lines(resp))
+                elif resp.status_code >= 500:
+                    # RFC 9309 §2.3.1.4: an UNREACHABLE robots.txt means assume complete disallow
+                    rp.parse(["User-agent: *", "Disallow: /"])
+                else:
+                    rp.parse([])  # 4xx = 'unavailable' -> no robots published -> allow
         except httpx.HTTPError as e:
             if _is_connection_failure(e):
                 self._mark_host_dead(host, f"transport:{type(e).__name__}")
@@ -248,7 +257,20 @@ class SiteCrawler:
         finally:
             self._fetching_robots = fetching
         self._robots[host] = rp
+        self._robots_at[host] = now
         return rp
+
+    @staticmethod
+    def _robots_lines(resp: httpx.Response) -> list[str]:
+        """The lines of the first ROBOTS_MAX_BYTES of the body; a cut falls at a line end."""
+        body = b""
+        for chunk in resp.iter_bytes():
+            body += chunk
+            if len(body) > ROBOTS_MAX_BYTES:
+                body = body[:ROBOTS_MAX_BYTES]
+                body = body[: body.rfind(b"\n") + 1] if b"\n" in body else b""
+                break
+        return body.decode("utf-8", errors="replace").splitlines()
 
     def _allowed(self, url: str) -> bool:
         rp = self._robots_for(url)
@@ -257,7 +279,9 @@ class SiteCrawler:
     # --- fetch -------------------------------------------------------------------
     # A None from _get has four distinct causes; last_failure records which, so crawl() can
     # decide whether a real browser could plausibly do better (only for block-shaped statuses).
-    _BLOCK_STATUSES = {401, 403, 405, 406, 429, 503}
+    # C9: 403 and 429 are a refusal and final: no browser follows. The other block-shaped statuses stay as they were.
+    _REFUSAL_STATUSES = {403, 429}
+    _BLOCK_STATUSES = {401, 405, 406, 503}
 
     def _get(self, url: str, timeout: float | None = None) -> httpx.Response | None:
         """timeout overrides the client's default (home-page) timeout — pass cfg.crawl.page_timeout_s
@@ -419,6 +443,7 @@ class SiteCrawler:
             # nothing from Chromium and would just burn minutes per site.
             status = int(cause.split(":", 1)[1]) if cause.startswith("status:") else None
             result.needs_browser = status in self._BLOCK_STATUSES
+            result.refused = status in self._REFUSAL_STATUSES
             return result
         home_html = resp.text[: self.cfg.crawl.max_text_bytes]
         # A non-aggregator start URL can still redirect to one (e.g. a shortener landing on linktr.ee) —
