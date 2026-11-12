@@ -102,14 +102,207 @@ same number. The key commands without L9's keyring answer `not_available` (the b
 19. to 20. settings: `theme`/`accent` in a patch are `usage` (the shell keeps them); formats other than xlsx/csv are `usage`.
 21. `about`: the notices file lists exactly the packages of `requirements.lock` with their locked versions and the lock's hash.
 
+## Built: the 21 commands
+
+| Command | State | Notes |
+|---|---|---|
+| campaign_create | done | `source: "companies_house"` refused (seam change 3); offer text is a marker (seam change 2) |
+| run_start | done | proved against the fake campaign's loopback world (below) |
+| run_stop | done | proved against the loopback world: stops at enrich 3 of 8, stage kept, resumed to the end |
+| run_status | done | |
+| campaigns_list | done | |
+| sheet_export | done | |
+| sheet_open | done | the opener is handed in; default `util.open_artifact` |
+| people_list | done | one row per named person; see seam change 10 |
+| person_forget | done | with `dry_run` |
+| address_suppress | done | |
+| purge_report | done | |
+| purge_apply | done | the engine's state `nothing` is answered as `purged` with `deleted: 0` (the type has no `nothing`) |
+| purge_everything | done | |
+| retention_get | done | |
+| retention_set | done | |
+| keys_list | built, waits for L9 | answers `not_available` until L9 is in; tested with a fake backend |
+| key_save | built, waits for L9 | as above |
+| key_remove | built, waits for L9 | as above |
+| settings_get | done | `theme`, `accent` null (seam change 8) |
+| settings_set | done | refuses `theme`, `accent` |
+| about | done | `windowVersion` null (seam change 9) |
+
+18 of 21 work end to end now; the three key commands are built on the adapter and wait for L9.
+
 ## Gaps and seam changes proposed
 
-(filled in below as the build finds them)
+Fields the engine returns as null because it has no source (never invented):
+
+| Type.field | When null | Why |
+|---|---|---|
+| `RunStatus.campaign` | the run's campaign file cannot be read | the run row keeps only the file's path |
+| `RunStatus.done` | the run is not running, or the progress feed is of another stage | the engine keeps live progress only in `progress.jsonl` while a run goes |
+| `RunCounts.purged`, `RunCounts.expiringIn30Days` | a run not started by `window run_start` | `run` puts them in its digest line only; `run_start` records them on the run |
+| `Campaign.name` | as `RunStatus.campaign` | |
+| `Campaign.source` | a campaign not made by `campaign_create` (and not in company mode) | the engine's campaign file has no source; the window's form answer is kept in `campaigns/<name>/window.json` |
+| `Campaign.keptUntil` | a run with no start time | |
+| `Person.source` | the engine kept no page for that person | `people.source_url` is empty |
+| `Person.foundAt` | always | the engine keeps no date per person (L7, C12) |
+| `Person.campaign` | as `RunStatus.campaign` | |
+| `KeyStatus.savedAt` | always | the keyring keeps no date (the type already allows null) |
+| `Settings.theme`, `Settings.accent` | always | the window's own settings; the engine does not keep them |
+| `About.windowVersion` | always | the window's own version |
+
+Seam changes proposed (the lead decides; nothing here changes a name):
+
+1. **`run_start`'s stream starts with the `RunHandle`.** The seam says one RunEvent per line; the `Engine` type also returns a
+   `RunHandle`. Built: line 1 is `{"runId": "..."}`, then RunEvents, the last one `finished`, `stopped` or `failed`. Proposed: write this
+   into the seam (the shell reads line 1 as the handle, the rest into the channel).
+2. **`CampaignDraft` has no offer.** The engine requires `offer.what` (intake.py `_preflight`); it feeds the draft notes. Built: the text
+   `not given: the campaign was made in the window`. Proposed: `CampaignDraft.offer: string` (one sentence: what is being sold).
+3. **`source: "companies_house"` needs SIC codes.** A Companies House campaign is the engine's company mode, which requires
+   `target.sic_codes`. Built: refused with `input`. Proposed: `CampaignDraft.sicCodes: string[]` (required when `source` is
+   `companies_house`). Also: the engine takes its discovery providers from `leadforge.yaml` for the whole workspace, not per campaign, so
+   `source: "dvsa"` is recorded but does not choose the provider; that is an engine change for a later slice.
+4. **`ErrorKind` gains `not_available`** (the brief's word for the key commands before L9; exit 3). Proposed: add it to the union, or
+   map it to `missing` in the shell.
+5. **`RunStatus.campaign: string | null`, `RunStatus.done: number | null`, `RunCounts.purged: number | null`,
+   `RunCounts.expiringIn30Days: number | null`** (the table above).
+6. **`Campaign.name: string | null`, `Campaign.source: SourceId | null`, `Campaign.keptUntil: string | null`.**
+7. **`Person.source: string | null`, `Person.foundAt: string | null`, `Person.campaign: string | null`.**
+8. **`Settings.theme`, `Settings.accent`: the engine answers null and refuses them in `settings_set`** (`usage`). Proposed: the shell
+   keeps them and merges; the engine's type is `Omit<Settings, "theme" | "accent">`.
+9. **`About.windowVersion: string | null`** from the engine; the shell fills it.
+10. **People are the engine's named people, not every contact.** `people_list` returns one `Person` per row of `people` (a named
+    person at a business), with an email or phone only where the engine recorded that it belongs to that person
+    (`enrichment_observations.person_name`). A business's general addresses (`office@...`) belong to no person and are not listed.
+    Proposed: keep it so, or add a `Contact` list type for the unnamed addresses.
+
+Smaller notes, no type change: `Sheet.tabs[].rows` is each tab's row count less its first row (the header of Leads and Drafts; Summary
+and About have none). `person_forget` with `dry_run` counts as "removed" a file that `forget` would empty in place if it could not
+delete it. `sheet_open` answers JSON `null`.
 
 ## After L9 is in
 
-(filled in below)
+L9 (`origin/slice/L9-keys-and-the-agent-call`) puts `KEYRING_SERVICE = "leadforge"` and `_keyring_get(name)` (entry
+`registry.<name>`) into `leadforge/config.py`. Then, exactly:
+
+1. `keys.make_keys()` finds `config.KEYRING_SERVICE` and uses the same service and entry names as L9's `_keyring_get`, so a key saved
+   from the window is the key the engine reads. No code change in `window/` for that.
+2. The `keyring` package is L9's optional extra and is not in `requirements.lock`; without it the key commands answer `not_available`
+   ("the keyring package is not installed"). The window's installer must carry the extra; that changes the lock, so
+   `scripts/make_licence_notices.py` must be run again (the test fails until it is).
+3. L9's switch `registry.keyring: false` is not read by the adapter. Decide whether `key_save` refuses when it is off.
+4. `tests/test_window.py::test_key_commands_without_l9_answer_not_available` fails by design: replace it with a test that
+   `make_keys()` uses `KEYRING_SERVICE` with `keys.default_backend` replaced by the fake backend. The other key tests use their own fake
+   backend and need no change. No test may read or write the real keyring.
+5. L9 changes the intake warning that names `config set registry.companies_house_key`; re-record
+   `tests/golden/window/campaign_create.json` (`LF_UPDATE_GOLDEN=1`).
 
 ## Plan and code disagree
 
-(filled in below)
+- `docs/window-actions.md` (on `origin/slice/L10-ui`), "Missing in the engine" item 6, says keys in the Windows keyring are slice
+  **L7**; the brief says **L9**, and the keyring code is on `origin/slice/L9-keys-and-the-agent-call` (`config.py`,
+  `KEYRING_SERVICE`, `_keyring_get`). Built against L9 as the brief says.
+- `docs/window-actions.md` row 2 has the shell run `run` and read `LF_PROGRESS` lines; the seam (the lead, 09:50) has `window run_start`
+  stream RunEvents itself. Built as the seam says; the digest lines of `run` are unchanged.
+- The brief: "`people_list` returns each contact"; `engine.ts`: `Person` is a named person. See seam change 10.
+
+## Decisions taken in this run
+
+- `window` is dispatched in `cli.main()` before Typer, not registered as a Typer command: the golden of the agent contract
+  (`tests/golden/agent_contract.json`, the list of commands) and `leadforge --help` stay unchanged, and no Typer usage text can reach
+  stdout. `python -m leadforge window <name>` and the `leadforge` script both go through `main()`.
+- The argument names inside the stdin object are those of the Tauri command table in `docs/window-actions.md`
+  (`draft`, `args`, `runId`, `path`, `query`, `value`, `kind`, `months`, `name`, `patch`), plus `dry_run` and `confirm`.
+- A stop is a flag file `leadforge_data/window-run.stop`; `util.emit_progress` checks it (once per business in enrich, once per query in
+  discover) and the pipeline checks it between stages. The command line never sets the flag path, so `run` behaves as before. A stop
+  that arrives after the last check (during export) does not stop the run: it finishes, and the stream says `finished`.
+- `run_start` sets `LEADFORGE_NO_UI=1` in its own process: no console window, and the engine does not open the sheet; the window opens
+  it with `sheet_open` when "open the sheet when done" is on.
+- Campaigns made in the window live in `campaigns/<name>/` (`answers.yaml`, `icp.yaml`, `window.json`); `run_start` finds them by name.
+- The dry run of `forget` is `retention.forget_report`: `forget_in_database` on an in-memory copy made through `db.readonly_view`, and
+  the same file test (`_holds`, `_edits_lines`, the latter split out of `_scrub_file` so both use one rule).
+- `ruff 0.17.4` (the version in `uv.lock`) was uploaded 7 days ago, at the line of the 7-day rule; the lint ran with the `ruff 0.15.13`
+  already on this laptop instead of installing it.
+
+## Proof (run `l11a-build`, 2026-11-12, STRIKERFORCE, Python 3.12 venv from `requirements.lock` + the hashed pytest set of `uv.lock`)
+
+What each piece should do is written above ("What must hold"); the code was read against it before these ran.
+
+`python -m pytest tests/test_window.py -p no:cacheprovider -rs` (33 tests: one golden and one shape check per command, run_start's
+stream, the seam's rules):
+
+```
+.................................                                        [100%]
+33 passed in 5.77s
+```
+
+The guard and key tests, each against a break of the code it covers (`breakrun.py` in the run folder: apply the break, run that
+test, restore the file byte for byte). Every one red, for the reason named:
+
+```
+### sheet_open: no exports check (src/leadforge/window/commands.py)
+exit 1: 3 failed, 30 deselected in 1.88s
+E       assert (0 == 2)
+E       assert (0 == 2)
+
+### purge_everything: no confirm check (src/leadforge/window/commands.py)
+exit 1: 1 failed, 32 deselected in 1.47s
+E           AssertionError: {}
+E           assert (0 == 2)
+
+### person_forget: dry run deletes (src/leadforge/window/commands.py)
+exit 1: 1 failed, 32 deselected in 2.62s
+E       AssertionError: assert {'campaigns\\...ae1b6d6e8ed5'} == {'campaigns\\...45177c3', ...}
+E         
+
+### argv: arguments accepted (src/leadforge/window/__init__.py)
+exit 1: 1 failed, 32 deselected in 10.82s
+E       assert (0 == 2)
+
+### stdout: engine prints reach stdout (src/leadforge/window/__init__.py)
+exit 1: 1 failed, 32 deselected in 1.03s
+E       AssertionError: stdout is not one JSON document: 'LF_DIGEST {"ok": true}\n{"windowVersion":null,"engineVersion":"0.8.0","licence":"MIT","licences":[{"na ...
+E       assert (True and 2 == 1)
+
+### keys: a log line holds the value (src/leadforge/window/keys.py)
+exit 1: 1 failed, 32 deselected in 3.13s
+E       assert not True
+E        +  where True = any(<generator object test_a_planted_key_appears_in_no_output_and_no_log.<locals>.<genexpr> at 0x00000245DDBFD2F0>)
+
+### keys: the backend's error text shown (src/leadforge/window/__init__.py)
+exit 1: 1 failed, 32 deselected in 24.16s
+E       assert not True
+E        +  where True = any(<generator object test_a_planted_key_appears_in_no_output_and_no_log.<locals>.<genexpr> at 0x0000025A7B9BD490>)
+
+### run_stop: the flag is never checked (src/leadforge/util.py)
+exit 1: 1 failed, 32 deselected in 5.87s
+E       AssertionError: assert (0 == 0 and 'finished' == 'stopped'
+E         
+
+### licences: the lock moved on (requirements.lock)
+exit 1: 1 failed, 32 deselected in 1.11s
+E       AssertionError: licences.json is older than requirements.lock: run scripts/make_licence_notices.py
+E       assert 'ab72d56fcba3...849ac3da1492c' == 'd151fb48a99d...f159ff6ecdc32'
+```
+
+The shape and golden tests were not given a break round (the owner's rule of 14:35: guards and secrets only).
+
+`python scripts/e2e_window_run.py --out <folder>`: the real `run_start`/`run_stop` in child processes against the fake campaign's
+loopback world, every outside connection refused by its harness:
+
+```
+run_stop exit=0 {"runId":"run_20261112_08294_0e60","campaign":"bristol-garages-fixture","state":"running","stage":"enrich","done":3,"total":8,"etaSeconds":0.5,"counts":{"businesses":10,"contacts":0,"purged":null,"exp
+PASS  first run ends stopped  exit 0, last {"type": "stopped", "status": {"runId": "run_20261112_08294_0e60", "campaign": "bristol-garages-fixture", "state": "stopped", "stage": "enrich", "done": null, "total": null, "etaSeconds": ...
+PASS  run_status says stopped, stage kept  {"runId":"run_20261112_08294_0e60","campaign":"bristol-garages-fixture","state":"stopped","stage":"enrich","done":null,"total":null,"etaSeconds":null,"counts":{"businesses":10,"contacts": ...
+PASS  no stop flag left  
+PASS  resumed run ends finished, same run  exit 0, last {"type": "finished", "status": {"runId": "run_20261112_08294_0e60", "campaign": "bristol-garages-fixture", "state": "finished", "stage": "export", "done": null, "total": null ...
+PASS  campaigns_list answers one JSON document  [{"runId":"run_20261112_08294_0e60","name":"bristol-garages-fixture","kinds":["car repair"],"places":["Bristol"],"source":null,"state":"finished","stage":"export","startedAt":"2026-1 ...
+PASS  sheet_export answers one JSON document  {"runId":"run_20261112_08294_0e60","writtenAt":"2026-11-12T08:30:13Z","leads":10,"tabs":[{"name":"Leads","rows":10},{"name":"Drafts","rows":5},{"name":"Summary","rows":29},{"name":"Abo ...
+PASS  people_list answers one JSON document  {"people":[{"id":"1","name":"Odell Prewitt","role":"Owner","business":"Kestrel Garage","domain":"kestrel-garage.example","email":null,"phone":null,"source":"http://kestrel-garage.exampl ...
+PASS  no outside attempt beyond the fake campaign's known set  []
+E2E WINDOW RUN PASS
+```
+
+Two earlier runs of that proof are part of the record: the first failed its "no outside attempt" check on refused DNS lookups of the
+email check (`enrich.validate`), which the fake campaign itself expects (its `expected.json` lists them); the check now uses that same
+known set. The second failed "first run ends stopped": the `run_stop` child started seconds late on this loaded laptop, after the
+run's last check, and the run finished (as built: a stop after the last check does not stop). The proof now starts the stopper early
+and releases it on the second enrich event.

@@ -23,6 +23,20 @@ declarations (the hashed locks are regenerated; `uv.lock` names the real project
 `scripts/v03_gate.py` (the one gate is `node check.mjs`) and the code-index git hook. The DVSA test fixture holds invented rows. Paid-adapter
 references in the docs are corrected (the removal of 0.7.1 was checked against 0.6.14: nothing used that code). Behaviour is unchanged.
 
+The engine's side of the window (slice L11a). New command group `leadforge window <name>` with the 21 commands the window's
+screens call (`campaign_create`, `run_start`, `run_stop`, `run_status`, `campaigns_list`, `sheet_export`, `sheet_open`,
+`people_list`, `person_forget`, `address_suppress`, `purge_report`, `purge_apply`, `purge_everything`, `retention_get`,
+`retention_set`, `keys_list`, `key_save`, `key_remove`, `settings_get`, `settings_set`, `about`). Each reads one JSON document
+on stdin and writes one on stdout; errors are a JSON document too; nothing else reaches stdout. Arguments are never taken from
+the command line. `run_start` streams the run as JSON lines, and `run_stop` stops it between two businesses with its place kept
+(`run --resume` continues it). `person_forget` has a dry run that changes nothing; `purge_everything` needs an explicit
+confirmation; `sheet_open` opens only a file inside the workspace's own exports folder. There is no sending command.
+
+New file `src/leadforge/data/licences.json`: the licence notices of every locked dependency, made from their own metadata by
+`scripts/make_licence_notices.py`; a test fails when it is older than `requirements.lock`.
+
+The existing command line, its digest lines and the plugin are unchanged. No version change yet.
+
 ## [0.9.0] — 2026-11-12
 
 The collect side. A site's robots.txt answer is used for at most 24 hours and at least 500 KiB of the file is read; a redirect to another site
