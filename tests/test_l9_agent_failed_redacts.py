@@ -43,3 +43,15 @@ def test_agent_failed_never_holds_an_argument(cfg, tmp_path, case):
     assert "<3 arguments hidden>" in text or "<2 arguments hidden>" in text  # the program is named, the count shown
     if case == "exit":
         assert "usage error, I was given: <argument hidden> <argument hidden> and <argument hidden>" in text
+
+
+def test_agent_failed_cuts_a_word_of_an_argument_with_spaces(cfg, tmp_path):
+    """A header-style argument (`Authorization: Bearer <key>`) whose program echoes only the key."""
+    script = tmp_path / "fake_agent.py"
+    script.write_text('import sys\nsys.stderr.write("bad token " + sys.argv[2].split()[-1] + "\\n")\nsys.exit(3)\n',
+                      encoding="utf-8")
+    cfg.agent.command = [sys.executable, str(script), "--header", "Authorization: Bearer " + FAKE]
+    with pytest.raises(agent_runner.AgentFailed) as e:
+        agent_runner.run_agent(cfg, "prompt")
+    assert FAKE not in str(e.value), str(e.value)
+    assert "bad token <argument hidden>" in str(e.value)

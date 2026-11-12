@@ -113,12 +113,14 @@ def _shown_command(cmd: list[str]) -> str:
 
 def _without_arguments(text: str, cmd: list[str]) -> str:
     """`text` (the command's stderr, an OS error) with every argument of 4+ characters cut, also the part after an
-    `=` (`--api-key=...`): a wrapper may echo its own arguments."""
+    `=` (`--api-key=...`) and each word of an argument with spaces (`Authorization: Bearer ...`): a wrapper may echo
+    its own arguments, whole or in part."""
     parts = set()
     for arg in cmd[1:]:
         parts.add(arg)
         if "=" in arg:
             parts.add(arg.split("=", 1)[1])
+        parts.update(arg.split())
     for part in sorted(parts, key=len, reverse=True):
         if len(part) >= 4:
             text = text.replace(part, "<argument hidden>")
