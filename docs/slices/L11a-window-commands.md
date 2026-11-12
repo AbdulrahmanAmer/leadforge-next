@@ -2,7 +2,7 @@
 
 Started from `origin/slice/L6-the-delete-side` at `b15ef7a3e86156d63028166f1d5f67501e9a168c` (pull request 6 was still open on
 2026-11-12 09:45, run `l11a-build`); rebased at 10:39 on `origin/master` `fd2886e` (L6 and L8 merged meanwhile; the only conflict,
-CHANGELOG, kept both sides). The window's side (`app/`) is not on this branch and nothing under it is edited here.
+CHANGELOG, kept both sides); rebased again at 10:55 on `origin/master` `9dc295c` (the debts slice: `tenacity` left `requirements.lock`, so `licences.json` was made again and the `about` golden lost that one package; CHANGELOG again kept both sides). The window's side (`app/`) is not on this branch and nothing under it is edited here.
 
 # Spec
 
@@ -356,3 +356,8 @@ ubuntu-latest · py3.11  success
 ```
 
 The commit that adds this section has its own run; its result is in the pull request and the run report, not here.
+
+After the second rebase (on `9dc295c`) the full gate was NOT run again (one full gate per run): `python -m pytest tests/test_window.py
+tests/test_golden_contracts.py tests/test_cli_contract.py` gave `81 passed in 40.41s`, `ruff check src tests` `All checks passed!`,
+`check_versions.py` all 0.8.0, `make_licence_notices.py --check` `licence notices match the lock`. The full suite of the rebased
+commit is the hosted CI's.
