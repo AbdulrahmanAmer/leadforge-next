@@ -161,7 +161,10 @@ def test_forget_removes_the_value_everywhere_and_only_that(tmp_path, monkeypatch
     before = scan(ws, value)
     assert len(before) >= 12, before          # planted: the scan sees it in many places, so a pass below means something
 
-    run_forget(ws, monkeypatch, value)
+    res = run_forget(ws, monkeypatch, value)
+    digest = json.loads([ln for ln in res.output.splitlines() if ln.startswith("LF_DIGEST")][-1][len("LF_DIGEST "):])
+    reported = {a.replace("\\", "/") for a in digest["artifacts"]}
+    assert {"dm_batch.ndjson", "drafts/1_1.txt"} <= reported and digest["counts"]["rows"] > 0   # what was touched is listed
 
     after = scan(ws, value)
     # the one place it must stay: the suppression row in the database (the table row, and its UNIQUE index entry when the
@@ -178,7 +181,8 @@ def test_forget_removes_the_value_everywhere_and_only_that(tmp_path, monkeypatch
     pc.close()
     assert scan(probe, value) == {}
     conn = db.connect(ws / "leadforge_data" / "db.sqlite3")
-    assert conn.execute("SELECT COUNT(*) FROM suppression").fetchone()[0] == 1
+    kind = {EMAIL: "email", NAME: "name", DOMAIN: "domain"}[value]
+    assert [tuple(r) for r in conn.execute("SELECT kind, value FROM suppression")] == [(kind, value.lower())]
     assert db.is_suppressed(conn, value) if value != NAME else conn.execute(
         "SELECT 1 FROM suppression WHERE kind='name'").fetchone()
     conn.close()
@@ -186,7 +190,8 @@ def test_forget_removes_the_value_everywhere_and_only_that(tmp_path, monkeypatch
     for p, h in kept_hashes.items():
         assert hashlib.sha256(p.read_bytes()).hexdigest() == h, p
     assert BYSTANDER_LINE in (ws / "dm_batch.ndjson").read_text(encoding="utf-8")
-    assert BYSTANDER_LINE in (ws / "leadforge_data" / "logs" / "leadforge.log").read_text(encoding="utf-8")
+    assert (ws / "leadforge_data" / "logs" / "leadforge.log").read_text(encoding="utf-8") == \
+        f"INFO b {BYSTANDER_LINE}\nINFO c nothing\n"                       # only the target's line is gone, line ends intact
     assert B_EMAIL in (ws / "drafts_packets.ndjson").read_text(encoding="utf-8")
     assert (ws / "leadforge_data" / "bin" / "helper.txt").read_text() == "kept"
     state = bystander_state(ws)
@@ -196,6 +201,11 @@ def test_forget_removes_the_value_everywhere_and_only_that(tmp_path, monkeypatch
         assert LOOKALIKE_EMAIL in state["contacts"]               # a longer address is not this address
     if value == NAME:
         assert LOOKALIKE_NAME in state["people"]                  # a longer word is not this name
+        mc = db.connect(ws / "leadforge_data" / "db.sqlite3")
+        enrich = mc.execute("SELECT enrich_json FROM businesses WHERE id='b_m'").fetchone()[0]
+        mc.close()
+        assert NAME not in enrich and "[forgotten]" in enrich and "Mavis" in enrich   # redacted in place, the rest stays
+        assert digest["counts"]["rows"] >= 1
     if value == DOMAIN:
         assert "b_q" not in state["businesses"]                   # every business at a forgotten domain goes
     else:
@@ -208,7 +218,7 @@ def test_forgotten_value_is_not_collected_again(tmp_path):
     plant(ws)
     from leadforge.config import load_config
     from leadforge.retention import forget
-    forget(load_config(ws), EMAIL)
+    assert sum(forget(load_config(ws), EMAIL.title())["rows"].values()) > 0     # any capitalisation of the address
     forget(load_config(ws), NAME)
     conn = db.connect(ws / "leadforge_data" / "db.sqlite3")
     assert db.add_contact(conn, Contact(business_id="b_m", kind="email", value=EMAIL.upper())) == 0

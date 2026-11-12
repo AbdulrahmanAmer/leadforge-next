@@ -64,6 +64,14 @@ def test_raw_file_is_gone_when_the_run_stalled_and_part_was_salvaged(cfg, provid
     assert cache_files(cfg) == []
 
 
+def test_a_failed_fetch_that_wrote_no_file_still_reports_its_own_error(cfg, provider, monkeypatch):
+    def run(args, out_path, hard_timeout_s, stall_s=180.0, poll_s=5.0):
+        return {"returncode": 1, "stderr": "boom"}, False       # the scraper died before writing anything
+    monkeypatch.setattr(GosomProvider, "_run_with_watchdog", staticmethod(run))
+    with pytest.raises(ProviderDegraded, match="exit 1"):       # not a FileNotFoundError from the clean-up
+        provider.fetch(PlannedQuery(text="garage Leeds", category="garage", area="Leeds"))
+
+
 def test_raw_file_is_gone_when_nothing_could_be_parsed(cfg, provider, monkeypatch):
     monkeypatch.setattr(GosomProvider, "_run_with_watchdog",
                         fake_run(f'{{"user_reviews": [{{"Name": "{REVIEWER}"', timed_out=True))

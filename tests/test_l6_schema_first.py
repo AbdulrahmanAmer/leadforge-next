@@ -76,12 +76,21 @@ def test_file_with_tables_but_no_version_row_is_refused(tmp_path):
 
 
 def test_new_and_current_workspaces_still_open(tmp_path):
+    import sqlite3
     fresh = tmp_path / "new" / "db.sqlite3"
     fresh.parent.mkdir()
     db.connect(fresh).close()                      # does not exist yet: created and stamped
     empty = tmp_path / "empty.sqlite3"
     empty.write_bytes(b"")
     db.connect(empty).close()                      # zero bytes: new
+    hollow = tmp_path / "hollow.sqlite3"           # once held a table, holds none now: not zero bytes, still new
+    h = sqlite3.connect(hollow)
+    h.execute("CREATE TABLE t (x)")
+    h.execute("DROP TABLE t")
+    h.commit()
+    h.close()
+    assert hollow.stat().st_size > 0
+    db.connect(hollow).close()
     again = tmp_path / "again.sqlite3"
     shutil.copyfile(fresh, again)
     db.connect(again).close()                      # current version: opens

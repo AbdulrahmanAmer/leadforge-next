@@ -207,6 +207,8 @@ def test_everything_wipes_a_workspace_of_any_age_without_opening_the_database(tm
     assert res.exit_code == 0, res.output
     left = {p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*") if p.is_file()}
     assert left == {"leadforge_data/bin/helper.txt", "leadforge_data/.doctor_ok.json", "leadforge.yaml"}
+    assert not (data / "cache").exists()                                 # emptied folders go too
+    assert digest_of(res.output)["counts"]["files_removed"] == 3        # db, cache file, dm_batch
 
 
 def test_the_period_can_be_shortened_never_lengthened(tmp_path):
@@ -219,7 +221,58 @@ def test_the_period_can_be_shortened_never_lengthened(tmp_path):
         load_config(tmp_path)
 
 
+def bare(ws: Path, started: list[str], first_runs: list[str | None]) -> Path:
+    data = ws / "leadforge_data"
+    data.mkdir(parents=True)
+    conn = db.connect(data / "db.sqlite3")
+    for i, s in enumerate(started):
+        conn.execute("INSERT INTO runs(id,started_at,stage) VALUES(?,?,'exported')", (f"r{i}", s))
+    for i, run in enumerate(first_runs):
+        conn.execute("INSERT INTO businesses(id,name,name_norm,dedupe_key,first_run_id) VALUES(?,?,?,?,?)",
+                     (f"b{i}", f"B{i}", f"b{i}", f"k{i}", run))
+    conn.commit()
+    conn.close()
+    return data / "db.sqlite3"
+
+
+def test_the_day_of_expiry_and_the_30_day_edge_are_inclusive(tmp_path):
+    # due exactly now: expired. due exactly now + 30 days: counts as expiring. one second later: neither.
+    bare(tmp_path, ["2025-11-12T09:00:00Z", "2025-12-12T09:00:00Z", "2025-12-12T09:00:01Z"], ["r0", "r1", "r2"] + ["r2"] * 6)
+    cfg = load_config(tmp_path)
+    res = purge(cfg, NOW, "report")
+    assert res["expired"] == 1 and res["expiring_30d"] == 1 and res["total"] == 9
+
+
+def test_exactly_half_may_go_automatically_more_than_half_may_not(tmp_path):
+    path = bare(tmp_path, ["2025-01-01T00:00:00Z", "2026-11-01T00:00:00Z"], ["r0", "r0", "r1", "r1"])
+    cfg = load_config(tmp_path)
+    assert purge(cfg, NOW, "auto")["state"] == "armed"
+    assert purge(cfg, NOW, "auto")["state"] == "purged" and ids(path) == {"b2", "b3"}      # 2 of 4
+    path2 = bare(tmp_path / "w2", ["2025-01-01T00:00:00Z", "2026-11-01T00:00:00Z"], ["r0", "r0", "r0", "r1"])
+    cfg2 = load_config(tmp_path / "w2")
+    purge(cfg2, NOW, "auto")
+    assert purge(cfg2, NOW, "auto")["state"] == "stopped_over_half" and len(ids(path2)) == 4  # 3 of 4
+
+
+def test_a_workspace_with_no_run_has_no_age_and_nothing_expires(tmp_path):
+    path = bare(tmp_path, [], [None, None])
+    cfg = load_config(tmp_path)
+    purge(cfg, NOW, "auto")
+    res = purge(cfg, NOW, "auto")
+    assert res["state"] == "nothing" and res["expired"] == 0 and ids(path) == {"b0", "b1"}
+
+
+def test_marker_flag_and_no_workspace(tmp_path):
+    assert purge(load_config(tmp_path / "empty"), NOW, "auto") == {"state": "no_workspace", "deleted": 0, "expiring_30d": 0, "months": 12}
+    bare(tmp_path, ["2026-11-01T00:00:00Z"], ["r0"])
+    cfg = load_config(tmp_path)
+    assert purge(cfg, NOW, "report")["armed"] is False      # a report never arms
+    assert purge(cfg, NOW, "auto")["state"] == "armed"
+    assert purge(cfg, NOW, "report")["armed"] is True
+
+
 def test_month_arithmetic_clamps_the_day():
+    assert add_months(datetime(2025, 1, 15, tzinfo=UTC), 12) == datetime(2026, 1, 15, tzinfo=UTC)
     assert add_months(datetime(2025, 1, 31, tzinfo=UTC), 1) == datetime(2025, 2, 28, tzinfo=UTC)
     assert add_months(datetime(2024, 2, 29, tzinfo=UTC), 12) == datetime(2025, 2, 28, tzinfo=UTC)
     assert add_months(datetime(2025, 10, 1, tzinfo=UTC), 12) == datetime(2026, 10, 1, tzinfo=UTC)
