@@ -366,3 +366,43 @@ connect where there was a sendto), and a saved one that no longer happens still 
 **Test (`tests/test_e2e_refused_compare.py`).** Fed raw guard entries: one extra retry of a known call gives the same normalized `refused` (red on the old code: 21 against 20 entries); a new
 host, a new port and a new kind each give a different one (these must stay red-able: they prove the compare is not blind); the real `expected.json` `refused` equals the normalized form of a
 guard log with 10, 1 and 15 retries.
+
+**Check of item 0 by reading, after.** `normalized()` now builds `folded`, a set of `(kind, host, port, caller)` tuples (own-resolver packets folded into `<system resolver>` first), and sorts it: a retry cannot add an entry. A refused call
+of any other kind, host, port or caller is a different tuple, so the compare fails; a call that stopped happening drops a tuple, so it fails too. `expected.json` differs in `refused` only (18 repeated entries removed; `git diff` shows deletions only,
+nothing else moved). `scripts/e2e_compare.py` (a side-by-side of two results, separate tool) reads `refused` as before; its per-host counts are now 1, which it prints as such.
+**Seen red.** `test_one_more_retry_of_a_known_call_changes_nothing` on the old `normalized()`: `Right contains 10 more items, first extra item: ['sendto', '1.1.1.1', 53, 'dns']`. After the change all 4 tests pass; the planted-bad-case tests
+(new host, port, kind, caller; a missing call) are the ones that keep the compare from going blind. G2 on this tree (below-normal priority, raw guard log 32 entries: 1.1.1.1 x10, 8.8.8.8 x10, four own resolvers x3):
+`PASS - result equals tests/fixtures/e2e/expected.json (3 refused-call entries, as saved)`.
+
+## Item 1 — C5 for files: what the change must do (written before the code)
+
+"A business and everything attached to it expires." Decision (Jay, 2026-11-12): at expiry, every file under the workspace's own `leadforge_data/exports` and `leadforge_data/cache` that holds an expired business is deleted whole, under the
+same four protections as the records.
+- **Which file holds a business.** Before any record is deleted, each business gets its identifying strings from the database: name, domain, the host of its website, its maps address, every contact value (email, phone) and every person's
+  name; strings under 4 characters are dropped. A string that a business that is NOT in the group also carries (a chain's name, a person at two businesses) cannot prove that a file holds the expired one, so it is not used. A file holds an expired
+  business when any remaining string of an expired business is found in it, with the same word edges as `forget` (an address not inside a longer address, a name not inside a longer word), in the raw bytes or, for a sheet (`.xlsx`, a zip),
+  inside any of its members. A file that cannot be read is not guessed about: it counts as a file that could not be cleaned.
+- **Deleted whole**, never edited. Only regular files that really sit under those two folders (a link that points elsewhere is skipped). Anything else is untouched: the user's own files written with `--out`, logs, `bin/`, the database.
+- **Protection 1 (first run after the upgrade only reports):** while the workspace is not armed, no file is deleted; `purge` and the first pass report how many files would go (and name them by relative path in `purge`).
+- **Protection 2 (30-day warning):** the count of files that hold a business expiring within 30 days (and no expired one) is reported next to the record count: digest `files_expiring_30d` on `purge`; a second stderr line at the start of a run when it is above 0.
+- **Protection 3 (more than half):** the automatic purge stops, deleting nothing (no record, no file), when more than half of the businesses OR more than half of the files under `exports` and `cache` are past the limit; the message names `purge --apply`.
+- **Protection 4 (half-upgraded):** unchanged, it stops before any of this.
+- **Order, and a file that cannot be deleted:** files go first, then the records. If any file cannot be deleted (Windows keeps a file open in another program), no record is deleted: state `files_locked`, the files named, `purge --apply` exits 4,
+  and the start-of-run pass prints the names and goes on with the run; the next pass tries again (the identifying strings come from the records, which are still there). A file is never reported deleted unless it is gone.
+- The cache of a public register (DVSA copy) that holds an expired business's name is deleted too, and fetched again at the next discovery: it is a cache. A business that comes back then is a new row with a new `first_run_id`.
+- The run digest keeps its numbers (`purged`, `expiring_30d`): file numbers appear in it only when above 0, so G2 does not move.
+**Pass lines (tests, each seen red first; what must stay is asserted in the same tests):** a workspace with a 13-month run's sheet and cache file, `purge` twice, a scan finds the expired businesses' invented person nowhere in the workspace;
+the 11-month run's files and a file of another business stay; the first pass after the upgrade deletes no file and reports them; files count in the 30-day line; files count in the half stop; a file written with `--out` stays; a file that cannot be
+deleted keeps the records and names itself; a name shared with a surviving business does not condemn a file.
+
+**Check of item 1 by reading, after.** `retention.classify_files` (read-only) lists, for the files under `exports` and `cache` (`expiring_candidates`: regular files, no links, really inside the folder), those that hold an expired business, then those that
+hold only a business due within 30 days; `_identifiers` takes name, domain, website host, maps address, contact values and people names (4 characters or more); `_patterns_for` removes every string a business outside the group also carries; the search
+is `make_needle`'s word-edged pattern, over the raw bytes and the members of a zip (`_holds_any`, the old `_holds` now calls it). `purge()` calls it before the mode is looked at, so `report` and the first pass report the files; the half rule is
+`2 * expired businesses > total or 2 * expired files > total files`; files go first (`_delete_files`), and any file left (or unreadable) returns `files_locked` before a single record is touched. The run digest gets `files_deleted` and
+`files_expiring_30d` only when above 0 (G2 digest unchanged). `purge --apply` with a locked file: exit 4, files named by relative path, no content. README gets the part "Deleting data (0.8.0)" (it had none): `--out` files are not touched.
+Reading found no way a file outside the two folders is reached (`candidate_files` of `forget` is a different list; `purge_everything` unchanged).
+**Seen red first (right reasons).** `tests/test_l6_purge_files.py`, before any code: 8 of 9 failed with `KeyError: 'files_deleted'` / `'files_expired'` (no file handling existed). The ninth, "a name a surviving business also carries
+condemns no file", passed on the old code (no file was ever touched), so it was broken on purpose: with `shared = set()` it fails at `assert only_shared.exists()` (`assert False`), restored. The unreadable-file test, with the line that adds unreadable files to the
+failures removed: `assert 'purged' == 'files_locked'`, restored.
+**What the tests keep:** the 11-month, newer and the user's `--out` file all still exist after the purge, and the scan of the whole data folder finds the other businesses' people (`Person B`, `Person N0`) still there.
+**UNPROVEN:** the time it takes to read a very large `exports` folder at the start of every run (it is read only when something is expired or due within 30 days); a sheet in the old binary `.xls` form (the tool writes `.xlsx` and `.csv`).

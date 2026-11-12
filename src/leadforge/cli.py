@@ -552,21 +552,35 @@ def _start_of_run_purge(cfg: Config, quiet: bool = False) -> dict:
         raise typer.Exit(e.exit_code) from e
     state = res["state"]
     if state == "stopped_over_half":
-        emit_digest(False, "run", counts={"expired": res["expired"], "total": res["total"]},
-                    warnings=[f"{res['expired']} of {res['total']} businesses are past the {res['months']}-month limit: more than half "
-                              "of the workspace, so nothing was deleted and the run stopped (a wrong clock looks like this)"],
+        emit_digest(False, "run", counts={"expired": res["expired"], "total": res["total"],
+                                          "files_expired": res["files_expired"], "files_total": res["files_total"]},
+                    warnings=[f"{res['expired']} of {res['total']} businesses and {res['files_expired']} of {res['files_total']} files in "
+                              f"exports and cache are past the {res['months']}-month limit: more than half of the workspace, so nothing "
+                              "was deleted and the run stopped (a wrong clock looks like this)"],
                     next_="check the date, then `leadforge purge --apply` to delete them, or `leadforge purge` to look first")
         raise typer.Exit(4)
     if state == "no_workspace":
         return {}
     if not quiet:   # --json: the digest line only
+        files = res["files_expired"]
         if state == "armed":
-            typer.echo(f"retention: first check of this workspace, nothing deleted. {res['expired']} records are past the "
-                       f"{res['months']}-month limit; the next run deletes them.", err=True)
+            typer.echo(f"retention: first check of this workspace, nothing deleted. {res['expired']} records"
+                       + (f" and {files} sheets or cached pages" if files else "")
+                       + f" are past the {res['months']}-month limit; the next run deletes them.", err=True)
         elif state == "purged":
-            typer.echo(f"retention: deleted {res['deleted']} businesses past the {res['months']}-month limit.", err=True)
+            typer.echo(f"retention: deleted {res['deleted']} businesses past the {res['months']}-month limit"
+                       + (f" and {res['files_deleted']} sheets or cached pages that held them" if res["files_deleted"] else "") + ".", err=True)
+        elif state == "files_locked":
+            typer.echo("retention: nothing was deleted from the database: these files could not be deleted (is another program holding "
+                       f"them open?): {', '.join(res['files_failed'])}. The next run tries again.", err=True)
         typer.echo(f"retention: {res['expiring_30d']} records expire in the next 30 days.", err=True)
-    return {"purged": res["deleted"], "expiring_30d": res["expiring_30d"]}
+        if res["files_expiring_30d"]:
+            typer.echo(f"retention: {res['files_expiring_30d']} files (sheets or cached pages) hold them.", err=True)
+    counts = {"purged": res["deleted"], "expiring_30d": res["expiring_30d"]}
+    for key in ("files_deleted", "files_expiring_30d"):   # only when above 0: a campaign with no old files keeps its digest as it was
+        if res[key]:
+            counts[key] = res[key]
+    return counts
 
 
 @app.command()
@@ -616,14 +630,24 @@ def purge(ctx: typer.Context,
         raise typer.Exit(e.exit_code) from e
     state = res["state"]
     counts = {k: v for k, v in res.items() if k in ("deleted", "expired", "expiring_30d", "total")}
+    counts.update({k: v for k, v in res.items() if k in ("files_expired", "files_expiring_30d", "files_deleted") and v})
+    if state == "files_locked":
+        emit_digest(False, "purge", counts={"state": state, **counts}, artifacts=res["files_failed"],
+                    warnings=["these files could not be deleted, so nothing was deleted from the database: " + ", ".join(res["files_failed"])
+                              + ". Close whatever holds them open and run `leadforge purge --apply` again."],
+                    next_="leadforge purge --apply")
+        raise typer.Exit(4)
     if state == "no_workspace":
         _say(ctx, "no workspace database here")
     elif state == "armed":
-        _say(ctx, f"first check of this workspace: nothing deleted. {res['expired']} records are past the limit; run `leadforge purge --apply` again to delete them.")
+        _say(ctx, f"first check of this workspace: nothing deleted. {res['expired']} records and {res['files_expired']} files are past the limit; "
+                  "run `leadforge purge --apply` again to delete them.")
     elif state == "purged":
-        _say(ctx, f"deleted {res['deleted']} businesses and everything attached")
+        _say(ctx, f"deleted {res['deleted']} businesses and everything attached, and {res['files_deleted']} sheets or cached pages that held them",
+             "Files you wrote outside this folder with --out are yours and were not touched.")
     else:
-        _say(ctx, f"{res['expired']} of {res['total']} past the {res['months']}-month limit, {res['expiring_30d']} more in the next 30 days"
+        _say(ctx, f"{res['expired']} of {res['total']} past the {res['months']}-month limit ({res['files_expired']} sheets or cached pages hold them), "
+                  f"{res['expiring_30d']} more in the next 30 days ({res['files_expiring_30d']} files)"
                   + ("" if res.get("armed") else " (this workspace has not had its first check yet: the next run only reports)"))
     emit_digest(True, "purge", counts={"state": state, **counts},
                 next_="leadforge purge --apply" if state in ("report", "armed") and res.get("expired") else None)

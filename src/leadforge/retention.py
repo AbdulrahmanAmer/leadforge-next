@@ -15,6 +15,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from leadforge import db
 from leadforge.config import Config
@@ -42,6 +43,8 @@ BUSINESS_JSON = ("enrich_json", "hours_json")
 REDACT_IN_PLACE = {"businesses": BUSINESS_JSON, "queries": ("query_text",), "runs": ("stats_json",)}
 BUSINESS_TABLES = ("events", "outcomes", "enrichment_observations", "evidence", "scores", "people", "contacts")
 LINE_FILES = re.compile(r"\.(log(\.\d+)?|jsonl|ndjson|tsv)$", re.IGNORECASE)
+EXPIRING_DIRS = ("exports", "cache")   # the folders whose files expire with the businesses they hold (C5)
+MIN_IDENTIFIER = 4                      # shorter strings say nothing about which business a file holds
 HANDOFF_GLOBS = ("dm_batch*", "dm_labels*", "drafts_packets*", "drafts*.ndjson")
 
 
@@ -172,16 +175,20 @@ def candidate_files(cfg: Config) -> list[Path]:
     return out
 
 
-def _holds(path: Path, needle: Needle, raw: bytes) -> bool:
-    if needle.bpattern.search(raw):
+def _holds_any(path: Path, patterns: list[re.Pattern[bytes]], raw: bytes) -> bool:
+    if any(p.search(raw) for p in patterns):
         return True
     if zipfile.is_zipfile(path):   # a sheet: its text is compressed inside
         try:
             with zipfile.ZipFile(path) as z:
-                return any(needle.bpattern.search(z.read(n)) for n in z.namelist())
+                return any(p.search(z.read(n)) for n in z.namelist() for p in patterns)
         except (zipfile.BadZipFile, OSError):
             return False
     return False
+
+
+def _holds(path: Path, needle: Needle, raw: bytes) -> bool:
+    return _holds_any(path, [needle.bpattern], raw)
 
 
 def forget_in_files(cfg: Config, needle: Needle) -> tuple[list[str], list[str]]:
@@ -287,6 +294,89 @@ def _marker(path: Path) -> str | None:
     return None if row is None else row[0]
 
 
+# ------------------------------------------------------------------ expiry of files (C5: "and everything attached to it")
+def expiring_candidates(cfg: Config) -> list[Path]:
+    """Regular files that really sit under the data folder's own `exports` and `cache`. Never the user's `--out` files."""
+    data = _data_dir(cfg)
+    out: list[Path] = []
+    for name in EXPIRING_DIRS:
+        root = data / name
+        if not root.is_dir():
+            continue
+        real_root = root.resolve()
+        out += [p for p in sorted(root.rglob("*"))
+                if p.is_file() and not p.is_symlink() and p.resolve().is_relative_to(real_root)]
+    return out
+
+
+def _identifiers(conn: sqlite3.Connection) -> dict[str, set[str]]:
+    """business id -> the strings that tell a file holds it: name, domain, website host, maps address, contact values, people."""
+    found: dict[str, set[str]] = {}
+
+    def add(bid, value) -> None:
+        v = " ".join(str(value or "").split()).lower()
+        if len(v) >= MIN_IDENTIFIER:
+            found.setdefault(bid, set()).add(v)
+
+    for r in conn.execute("SELECT id, name, domain, website, maps_url FROM businesses"):
+        for col in ("name", "domain", "maps_url"):
+            add(r["id"], r[col])
+        if r["website"]:
+            add(r["id"], urlsplit(r["website"]).hostname)
+    for bid, value in conn.execute("SELECT business_id, value FROM contacts"):
+        add(bid, value)
+    for bid, value in conn.execute("SELECT business_id, name FROM people"):
+        add(bid, value)
+    return found
+
+
+def _patterns_for(group: set, all_ids: set, found: dict[str, set[str]]) -> list[re.Pattern[bytes]]:
+    """What proves a file holds a business of `group`: its strings, less any string a business outside the group also carries."""
+    shared = set().union(*(found.get(i, set()) for i in all_ids - group)) if all_ids - group else set()
+    own = sorted(set().union(*(found.get(i, set()) for i in group)) - shared) if group else []
+    sources = [make_needle(v).bpattern.pattern for v in own]
+    return [re.compile(b"|".join(b"(?:" + s + b")" for s in sources[i:i + 300]), re.IGNORECASE)
+            for i in range(0, len(sources), 300)]
+
+
+def classify_files(cfg: Config, conn: sqlite3.Connection, exp: Expiry) -> dict:
+    """Which files under exports and cache hold an expired business, and which hold only businesses expiring within 30 days.
+    Read-only. `unreadable`: files it could not look into (never guessed about)."""
+    files = expiring_candidates(cfg)
+    out = {"total": len(files), "expired": [], "soon": [], "unreadable": []}
+    if not files or not (exp.expired or exp.soon):
+        return out
+    found = _identifiers(conn)
+    all_ids = {r[0] for r in conn.execute("SELECT id FROM businesses")}
+    gone, soon = set(exp.expired), set(exp.soon)
+    pat_gone = _patterns_for(gone, all_ids, found)
+    pat_soon = _patterns_for(soon, all_ids - gone, found)
+    for p in files:
+        try:
+            raw = p.read_bytes()
+        except OSError:
+            out["unreadable"].append(p)
+            continue
+        if _holds_any(p, pat_gone, raw):
+            out["expired"].append(p)
+        elif _holds_any(p, pat_soon, raw):
+            out["soon"].append(p)
+    return out
+
+
+def _delete_files(cfg: Config, paths: list[Path]) -> tuple[int, list[str]]:
+    """(files deleted, relative names of the files that are still there)."""
+    data = _data_dir(cfg)
+    gone, left = 0, []
+    for p in paths:
+        try:
+            p.unlink()
+            gone += 1
+        except OSError:
+            left.append(p.relative_to(data).as_posix())
+    return gone, left
+
+
 def purge(cfg: Config, now: datetime, mode: str) -> dict:
     """mode: 'auto' (the start of every run), 'report' (changes nothing), 'apply' (the explicit command).
 
@@ -307,8 +397,11 @@ def purge(cfg: Config, now: datetime, mode: str) -> dict:
     conn = db.connect(path)
     try:
         exp = classify(conn, now, months)
+        files = classify_files(cfg, conn, exp)
         out = {"state": "nothing", "deleted": 0, "expired": len(exp.expired), "expiring_30d": len(exp.soon),
-               "total": exp.total, "months": months, "armed": marker is not None}
+               "total": exp.total, "months": months, "armed": marker is not None,
+               "files_expired": len(files["expired"]), "files_expiring_30d": len(files["soon"]), "files_deleted": 0,
+               "files_total": files["total"], "file_paths": [p.relative_to(_data_dir(cfg)).as_posix() for p in files["expired"]]}
         if mode == "report":
             out["state"] = "report"
             return out
@@ -319,8 +412,14 @@ def purge(cfg: Config, now: datetime, mode: str) -> dict:
             return out
         if not exp.expired:
             return out
-        if mode == "auto" and 2 * len(exp.expired) > exp.total:   # protection 3
+        if mode == "auto" and (2 * len(exp.expired) > exp.total or 2 * len(files["expired"]) > files["total"]):   # protection 3
             out["state"] = "stopped_over_half"
+            return out
+        # files first, then the records: the records are what finds a file again if one could not be deleted
+        out["files_deleted"], left = _delete_files(cfg, files["expired"])
+        left += [p.relative_to(_data_dir(cfg)).as_posix() for p in files["unreadable"]]
+        if left:
+            out.update(state="files_locked", files_failed=left)
             return out
         conn.execute("PRAGMA secure_delete=ON")
         try:

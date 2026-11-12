@@ -197,6 +197,22 @@ Architecture, data model, pipeline behavior and every decision are documented in
 
 See [`docs/07-compliance.md`](docs/07-compliance.md) for the practical GDPR/PECR/CAN-SPAM posture. Not legal advice.
 
+### Deleting data (0.8.0)
+
+- **`leadforge forget <email | domain | name>`** removes a person from every table, the cache, the logs, the progress file, the outbox and
+  inbox, the hand-off and draft files and the sheets in the tool's own `exports` folder, then adds them to the suppression list so a new
+  run does not collect them again. The suppression list holds the identifier itself, in clear: that is how the objection is honoured.
+  A file that could not be cleaned is named and the command exits non-zero. Sheets you already handed to someone, and files you wrote
+  elsewhere with `--out`, cannot be reached from here.
+- **Data expires after 12 months** (`retention.months`, 1 to 12). A business and everything attached to it is deleted when it is 12 months
+  past the run that first found it (a refresh does not renew): its records, and every file under the data folder's own `exports` and `cache`
+  that holds it (a sheet is deleted whole). Files you wrote **outside** the data folder with `--out` are yours and are never touched.
+- `purge` runs at the start of every `run`, with three protections: the first run after an upgrade only reports (records and files);
+  every run says how many records and files expire in the next 30 days; an automatic purge never deletes when more than half of the
+  businesses, or more than half of the files in `exports` and `cache`, are past the limit (it stops and names `leadforge purge --apply`).
+  `leadforge purge` alone only reports; `purge --apply` deletes; `purge --everything --yes` wipes the data folder without opening the database.
+  If a file cannot be deleted (another program holds it open), no record is deleted either, the file is named, and the next pass tries again.
+
 ## Outreach and drafting (v0.3)
 
 The sheet's **Next Action** column is phone-first: call rows with a validated phone and a named contact, email
