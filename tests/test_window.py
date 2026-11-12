@@ -31,6 +31,8 @@ NOW = datetime(2026, 11, 12, 10, 0, 0, tzinfo=UTC)
 S, N, B, NULL = "string", "number", "boolean", "null"
 STAGE = {"discover", "enrich", "label", "score", "draft", "export"}
 STATE = {"running", "finished", "stopped", "failed"}
+# engine.ts ErrorKind on origin/slice/L11-window, copied: the kinds the screens know
+SEVEN = {"failed", "usage", "environment", "input", "source", "keyring", "missing"}
 
 
 def gap(t):
@@ -60,11 +62,11 @@ TYPES = {
     "PurgeEverythingResult": {"filesRemoved": N},
     "Retention": {"months": N, "min": N, "max": N},
     "KeyStatus": {"name": {"companies_house_key", "opencorporates_token"}, "saved": B, "savedAt": (NULL, S)},
-    "Settings": {"theme": gap({"light", "dark", "system"}), "accent": gap({"cobalt", "brass", "celadon", "ember"}), "workspace": S,
+    "Settings": {"theme": {"light", "dark", "system"}, "accent": {"cobalt", "brass", "celadon", "ember"}, "workspace": S,
                  "sheetFormats": [{"xlsx", "csv"}], "openSheetWhenDone": B},
     "Licence": {"name": S, "version": S, "licence": S, "notice": S},
     "About": {"windowVersion": gap(S), "engineVersion": S, "licence": S, "licences": ["Licence"]},
-    "Error": {"kind": S, "message": S, "details": [S], "next": (NULL, S)},
+    "Error": {"kind": SEVEN, "message": S, "details": [S], "next": (NULL, S)},
 }
 RESULT = {
     "campaign_create": "CampaignPlan", "run_stop": "RunStatus", "run_status": (NULL, "RunStatus"), "campaigns_list": ["Campaign"],
@@ -80,7 +82,7 @@ EVENT = {
     "notice": {"type": S, "text": S, "at": S},
     "finished": {"type": S, "status": "RunStatus"},
     "stopped": {"type": S, "status": "RunStatus"},
-    "failed": {"type": S, "status": "RunStatus", "error": {"kind": S, "message": S, "details": [S]}},
+    "failed": {"type": S, "status": "RunStatus", "error": {"kind": SEVEN, "message": S, "details": [S]}},
 }
 
 
@@ -395,10 +397,10 @@ def test_a_planted_key_appears_in_no_output_and_no_log(ws, monkeypatch, capsys):
     assert not any(planted in s for s in seen)
 
 
-def test_key_commands_without_l9_answer_not_available(ws):
+def test_key_commands_without_l9_answer_keyring(ws):
     code, out = call("keys_list", {})
     doc = one_doc(out)
-    assert code == 3 and doc["kind"] == "not_available" and "L9" in doc["next"]
+    assert code == 1 and doc["kind"] == "keyring" and "L9" in doc["next"]
 
 
 def test_run_stop_stops_between_businesses_and_keeps_the_place(ws, monkeypatch):
@@ -442,3 +444,223 @@ def test_read_commands_answer_while_a_run_holds_the_database(ws, monkeypatch):
     code, out = call("person_forget", {"value": "Harbourside Motors", "dry_run": True})
     doc = one_doc(out)
     assert code == 4 and doc["kind"] == "input" and "running run" in doc["details"][0]
+
+
+# ------------------------------------------------------------------ Build 2: matching the window core (slice/L11-window)
+# The object `app/ui/src/engine.tauri.ts` passes to `invoke` for each command, copied as data (the core drops `events` from
+# run_start's and sends `{}` for a call without arguments). The values are invented.
+def screen_args(ws: Path) -> dict:
+    sheet = str((ws / "leadforge_data" / "exports" / RID / f"{CAMPAIGN}.csv").resolve())   # Sheet.files[].path, as the engine gave it
+    return {
+        "campaign_create": {"draft": {"kinds": ["MOT garage"], "places": ["Bristol"], "country": "GB", "source": "dvsa", "maxLeads": 50}},
+        "run_start": {"args": {"campaign": CAMPAIGN, "resume": False}},
+        "run_stop": {"runId": RID}, "run_status": {"runId": None}, "campaigns_list": {}, "sheet_export": {"runId": RID},
+        "sheet_open": {"path": sheet}, "people_list": {"query": {"search": "priya", "limit": 50}},
+        "person_forget": {"value": "priya@harbourside-motors.example"},
+        "address_suppress": {"value": "hello@cliftondowngarage.example", "kind": None},
+        "purge_report": {}, "purge_apply": {}, "purge_everything": {"confirm": True}, "retention_get": {}, "retention_set": {"months": 6},
+        "keys_list": {}, "key_save": {"name": "companies_house_key", "value": "fixture-value"}, "key_remove": {"name": "companies_house_key"},
+        "settings_get": {}, "settings_set": {"patch": {"theme": "dark", "accent": "brass", "sheetFormats": ["xlsx", "csv"],
+                                                       "openSheetWhenDone": True}},
+        "about": {},
+    }
+
+
+@pytest.mark.parametrize("name", win.NAMES)
+def test_each_command_answers_what_the_screens_send(ws, monkeypatch, name):
+    monkeypatch.setattr(keys, "make_keys", lambda: keys.Keys(FakeKeyring(), "leadforge"))
+    opened = []
+    monkeypatch.setattr(commands, "_default_opener", opened.append)
+    fake_pipeline(monkeypatch)
+    if name == "run_stop":
+        conn = db.connect(ws / "leadforge_data" / "db.sqlite3")
+        db.set_run_meta(conn, RID, window_pid=os.getpid(), window_state="running")
+        conn.commit()
+    code, out = call(name, screen_args(ws)[name])
+    docs = [json.loads(ln) for ln in out.splitlines()]
+    assert code == 0 and docs and not (isinstance(docs[0], dict) and "kind" in docs[0] and "message" in docs[0]), docs[:1]
+    if name == "run_start":
+        assert conforms(docs[0], "RunHandle") == [] and docs[-1]["type"] == "finished"
+    else:
+        assert len(docs) == 1 and conforms(docs[0], RESULT[name]) == []
+    if name == "sheet_open":
+        assert docs == [None] and [p.name for p in opened] == [f"{CAMPAIGN}.csv"]
+    if name == "settings_set":
+        code, out = call("settings_get", {})
+        assert (one_doc(out)["theme"], one_doc(out)["accent"]) == ("dark", "brass")
+
+
+def test_the_error_kinds_are_the_seven_the_screens_know():
+    import re
+
+    from leadforge.util import EnvError, InputError, LeadForgeError, ProviderFailed
+
+    src = Path(win.__file__).parent
+    emitted = set(win.EXIT_CODES) | set(win.KINDS)
+    for p in src.glob("*.py"):
+        text = p.read_text(encoding="utf-8")
+        emitted |= set(re.findall(r'WindowError\(\s*"(\w+)"', text))
+        emitted |= set(re.findall(r'"kind": "(\w+)", "message"', text))
+    emitted |= {win.from_engine(cls("x"), "m").kind for cls in (LeadForgeError, EnvError, InputError, ProviderFailed)}
+    assert emitted == SEVEN, f"a kind the screens do not know: {sorted(emitted - SEVEN)}"
+    assert set(win.EXIT_CODES) == SEVEN
+
+
+def test_arguments_over_1_mib_are_refused_with_input(ws):
+    code, out = call("about", json.dumps({"x": "a" * (1024 * 1024)}))
+    doc = one_doc(out)
+    assert code == 4 and doc["kind"] == "input"
+
+
+def test_no_run_start_line_exceeds_64_kib(ws, monkeypatch):
+    from leadforge import pipeline
+
+    def run(cfg, icp, icp_path, resume=False, **kw):
+        util.emit_progress("enrich", 1, 2, "x" * 1_000_000)
+        raise util.InputError("\n".join(["y" * 200_000] * 8))
+
+    monkeypatch.setattr(pipeline, "run_pipeline", run)
+    code, out = call("run_start", screen_args(ws)["run_start"])
+    lines = out.splitlines()
+    assert all(len(ln.encode("utf-8")) < 64 * 1024 for ln in lines), max(len(ln) for ln in lines)
+    events = [json.loads(ln) for ln in lines]
+    progress = [e for e in events if e.get("type") == "progress"]
+    assert progress and len(progress[0]["message"]) <= 120   # the engine's own cut (util.emit_progress)
+    assert events[-1]["type"] == "failed" and events[-1]["error"]["details"][0].endswith("[cut]")
+    assert conforms(events[-1], EVENT["failed"]) == []
+
+
+def test_a_start_refused_before_a_run_exists_is_one_error_document(ws):
+    code, out = call("run_start", {"args": {"campaign": "no-such-campaign", "resume": False}})
+    doc = one_doc(out)
+    assert code == 4 and doc["kind"] == "input" and "runId" not in doc
+
+
+@pytest.mark.parametrize("way", ["engine_error", "exception", "interrupt", "planning", "end_bookkeeping"])
+def test_run_start_ends_with_an_end_event_on_every_way_out(ws, monkeypatch, way):
+    import sqlite3
+
+    from leadforge import pipeline
+    from leadforge.window import run as wrun
+
+    fake_pipeline(monkeypatch)
+    if way in ("engine_error", "exception", "interrupt"):
+        error = {"engine_error": util.ProviderFailed("the register did not answer"), "exception": RuntimeError("boom"),
+                 "interrupt": KeyboardInterrupt()}[way]
+
+        def run(*a, **k):
+            util.emit_progress("discover", 1, 3, "one")
+            raise error
+        monkeypatch.setattr(pipeline, "run_pipeline", run)
+    elif way == "planning":
+        def plan(*a, **k):
+            raise RuntimeError("plan failed")
+        monkeypatch.setattr(pipeline, "_plan_into_db", plan)
+    else:
+        real = db.set_run_meta
+
+        def locked(conn, run_id, **kw):
+            if kw.get("window_state") in ("finished", "stopped", "failed"):
+                raise sqlite3.OperationalError("database is locked")
+            return real(conn, run_id, **kw)
+        monkeypatch.setattr(wrun.db, "set_run_meta", locked)
+    code, out = call("run_start", screen_args(ws)["run_start"])
+    events = [json.loads(ln) for ln in out.splitlines()]
+    assert conforms(events[0], "RunHandle") == []
+    end = events[-1]
+    assert end["type"] in ("finished", "stopped", "failed") and conforms(end, EVENT[end["type"]]) == [], end
+    assert end["status"]["runId"] == events[0]["runId"]
+    assert end["type"] == ("finished" if way == "end_bookkeeping" else "failed")
+    assert code == {"engine_error": 5, "end_bookkeeping": 0}.get(way, 1)
+
+
+# A second engine process for the two tests below: the real `leadforge window run_start`, its pipeline replaced by one that
+# reports a business every 0.2 s and writes the database each time (as enrich does). Nothing leaves the machine.
+RUNNER = """
+import sys, time
+from leadforge import db, pipeline, util
+import leadforge.grid
+def refuse(*a, **k):
+    raise AssertionError("the runner tried to reach the geocoder")
+leadforge.grid.httpx.get = refuse
+def run(cfg, icp, icp_path, resume=False, **kw):
+    conn = db.connect(cfg.db_path)
+    rid = db.latest_run(conn)["id"]
+    n = int(sys.argv[1])
+    for i in range(n):
+        util.emit_progress("enrich", i + 1, n, f"business {i + 1}")
+        db.set_run_meta(conn, rid, runner_tick=i)
+        time.sleep(0.2)
+    return {"ok": True, "run": None, "stage": "exported", "counts": {}, "warnings": [], "artifacts": [], "next": None}
+pipeline.run_pipeline = run
+from leadforge import window
+sys.exit(window.main(["run_start"]))
+"""
+
+
+def engine_process(ws: Path, *argv: str, script: bool = False):
+    import subprocess
+    import sys
+
+    cmd = ([sys.executable, "-X", "utf8", str(ws / "runner.py"), *argv] if script else
+           [sys.executable, "-X", "utf8", "-m", "leadforge", "window", *argv])
+    return subprocess.Popen(cmd, cwd=ws, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, encoding="utf-8")
+
+
+def start_runner(ws: Path, n: int):
+    (ws / "runner.py").write_text(RUNNER, encoding="utf-8")
+    p = engine_process(ws, str(n), script=True)
+    p.stdin.write(json.dumps(screen_args(ws)["run_start"]))
+    p.stdin.close()
+    handle = json.loads(p.stdout.readline())
+    while json.loads(p.stdout.readline()).get("type") != "progress":
+        pass
+    return p, handle["runId"]
+
+
+def ask(ws: Path, name: str, args: dict, timeout: float) -> tuple[int, dict, str, float]:
+    import time
+
+    t0 = time.monotonic()
+    p = engine_process(ws, name)
+    out, err = p.communicate(json.dumps(args), timeout=timeout)
+    return p.returncode, json.loads(out), err, time.monotonic() - t0
+
+
+def test_after_the_run_process_is_ended_from_outside_status_is_not_running(ws):
+    p, rid = start_runner(ws, 300)
+    p.kill()   # as the core ends an engine past its time: no line can be written now
+    p.communicate(timeout=30)
+    code, out = call("run_status", {"runId": rid})
+    doc = one_doc(out)
+    assert code == 0 and doc["state"] == "failed" and doc["reason"], doc
+
+
+def test_run_stop_from_a_second_process_ends_the_run_within_10_s_and_status_answers_beside_it(ws):
+    import time
+
+    p, rid = start_runner(ws, 300)
+    try:
+        for _ in range(3):   # run_status beside the run while it writes the database
+            code, doc, err, secs = ask(ws, "run_status", {"runId": rid}, 30)
+            assert code == 0 and doc["state"] == "running" and secs < 30, (doc, err[-500:])
+            assert "locked" not in err.lower()
+        asked_at = time.monotonic()
+        code, doc, err, _ = ask(ws, "run_stop", {"runId": rid}, 30)
+        stopped_at = time.monotonic()
+        assert code == 0 and doc["runId"] == rid, (doc, err[-500:])
+        rest, run_err = p.communicate(timeout=10)
+        ended_at = time.monotonic()
+        took = ended_at - stopped_at
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.communicate()
+    last = json.loads(rest.splitlines()[-1])
+    print(f"run_stop answered to the run's end: {took:.2f} s; run_stop started to the run's end: {ended_at - asked_at:.2f} s")
+    assert took < 10 and p.returncode == 0 and last["type"] == "stopped", (took, last, run_err[-500:])
+    assert "locked" not in run_err.lower()
+    assert not (ws / "leadforge_data" / "window-run.stop").exists()
+    code, doc, err, _ = ask(ws, "run_status", {"runId": rid}, 30)
+    assert code == 0 and doc["state"] == "stopped"

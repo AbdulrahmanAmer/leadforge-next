@@ -361,3 +361,65 @@ After the second rebase (on `9dc295c`) the full gate was NOT run again (one full
 tests/test_golden_contracts.py tests/test_cli_contract.py` gave `81 passed in 40.41s`, `ruff check src tests` `All checks passed!`,
 `check_versions.py` all 0.8.0, `make_licence_notices.py --check` `licence notices match the lock`. The full suite of the rebased
 commit is the hosted CI's.
+
+# Build 2: matching the window core (run `l11a-match`, 2026-11-12)
+
+The authority for stdin is the object `app/ui/src/engine.tauri.ts` passes to `invoke` on `origin/slice/L11-window` (`7e655b0`); the
+core (`app/src-tauri/src/lib.rs`, `engine.rs` there) passes it on unchanged, with two edits: `run_start` drops `events` (the Tauri
+channel), and a call without arguments becomes `{}`. `engine.ts` on `slice/L11-window` is byte-identical to the one on
+`slice/L10-ui` that Build 1 read (sha256 compared): no type moved.
+
+## The stdin keys, command by command
+
+| # | Command | Keys `engine.tauri.ts` sends (after the core) | Keys the command read before this build | Equal |
+|---|---|---|---|---|
+| 1 | campaign_create | `draft` {kinds, places, country, source, maxLeads} | `draft` {the same five} | yes |
+| 2 | run_start | `args` {campaign, resume} (`events` dropped by the core) | `args` {campaign, resume} | yes |
+| 3 | run_stop | `runId` | `runId` | yes |
+| 4 | run_status | `runId` (string or null) | `runId` (string or null) | yes |
+| 5 | campaigns_list | none (`{}`) | none | yes |
+| 6 | sheet_export | `runId` | `runId` | yes |
+| 7 | sheet_open | `path` | `path` | yes |
+| 8 | people_list | `query` {search, limit} | `query` {search, limit} | yes |
+| 9 | person_forget | `value` | `value` (+ `dry_run`, the engine's own, optional) | yes |
+| 10 | address_suppress | `value`, `kind` (null when not given) | `value`, `kind` (null allowed) | yes |
+| 11 | purge_report | none | none | yes |
+| 12 | purge_apply | none | none | yes |
+| 13 | purge_everything | `confirm` (true) | `confirm` | yes |
+| 14 | retention_get | none | none | yes |
+| 15 | retention_set | `months` | `months` | yes |
+| 16 | keys_list | none | none | yes |
+| 17 | key_save | `name`, `value` | `name`, `value` | yes |
+| 18 | key_remove | `name` | `name` | yes |
+| 19 | settings_get | none | none | yes |
+| 20 | settings_set | `patch` {any of theme, accent, sheetFormats, openSheetWhenDone} | `patch` {sheetFormats, openSheetWhenDone}; theme and accent REFUSED (`usage`) | **no** |
+| 21 | about | none | none | yes |
+
+Top-level keys were equal for 21 of 21; inside them, 20 of 21: `settings_set` refused the two keys of `SettingsPatch` the screens
+own. Fixed in this build (below). The key commands read the right keys but answer an error until L9 is in (point 5).
+
+## The five points: what must hold
+
+1. **Keys.** Each of the 21, fed the object `engine.tauri.ts` sends, answers a result (exit 0, one JSON document), never `usage`.
+   `settings_set` accepts `theme` (light, dark, system) and `accent` (cobalt, brass, celadon, ember) and keeps them in the workspace
+   (`leadforge_data/window-settings.json`); `settings_get` returns them (`system` and `cobalt` until set: the first value of
+   the window's own choice, not data about anyone).
+2. **run_start.** The core takes stdout line 1 as the handle (any line, it does not look inside) and relays every later line.
+   So: once a run exists, line 1 is `{"runId"}` and the last line is `finished`, `stopped` or `failed` on every way out the code
+   can reach: normal end, stop, a `LeadForgeError`, any other exception, an interrupt (BaseException), the planning step failing
+   after the run row exists, and the run's end bookkeeping failing (then the end event is built from the status read at the
+   start). A start refused before any run exists (no such campaign, bad arguments, the start-of-run clean-up refusing) has no
+   run id to give: it answers the seam's error document alone, non-zero exit, as the stand-in does. When the process is ended
+   from outside nothing can be written; `run_status` then reports the run `failed` ("The engine process ended before the
+   run did."), never `running`: the run row keeps the run's process id and `window_state = running`, and a dead process id
+   with that state reads as failed.
+3. **run_stop from a second process.** The stop is the file `leadforge_data/window-run.stop` (crosses processes); the run checks
+   it at every progress report and between stages; the run ends within 10 s of the stop with a `stopped` event last, and the
+   workspace opens cleanly after (run_status answers, the flag file is gone).
+4. **run_status beside a run.** A second process answers within 30 s while the run writes, and neither side meets a database
+   lock error.
+5. **Kinds and limits.** Every error the window commands can emit has one of the seven kinds `failed, usage, environment, input,
+   source, keyring, missing`. `not_available` becomes `keyring` ("the shell could not reach the Windows keyring" is what the
+   screens say for it; `missing` means "no command for this", which is not the case). An arguments document over 1 MiB is
+   refused with `input`. No `run_start` line exceeds 64 KiB: a text field longer than 4,000 characters is cut and ends
+   with `[cut]`. `sheet_open` answers `null` and calls the opener; the real opener (`util.open_artifact`) only outside tests.

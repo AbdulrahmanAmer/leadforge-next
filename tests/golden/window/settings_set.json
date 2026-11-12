@@ -1,9 +1,9 @@
 {
-  "accent": null,
+  "accent": "cobalt",
   "openSheetWhenDone": false,
   "sheetFormats": [
     "xlsx"
   ],
-  "theme": null,
+  "theme": "system",
   "workspace": "<ws>"
 }

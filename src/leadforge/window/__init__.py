@@ -23,8 +23,12 @@ NAMES = (
     "keys_list", "key_save", "key_remove", "settings_get", "settings_set", "about",
 )
 
-# engine.ts ErrorKind -> exit code (util.py's exit codes; `not_available` is the key commands' answer before L9)
-EXIT_CODES = {"failed": 1, "usage": 2, "environment": 3, "input": 4, "source": 5, "not_available": 3}
+# engine.ts ErrorKind, exactly these seven: the screens show any other kind as a generic failure
+KINDS = ("failed", "usage", "environment", "input", "source", "keyring", "missing")
+# ErrorKind -> exit code: util.py's exit codes; `keyring` and `missing` exit 1, as the window's stand-in engine does
+EXIT_CODES = {"failed": 1, "usage": 2, "environment": 3, "input": 4, "source": 5, "keyring": 1, "missing": 1}
+# the window core's limit on the arguments document (app/src-tauri/src/engine.rs, MAX_INPUT_BYTES)
+MAX_ARGS_BYTES = 1024 * 1024
 KEY_COMMANDS = ("keys_list", "key_save", "key_remove")
 
 
@@ -58,6 +62,9 @@ def from_engine(e: LeadForgeError, message: str) -> WindowError:
 # ------------------------------------------------------------------ arguments
 def read_arguments(stdin: TextIO) -> dict:
     text = stdin.read()
+    size = len(text.encode("utf-8", "surrogatepass"))
+    if size > MAX_ARGS_BYTES:
+        raise WindowError("input", "The arguments are larger than 1 MiB.", [f"stdin holds {size} bytes"], None)
     try:
         args = json.loads(text)
     except ValueError as e:

@@ -463,7 +463,7 @@ def _keys() -> keys.Keys:
     try:
         return keys.make_keys()
     except keys.KeysNotAvailable as e:
-        raise WindowError("not_available", "Keys cannot be kept in the keyring yet.", [str(e)],
+        raise WindowError("keyring", "Keys cannot be kept in the keyring yet.", [str(e)],
                           "This needs the keys slice (L9) in the engine; until then the key stays in leadforge.yaml.") from None
 
 
@@ -495,12 +495,27 @@ def key_remove(args: dict) -> dict:
 
 # ------------------------------------------------------------------ 19 to 21 settings, about
 SHEET_FORMATS = ("xlsx", "csv")
+# the window's own two settings (engine.ts ThemeSetting, AccentSetting); the engine keeps them for it, the first value until set
+WINDOW_SETTINGS = {"theme": ("system", "light", "dark"), "accent": ("cobalt", "brass", "celadon", "ember")}
+
+
+def window_settings_file(cfg: Config) -> Path:
+    return Path(cfg.workspace) / cfg.data_dir / "window-settings.json"
+
+
+def _window_settings(cfg: Config) -> dict:
+    try:
+        kept = json.loads(window_settings_file(cfg).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        kept = {}
+    kept = kept if isinstance(kept, dict) else {}
+    return {k: kept[k] if kept.get(k) in allowed else allowed[0] for k, allowed in WINDOW_SETTINGS.items()}
 
 
 def settings_get(args: dict) -> dict:
     only(args)
     cfg = load_cfg()
-    return {"theme": None, "accent": None,   # the shell's own settings: the engine does not keep them
+    return {**_window_settings(cfg),
             "workspace": str(Path(cfg.workspace).resolve()),
             "sheetFormats": [f for f in cfg.export.formats if f in SHEET_FORMATS],
             "openSheetWhenDone": cfg.export.auto_open}
@@ -509,10 +524,13 @@ def settings_get(args: dict) -> dict:
 def settings_set(args: dict) -> dict:
     only(args, "patch")
     patch = object_arg(args, "patch")
-    shell_own = sorted(set(patch) & {"theme", "accent"})
-    if shell_own:
-        raise usage("The setting was not saved.", *(f"{k} is kept by the window, not by the engine" for k in shell_own))
-    only(patch, "sheetFormats", "openSheetWhenDone")
+    only(patch, "theme", "accent", "sheetFormats", "openSheetWhenDone")
+    window_own: dict[str, str] = {}
+    for k, allowed in WINDOW_SETTINGS.items():
+        if k in patch:
+            if patch[k] not in allowed:
+                raise usage("The setting was not saved.", f"{k}: one of {', '.join(allowed)}")
+            window_own[k] = patch[k]
     changes: dict[str, Any] = {}
     if "sheetFormats" in patch:
         f = patch["sheetFormats"]
@@ -523,9 +541,13 @@ def settings_set(args: dict) -> dict:
         if not isinstance(patch["openSheetWhenDone"], bool):
             raise usage("The setting was not saved.", "openSheetWhenDone: true or false")
         changes["export.auto_open"] = patch["openSheetWhenDone"]
-    load_cfg()
+    cfg = load_cfg()
     if changes:
         write_settings(changes)
+    if window_own:
+        f = window_settings_file(cfg)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({**_window_settings(cfg), **window_own}), encoding="utf-8")
     return settings_get({})
 
 

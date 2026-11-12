@@ -35,6 +35,12 @@ confirmation; `sheet_open` opens only a file inside the workspace's own exports 
 New file `src/leadforge/data/licences.json`: the licence notices of every locked dependency, made from their own metadata by
 `scripts/make_licence_notices.py`; a test fails when it is older than `requirements.lock`.
 
+The window commands now match the window's core exactly. `settings_set` accepts the window's own `theme` and `accent` and the
+workspace keeps them; the key commands answer the error kind `keyring` (one of the seven kinds the window knows) until the
+keyring slice is in; an arguments document over 1 MiB is refused; no `run_start` line exceeds 64 KiB (long texts are cut and
+marked); once a run exists, `run_start` ends its stream with an end event on every way out, including a failure while planning
+or while recording the end.
+
 The existing command line, its digest lines and the plugin are unchanged. No version change yet.
 
 ## [0.9.0] — 2026-11-12

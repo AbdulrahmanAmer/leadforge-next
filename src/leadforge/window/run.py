@@ -9,6 +9,7 @@ it and raise `util.RunStopped`, so the run stops between two businesses with its
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import threading
@@ -129,6 +130,31 @@ def _at(ts: float | None = None) -> str:
     return (datetime.fromtimestamp(ts, UTC) if ts else util.utcnow()).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# the window core relays no run_start line longer than 64 KiB (app/src-tauri/src/engine.rs, MAX_LINE_BYTES)
+MAX_LINE_BYTES = 64 * 1024
+CUT_MARK = " [cut]"
+
+
+def _bounded(v, cut: int):
+    """`v` with every text longer than `cut` characters cut there and marked, and lists kept to their first 20 items."""
+    if isinstance(v, str):
+        return v if len(v) <= cut else v[:cut] + CUT_MARK
+    if isinstance(v, dict):
+        return {k: _bounded(x, cut) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_bounded(x, cut) for x in v[:20]]
+    return v
+
+
+def write_line(out: TextIO, event: dict) -> None:
+    """One run_start line, never over MAX_LINE_BYTES: long texts are cut (4,000 characters, then 200 if still too long)."""
+    for cut in (4000, 200):
+        event = _bounded(event, cut)
+        if len(json.dumps(event, ensure_ascii=False, separators=(",", ":")).encode("utf-8", "surrogatepass")) < MAX_LINE_BYTES:
+            break
+    write_json(out, event)
+
+
 class _Stream:
     """The run's JSON lines. The engine calls `progress` from its driver threads too, hence the lock."""
 
@@ -140,7 +166,7 @@ class _Stream:
 
     def send(self, event: dict) -> None:
         with self.lock:
-            write_json(self.out, event)
+            write_line(self.out, event)
 
 
     def progress(self, payload: dict) -> None:
@@ -153,7 +179,7 @@ class _Stream:
             event = {"type": "progress", "stage": stage, "done": payload.get("done", 0), "total": payload.get("total"),
                      "message": payload.get("msg", ""), "etaSeconds": None, "at": _at(payload.get("ts"))}
             self.last = event
-            write_json(self.out, event)
+            write_line(self.out, event)
 
     def _close_stages_before_locked(self, stage: str) -> None:
         """A `stage-done` for the current stage and every stage passed over on the way to `stage` (the lock is held)."""
@@ -161,7 +187,7 @@ class _Stream:
             last = self.last if self.last and self.last["stage"] == s else None
             summary = (f"{last['done']} of {last['total']}" if last and last["total"] is not None
                        else f"{last['done']}" if last else "done")
-            write_json(self.out, {"type": "stage-done", "stage": s, "summary": summary, "at": _at()})
+            write_line(self.out, {"type": "stage-done", "stage": s, "summary": summary, "at": _at()})
 
     def finish(self) -> None:
         with self.lock:
@@ -169,7 +195,7 @@ class _Stream:
                 end = WINDOW_STAGES[-1]
                 self._close_stages_before_locked(end)
                 self.stage = end
-                write_json(self.out, {"type": "stage-done", "stage": end, "summary": "done", "at": _at()})
+                write_line(self.out, {"type": "stage-done", "stage": end, "summary": "done", "at": _at()})
 
 
 def _start_of_run_purge(cfg: Config) -> dict:
@@ -213,6 +239,8 @@ def start(args: dict, out: TextIO) -> int:
         raise from_engine(e, "The campaign file cannot be read.") from None
 
     os.environ["LEADFORGE_NO_UI"] = "1"   # no console window, no sheet opened by the engine: the window does both
+    # Until a run exists a refusal is the seam's error document alone (there is no run id to hand over). From the handle on,
+    # every way out below ends the stream with `finished`, `stopped` or `failed`.
     if resume:
         if not db_file(cfg).is_file():
             raise WindowError("input", "There is no run of this campaign to continue.", [], "Start the run instead.")
@@ -226,24 +254,28 @@ def start(args: dict, out: TextIO) -> int:
         purge_counts = _start_of_run_purge(cfg)
         conn = db.connect(cfg.db_path)
         run_id = db.create_run(conn, str(icp_path), icp.icp_hash())
-        pipeline._plan_into_db(conn, cfg, icp, run_id)
-    armed_now, expired = purge_counts.pop("armed_now", False), purge_counts.pop("expired", 0)
-    db.set_run_meta(conn, run_id, window_pid=os.getpid(), window_state="running", window_reason=None, **purge_counts)
-    flag = stop_file(cfg)
-    flag.unlink(missing_ok=True)
 
     stream = _Stream(out)
-    write_json(out, {"runId": run_id})   # the RunHandle first (see "Seam changes proposed" 1), then the events
-    if purge_counts:   # the engine's own retention lines (cli._start_of_run_purge), as one notice
-        first = (f"Clean-up before the run: this is the first check of this workspace, so nothing was deleted; {expired} records "
-                 f"are past the {cfg.retention.months}-month limit and the next run deletes them." if armed_now else
-                 f"Clean-up before the run: {purge_counts['purged']} businesses past the {cfg.retention.months}-month limit were deleted.")
-        stream.send({"type": "notice", "at": _at(), "text": f"{first} {purge_counts['expiring_30d']} more expire in the next 30 days."})
-    util.set_stop_file(flag)
-    util.set_progress_listener(stream.progress)
+    stream.send({"runId": run_id})   # the RunHandle first (see "Seam changes proposed" 1), then the events
+    flag = stop_file(cfg)
+    first_status: dict | None = None
     end: dict
     code = 0
     try:
+        if not resume:
+            pipeline._plan_into_db(conn, cfg, icp, run_id)
+        armed_now, expired = purge_counts.pop("armed_now", False), purge_counts.pop("expired", 0)
+        db.set_run_meta(conn, run_id, window_pid=os.getpid(), window_state="running", window_reason=None, **purge_counts)
+        flag.unlink(missing_ok=True)
+        first_status = status_doc(cfg, conn, conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone(), state="running")
+        if purge_counts:   # the engine's own retention lines (cli._start_of_run_purge), as one notice
+            first = (f"Clean-up before the run: this is the first check of this workspace, so nothing was deleted; {expired} records "
+                     f"are past the {cfg.retention.months}-month limit and the next run deletes them." if armed_now else
+                     f"Clean-up before the run: {purge_counts['purged']} businesses past the {cfg.retention.months}-month limit "
+                     "were deleted.")
+            stream.send({"type": "notice", "at": _at(), "text": f"{first} {purge_counts['expiring_30d']} more expire in the next 30 days."})
+        util.set_stop_file(flag)
+        util.set_progress_listener(stream.progress)
         result = pipeline.run_pipeline(cfg, icp, icp_path, resume=True)
     except RunStopped:
         end = {"type": "stopped", "state": "stopped", "reason": None}
@@ -257,6 +289,10 @@ def start(args: dict, out: TextIO) -> int:
         reason = f"{type(e).__name__}: {str(e)[:200]}"
         end = {"type": "failed", "state": "failed", "reason": reason, "error": {"kind": "failed", "message": reason, "details": []}}
         code = 1
+    except BaseException as e:  # an interrupt or an exit inside the engine: the stream still ends
+        reason = f"The run was interrupted ({type(e).__name__})."
+        end = {"type": "failed", "state": "failed", "reason": reason, "error": {"kind": "failed", "message": reason, "details": []}}
+        code = 1
     else:
         if result["stage"] == "exported":
             stream.finish()
@@ -268,11 +304,19 @@ def start(args: dict, out: TextIO) -> int:
     finally:
         util.set_progress_listener(None)
         util.set_stop_file(None)
-        flag.unlink(missing_ok=True)
-    conn = db.connect(cfg.db_path)
-    db.set_run_meta(conn, run_id, window_state=end["state"], window_reason=end["reason"], window_pid=None)
-    row = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
-    event = {"type": end["type"], "status": status_doc(cfg, conn, row, state=end["state"], reason=end["reason"])}
+        with contextlib.suppress(OSError):
+            flag.unlink(missing_ok=True)
+    try:
+        conn = db.connect(cfg.db_path)
+        db.set_run_meta(conn, run_id, window_state=end["state"], window_reason=end["reason"], window_pid=None)
+        row = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
+        status = status_doc(cfg, conn, row, state=end["state"], reason=end["reason"])
+    except Exception:  # noqa: BLE001 — the end event is still written, from the status read when the run began
+        util.LOG.exception("window run %s: the end of the run could not be recorded", run_id)
+        status = {**(first_status or {"runId": run_id, "campaign": icp.campaign, "stage": "discover", "startedAt": None,
+                                      "counts": {"businesses": None, "contacts": None, "purged": None, "expiringIn30Days": None}}),
+                  "state": end["state"], "reason": end["reason"], "done": None, "total": None, "etaSeconds": None}
+    event = {"type": end["type"], "status": status}
     if "error" in end:
         event["error"] = end["error"]
     stream.send(event)
