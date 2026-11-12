@@ -375,5 +375,14 @@ does not download a second copy).
 **CI does not run** the installer build, the install proof (`packaging/install-proof.ps1`) or the real-window self-test
 (`packaging/selftest-window.ps1`): they need a desktop session and show a window. The builder runs the self-test on the laptop; the
 coordinator runs the install proof with the owner's normal token.
+**Proof, from the job's own log** (run 43201821868 at 61eaf47): `rustc 1.99.1 (58cf8f9c3 2026-10-13)`; `npm test` `# tests 99`,
+`# pass 99`, `# fail 0`, `# skipped 0`; `cargo test` unit `14 passed`, `engine_dev` `4 passed`, `key_value_never_leaks` `2 passed`,
+`run_seam` `6 passed`, `standin_switch` `1 passed`, `version_agrees` `1 passed`; `permission-check` `3 passed`.
+**Red when a test is broken**, on the throwaway branch `ci-probe/window-red` (run by `workflow_dispatch`, deleted on the remote
+and locally afterwards; its runs were cancelled once the window job had failed): a Rust assertion broken (run 43201858537):
+`test engine::tests::the_stop_wait_is_ninety_seconds ... FAILED`, `left: 90s right: 91s`, `test result: FAILED. 13 passed; 1 failed`,
+`Process completed with exit code 101`; a screen assertion broken too (run 43201886158): `not ok 57 - after run_stop answers the run
+is stopping until its end event, and stays live`, `expected: 'stopped' actual: 'stopping'`, `# fail 1`, `Process completed with exit
+code 1` (the job stops at its first red step, so each break got its own run).
 **Required checks.** The repository lists required checks nowhere else, so here: a pull request that touches `app/` needs
 `window · windows-latest` green, as well as the existing jobs.
