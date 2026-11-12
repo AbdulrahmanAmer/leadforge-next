@@ -1,0 +1,10 @@
+{
+  "openSheetWhenDone": false,
+  "sheetFormats": [
+    "xlsx"
+  ],
+  "sources": [
+    "dvsa"
+  ],
+  "workspace": "<ws>"
+}

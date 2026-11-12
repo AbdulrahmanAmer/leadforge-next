@@ -1,0 +1,11 @@
+{
+  "openSheetWhenDone": true,
+  "sheetFormats": [
+    "xlsx",
+    "csv"
+  ],
+  "sources": [
+    "dvsa"
+  ],
+  "workspace": "<ws>"
+}

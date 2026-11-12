@@ -1,0 +1,10 @@
+{
+  "filesEdited": 0,
+  "filesRemoved": 0,
+  "kind": "email",
+  "rows": 1,
+  "value": "priya@harbourside-motors.example",
+  "warnings": [
+    "Sheets and files you already handed to someone else, or wrote outside this folder with --out, cannot be reached from here."
+  ]
+}

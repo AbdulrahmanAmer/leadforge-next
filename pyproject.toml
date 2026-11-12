@@ -49,7 +49,7 @@ dev = ["pytest>=8.2", "ruff>=0.5", "pytest-timeout>=2.3", "pytest-xdist>=3.5"]
 leadforge = "leadforge.cli:main"
 
 [tool.setuptools.package-data]
-leadforge = ["data/*.yaml", "data/skeletons/*.yaml"]
+leadforge = ["data/*.yaml", "data/*.json", "data/skeletons/*.yaml"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
