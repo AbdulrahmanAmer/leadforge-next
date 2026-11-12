@@ -190,11 +190,15 @@ def readonly_view(db_path: Path):
 
 def peek_schema_version(db_path: Path) -> tuple[bool, str | None]:
     """The stored schema version, read without changing one byte of the workspace."""
-    try:
-        with readonly_view(db_path) as conn:
-            return _version_of(conn)
-    except sqlite3.DatabaseError as e:
-        raise InputError(f"{Path(db_path).name} is not a database this LeadForge can read ({e}); nothing was changed.") from e
+    for attempt in (1, 2):   # a copy taken while another process commits can be torn once; a second copy is whole
+        try:
+            with readonly_view(db_path) as conn:
+                return _version_of(conn)
+        except sqlite3.DatabaseError as e:
+            if attempt == 2:
+                raise InputError(f"{Path(db_path).name} is not a database this LeadForge can read ({e}); "
+                                 "nothing was changed.") from e
+    raise AssertionError("unreachable")
 
 
 def schema_gaps(db_path: Path) -> list[str]:

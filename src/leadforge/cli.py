@@ -496,7 +496,7 @@ def run(
         emit_digest(False, "run", warnings=[str(e)[:120]], next_="leadforge doctor --fix")
         raise typer.Exit(e.exit_code) from e
 
-    purge_counts = _start_of_run_purge(cfg)
+    purge_counts = _start_of_run_purge(cfg, quiet=bool(ctx.obj.get("json_only")))
 
     if detach:
         import sys as _sys
@@ -535,7 +535,7 @@ def run(
 
 
 # ----------------------------------------------------------------------------- forget / purge (L6, C4 and C5)
-def _start_of_run_purge(cfg: Config) -> dict:
+def _start_of_run_purge(cfg: Config, quiet: bool = False) -> dict:
     """Retention runs at the start of every `run` (C5). Stops the run, exit 4, when the workspace is half upgraded or when
     the purge would delete more than half of it; the first pass after the upgrade only reports."""
     from leadforge import util
@@ -555,12 +555,13 @@ def _start_of_run_purge(cfg: Config) -> dict:
         raise typer.Exit(4)
     if state == "no_workspace":
         return {}
-    if state == "armed":
-        typer.echo(f"retention: first check of this workspace, nothing deleted. {res['expired']} records are past the "
-                   f"{res['months']}-month limit; the next run deletes them.", err=True)
-    elif state == "purged":
-        typer.echo(f"retention: deleted {res['deleted']} businesses past the {res['months']}-month limit.", err=True)
-    typer.echo(f"retention: {res['expiring_30d']} records expire in the next 30 days.", err=True)
+    if not quiet:   # --json: the digest line only
+        if state == "armed":
+            typer.echo(f"retention: first check of this workspace, nothing deleted. {res['expired']} records are past the "
+                       f"{res['months']}-month limit; the next run deletes them.", err=True)
+        elif state == "purged":
+            typer.echo(f"retention: deleted {res['deleted']} businesses past the {res['months']}-month limit.", err=True)
+        typer.echo(f"retention: {res['expiring_30d']} records expire in the next 30 days.", err=True)
     return {"purged": res["deleted"], "expiring_30d": res["expiring_30d"]}
 
 
