@@ -35,9 +35,18 @@ def _cfg(ctx: typer.Context) -> Config:
     return cfg
 
 
+def _print_version(value: bool) -> None:
+    if value:
+        typer.echo(f"leadforge {__version__}")
+        emit_digest(True, "version", counts={}, warnings=[], next_=None)
+        raise typer.Exit()
+
+
 @app.callback()
 def _root(
     ctx: typer.Context,
+    version_flag: bool = typer.Option(False, "--version", callback=_print_version, is_eager=True,
+                                      help="print the package version and exit"),
     data_dir: str | None = typer.Option(None, "--data-dir", help="override state dir (default ./leadforge_data)"),
     json_only: bool = typer.Option(False, "--json", help="suppress human output; emit only the digest line"),
     verbose: bool = typer.Option(False, "--verbose", help="debug logging to the logfile"),

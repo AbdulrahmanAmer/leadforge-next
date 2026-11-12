@@ -47,7 +47,8 @@ Scripts: `scripts/bench/` (added with Layer 3).
   doctor was the largest single piece → now lazy, warm import 1.45-1.55 s → 1.15-1.26 s. Remaining cost is
   typer/click, httpx, pydantic, yaml — worth another pass in Layer 1 (the skill calls the CLI a lot).
 - `addopts = "-q"` + another `-q` hides the pass/fail summary — documented in AGENTS.md.
-- Code discovery (done 2026-09-24): code graph (codebase-memory, project `E-LeadForge-leadforge`) for exact
+- Code discovery (done 2026-09-24; `scripts/code_index.py`, its eval file, its test and the `.githooks/post-commit` hook were removed
+  in the debts slice, see docs/slices/debts.md; the text below is the record of what they did): code graph (codebase-memory, project `E-LeadForge-leadforge`) for exact
   symbols/callers; `scripts/code_index.py query "<question>" [--kind code]` for plain-English questions
   (eval hit@5 19/22; on 5 unseen questions 3 found the right code first, 2 found the right ADR/doc first
   — use `--kind code` when you want the implementation). Kept fresh by `.githooks/post-commit` (done,

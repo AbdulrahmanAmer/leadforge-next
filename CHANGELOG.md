@@ -10,6 +10,11 @@ plan holds register queries alone when no text-search provider is configured. `l
 helper binary, the social provider and its `[social]` extra and `social:` settings are gone, and unknown keys under `discovery:`
 are kept (an add-on reads its own settings from them).
 
+Clean-up of the plan's debts (docs/slices/debts.md). `leadforge --version` prints the package version. Dropped the never-imported `tenacity` and `rich`
+declarations (the hashed locks are regenerated; `uv.lock` names the real project version), the `codeindex` extra, `scripts/code_index*`,
+`scripts/v03_gate.py` (the one gate is `node check.mjs`) and the code-index git hook. The DVSA test fixture holds invented rows. Paid-adapter
+references in the docs are corrected (the removal of 0.7.1 was checked against 0.6.14: nothing used that code). Behaviour is unchanged.
+
 ## [0.8.0] — 2026-11-12
 
 The delete side. New command `leadforge forget <email | domain | name>` removes a person from the workspace: every table, the cache, the logs,
