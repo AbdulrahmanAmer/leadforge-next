@@ -252,7 +252,7 @@ class DvsaProvider(DiscoveryProvider):
     supports_tiles = False  # town-filter only; the pipeline warns when a tiled plan reaches us
 
     # v0.3: set as a class attribute so providers.base.register() picks it up at decoration time
-    # (unlike gosom's FIELD_MAP, which is assigned after the class body and registered explicitly).
+    # (a provider may instead assign it after the class body and register it explicitly).
     FIELD_MAP = {
         "name": ["name"],
         "phone": ["phone"],

@@ -45,7 +45,7 @@ def exported(tmp_path, monkeypatch):
     conn = db.connect(cfg.db_path)
     rid = db.create_run(conn, "icp.yaml", "h")
     for bid, name, dom in (("bq", "Quiet Bakery", "quiet-bakery.example"), ("br", "Rival Bakery", "rival-bakery.example")):
-        db.upsert_business(conn, Business(id=bid, name=name, name_norm=name.lower(), dedupe_key=f"k{bid}", source="gosom",
+        db.upsert_business(conn, Business(id=bid, name=name, name_norm=name.lower(), dedupe_key=f"k{bid}", source="fakelist",
                                           website=f"https://{dom}", domain=dom, first_run_id=rid))
         db.save_score(conn, Score(business_id=bid, run_id=rid, total=70, tier="B", factors=[
             ScoreFactor(factor="x", group="fit", weight=1, score=1, points=1, why="w")]))
@@ -106,7 +106,7 @@ def test_a_suppressed_address_inside_other_text_is_masked(tmp_path, monkeypatch)
     cfg = load_config(tmp_path)
     conn = db.connect(cfg.db_path)
     rid = db.create_run(conn, "icp.yaml", "h")
-    db.upsert_business(conn, Business(id="br", name="Rival Bakery", name_norm="rival bakery", dedupe_key="kbr", source="gosom",
+    db.upsert_business(conn, Business(id="br", name="Rival Bakery", name_norm="rival bakery", dedupe_key="kbr", source="fakelist",
                                       domain="rival-bakery.example", first_run_id=rid))
     db.save_score(conn, Score(business_id="br", run_id=rid, total=70, tier="B", factors=[
         ScoreFactor(factor="x", group="fit", weight=1, score=1, points=1, why="w")]))
@@ -134,7 +134,7 @@ def test_draft_render_writes_no_file_to_a_suppressed_address(tmp_path, monkeypat
     rid = db.create_run(conn, "icp.yaml", "h")
     for bid, name, dom, addr in (("bq", "Quiet Bakery", "quiet-bakery.example", SUPPRESSED),
                                  ("br", "Rival Bakery", "rival-bakery.example", OTHER)):
-        db.upsert_business(conn, Business(id=bid, name=name, name_norm=name.lower(), dedupe_key=f"k{bid}", source="gosom",
+        db.upsert_business(conn, Business(id=bid, name=name, name_norm=name.lower(), dedupe_key=f"k{bid}", source="fakelist",
                                           website=f"https://{dom}", domain=dom, first_run_id=rid))
         cid = db.add_contact(conn, Contact(business_id=bid, kind="email", value=addr, tier="valid", affinity="own_domain"))
         _message(conn, _target(conn, bid, cid), f"Your neighbour {SUPPRESSED} says hello." if bid == "br" else "A plain body.")

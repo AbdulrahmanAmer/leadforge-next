@@ -8,7 +8,7 @@ from leadforge.models import Business, Contact, Person
 
 def _biz(**kw) -> Business:
     base = dict(id="biz_x", name="Abbey Service Centre", name_norm="abbey service centre", dedupe_key="na:x",
-                last_seen_at="2026-09-02T00:00:00Z", source="gosom")
+                last_seen_at="2026-09-02T00:00:00Z", source="fakelist")
     base.update(kw)
     return Business(**base)
 
@@ -87,7 +87,7 @@ def test_maps_row_arriving_after_its_register_twin_merges_into_it(conn):
     assert "V9" in row["enrich_json"] and conn.execute("SELECT COUNT(*) FROM businesses").fetchone()[0] == 1
 
 
-def test_two_maps_listings_on_one_switchboard_stay_two_rows(conn):
+def test_two_listings_with_place_ids_on_one_switchboard_stay_two_rows(conn):
     db.upsert_business(conn, _biz(id="biz_a", place_id="p1", dedupe_key="pid:p1", phone_e164="+441130000001",
                                   name="Q-Park Deansgate", name_norm="qpark deansgate"))
     _, created = db.upsert_business(conn, _biz(id="biz_b", place_id="p2", dedupe_key="pid:p2", phone_e164="+441130000001",

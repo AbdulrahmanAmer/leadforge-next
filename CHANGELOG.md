@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+Google Maps and the social presence provider are out of the public tool. Extra discovery providers now come through a
+seam: any installed package that declares an entry point in the group `leadforge.providers` is loaded; asking for a provider
+nobody provides prints "provider '<name>' is not available" and starts nothing. The two Maps providers, their settings, the
+helper download and their tests moved to a private add-on repository. The default provider is now the DVSA register; the
+plan holds register queries alone when no text-search provider is configured. `leadforge doctor` no longer downloads or checks a
+helper binary, the social provider and its `[social]` extra and `social:` settings are gone, and unknown keys under `discovery:`
+are kept (an add-on reads its own settings from them).
+
 - The window's shell (`app/src-tauri`, Tauri 2, slice L10): its Rust core starts the bundled engine, and only it; the window has one
   command, `engine_version`, and no permission to start a program, open a file or reach the network (a Rust test reads the permission
   files and fails on anything outside its list). The engine ships as python.org's embeddable Python with its packages beside it

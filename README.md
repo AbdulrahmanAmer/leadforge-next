@@ -33,7 +33,7 @@ the agent **under ~15k tokens** — the pipeline itself processes hundreds of pa
 Then, once, in the folder where you want your lead data to live:
 
 ```bash
-leadforge doctor --fix --full  # installs deps, pinned scraper binary, AND the quality extras (GLiNER NER + crawl4ai browser + yt-dlp)
+leadforge doctor --fix --full  # installs deps AND the quality extras (GLiNER NER + crawl4ai browser)
 ```
 
 Requires **Python 3.11+**. No compiler needed — every default dependency is a pure-python wheel.
@@ -266,8 +266,7 @@ is implemented and tested. Since v0.1.1: a **registry stage** that covers site-l
 Companies House profile (company number, incorporation, status, SIC codes); a **Call Readiness** column;
 `LF_PROGRESS` heartbeat lines + a live progress bar and `leadforge watch`; and a **browser fallback** for sites
 that bot-wall the plain HTTP client (robots.txt is always honored — disallowed sites never escalate).
-Deferred to v0.2: a grid-tiling live run and real Facebook/Instagram presence probes. gosom serve mode is
-closed by design (resume + a stall watchdog cover it). Previously deferred, shipped in 0.1.4:
+Deferred to v0.2: a grid-tiling live run. Previously deferred, shipped in 0.1.4:
 `claude plugin validate` in CI, TSV dm reconciliation, grid bbox flag-format verification.
 
 ```bash
@@ -275,12 +274,13 @@ pip install -e .[dev] && pytest -q && ruff check src tests   # suite must be ful
 ```
 
 Optional extras: `.[browser]` (JS-rendered + bot-walled sites), `.[ner]` (local zero-shot name/title
-extraction) and `.[social]` (yt-dlp presence probe) are installed automatically by
+extraction) are installed automatically by
 `leadforge doctor --fix --full`; `.[addressing]` (better US address splitting) is available but manual —
 `pip install -e .[addressing]`.
 
+Provider add-ons: the engine finds extra discovery providers through the entry-point group `leadforge.providers`.
+None is built in or published; a provider that is asked for and not installed is reported as "not available".
+
 ## License
 
-MIT — see [LICENSE](LICENSE). Bundled/pinned third-party engines keep their own licenses; the Google Maps
-scraper engine ([gosom/google-maps-scraper](https://github.com/gosom/google-maps-scraper), MIT) is downloaded at
-setup time, not vendored.
+MIT — see [LICENSE](LICENSE). Third-party packages keep their own licenses.

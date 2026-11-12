@@ -58,7 +58,7 @@ def plant(ws: Path) -> dict:
     for bid, name, dom in (("b_q", "Quillfeather Plumbing", DOMAIN), ("b_m", "Underhill Heating", "underhill-heating.example"),
                            ("b_x", "Other Works", "other.example")):
         db.upsert_business(conn, Business(id=bid, name=name, name_norm=name.lower(), dedupe_key=f"k_{bid}",
-                                          website=f"https://{dom}", domain=dom, first_run_id=run, source="gosom"))
+                                          website=f"https://{dom}", domain=dom, first_run_id=run, source="fakelist"))
     # 1. the tables
     db.add_contact(conn, Contact(business_id="b_q", kind="email", value=EMAIL))
     db.add_contact(conn, Contact(business_id="b_m", kind="email", value=B_EMAIL))
@@ -87,8 +87,8 @@ def plant(ws: Path) -> dict:
     del cur
     conn.close()
     # 2. the cache, 3. the logs, 4. the progress file
-    _w(data / "cache" / "gosom_q.json", json.dumps([{"title": "Q", "user_reviews": [{"Name": NAME, "Description": EMAIL}]}]))
-    _w(data / "cache" / "gosom_m.json", json.dumps([{"title": "M", "user_reviews": [{"Name": BYSTANDER}]}]))
+    _w(data / "cache" / "fakelist_q.json", json.dumps([{"title": "Q", "user_reviews": [{"Name": NAME, "Description": EMAIL}]}]))
+    _w(data / "cache" / "fakelist_m.json", json.dumps([{"title": "M", "user_reviews": [{"Name": BYSTANDER}]}]))
     _w(data / "logs" / "leadforge.log", f"INFO a {TARGET_LINE}\nINFO b {BYSTANDER_LINE}\nINFO c nothing\n")
     _w(data / "logs" / "leadforge.log.1", f"INFO old {TARGET_LINE}\n")
     _w(data / "progress.jsonl", json.dumps({"msg": TARGET_LINE}) + "\n" + json.dumps({"msg": BYSTANDER_LINE}) + "\n")
@@ -111,7 +111,7 @@ def plant(ws: Path) -> dict:
     b_csv = _w(data / "exports" / "run_m" / "c.csv", BYSTANDER_LINE + "\n")
     (data / "bin").mkdir(exist_ok=True)
     _w(data / "bin" / "helper.txt", "kept")
-    return {"files": [b_eml, b_in, b_txt, b_csv, data / "cache" / "gosom_m.json", data / "exports" / "run_m" / "c.xlsx"]}
+    return {"files": [b_eml, b_in, b_txt, b_csv, data / "cache" / "fakelist_m.json", data / "exports" / "run_m" / "c.xlsx"]}
 
 
 def scan(root: Path, text: str) -> dict[str, int]:

@@ -29,7 +29,7 @@ def patched(monkeypatch):
 
     def fake_fetch(self, query, limit=None):
         return [
-            RawListing(provider="gosom", fetched_at=now_iso(), data={
+            RawListing(provider="fakelist", fetched_at=now_iso(), data={
                 "title": "Alpha Auto Repair", "category": "auto repair shop",
                 "address": "1 A St, Houston, TX 77001",
                 "complete_address": {"street": "1 A St", "city": "Houston", "state": "TX",
@@ -39,8 +39,8 @@ def patched(monkeypatch):
             }),
         ]
 
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.available", fake_available)
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.fetch", fake_fetch)
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.available", fake_available)
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.fetch", fake_fetch)
 
     # 3) crawler: a reachable site with an owner + email
     from leadforge.enrich.crawler import CrawlResult, Page, SiteCrawler

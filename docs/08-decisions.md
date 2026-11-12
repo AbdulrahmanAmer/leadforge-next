@@ -189,3 +189,13 @@ manual step (if any) would improve it. The agent runner shells out to a real `cl
 so autopilot's wall-clock cost is bounded by `agent.timeout_s` × the number of batches
 (`agent.max_batches` caps it per stage per run) — acceptable because it is the operator's own already-paid
 session, not a metered API call.
+
+## ADR-L8 — Maps and the social provider leave the public tool (slice L8, Unreleased)
+**Status:** accepted (owner's answer Q1, blueprint decision 7). **Context:** Google's terms forbid building a business listings
+database from Maps; the platform terms for the social presence probe were not checked per platform. **Decision:** both Maps providers,
+their settings, the helper download and their tests moved to the private repository `leadforge-maps`; the social provider and its
+settings are removed. The engine finds extra discovery providers through the entry-point group `leadforge.providers` and answers
+"provider '<name>' is not available" for one nobody provides. The old commits and tags keep the earlier code; history is not rewritten.
+**Consequences:** the default provider is the DVSA register; with registers only, the plan holds register queries alone; ADR-001 and
+ADR-014 describe code that now lives in the add-on.
+

@@ -58,7 +58,7 @@ def _seed(tmp_path, monkeypatch, profile_json, category="Manufacturer"):
     monkeypatch.chdir(tmp_path)
     cfg = load_config(tmp_path)
     conn = db.connect(cfg.db_path)
-    db.upsert_business(conn, Business(id="b1", run_id="r", name="Acme Factory", source="gosom",
+    db.upsert_business(conn, Business(id="b1", run_id="r", name="Acme Factory", source="fakelist",
                                       category=category, phone_e164="+97141234567"))
     conn.execute("UPDATE businesses SET enrich_json=? WHERE id='b1'",
                  (json.dumps({"profile": profile_json, "socials": {}}),))

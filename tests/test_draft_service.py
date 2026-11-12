@@ -53,7 +53,7 @@ def _icp(**overrides) -> ICP:
 
 def _seed_business(conn, biz_id, *, tier, run_id, name=None, website=None, enrich=None, campaign=None):
     base = dict(id=biz_id, name=name or f"Acme {biz_id}", category="Car repair", address_city="Leeds",
-               source="gosom", dedupe_key=f"dk-{biz_id}", website=website, enrich=enrich or {})
+               source="fakelist", dedupe_key=f"dk-{biz_id}", website=website, enrich=enrich or {})
     db.upsert_business(conn, Business(**base))
     db.save_score(conn, Score(business_id=biz_id, run_id=run_id, total=85, tier=tier,
                               factors=[ScoreFactor(factor="x", group="fit", weight=1, score=1, points=1, why="w")]))
