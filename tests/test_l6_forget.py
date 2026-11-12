@@ -26,6 +26,7 @@ DOMAIN = "quillfeather-plumbing.example"
 BYSTANDER = "Mavis Underhill"
 B_EMAIL = "mavis@underhill-heating.example"
 LOOKALIKE_EMAIL = "xzora.quillfeather@other.example"     # longer address: must survive forgetting EMAIL
+LOOKALIKE_EMAIL2 = "x.zora.quillfeather@quillfeather-plumbing.example"   # a longer local part after a dot: another address
 LOOKALIKE_NAME = "Zora Quillfeatherstone"                # longer word: must survive forgetting NAME
 
 TARGET_LINE = f"{NAME} <{EMAIL}> {DOMAIN}"
@@ -62,6 +63,7 @@ def plant(ws: Path) -> dict:
     db.add_contact(conn, Contact(business_id="b_q", kind="email", value=EMAIL))
     db.add_contact(conn, Contact(business_id="b_m", kind="email", value=B_EMAIL))
     db.add_contact(conn, Contact(business_id="b_x", kind="email", value=LOOKALIKE_EMAIL))
+    db.add_contact(conn, Contact(business_id="b_x", kind="email", value=LOOKALIKE_EMAIL2))
     db.add_person(conn, Person(business_id="b_q", name=NAME, title="Owner", snippet=TARGET_LINE))
     db.add_person(conn, Person(business_id="b_m", name=BYSTANDER, title="Owner", snippet=BYSTANDER_LINE))
     db.add_person(conn, Person(business_id="b_x", name=LOOKALIKE_NAME, title="Owner"))
@@ -199,6 +201,7 @@ def test_forget_removes_the_value_everywhere_and_only_that(tmp_path, monkeypatch
     assert state["evidence_m"] == BYSTANDER_LINE and state["msg_m"] == BYSTANDER_LINE
     if value == EMAIL:
         assert LOOKALIKE_EMAIL in state["contacts"]               # a longer address is not this address
+        assert LOOKALIKE_EMAIL2 in state["contacts"]
     if value == NAME:
         assert LOOKALIKE_NAME in state["people"]                  # a longer word is not this name
         mc = db.connect(ws / "leadforge_data" / "db.sqlite3")
@@ -228,6 +231,37 @@ def test_forgotten_value_is_not_collected_again(tmp_path):
     # a forgotten value does not stop a different person being stored
     assert db.add_contact(conn, Contact(business_id="b_m", kind="email", value="someone.else@underhill-heating.example")) > 0
     conn.close()
+
+
+@pytest.mark.parametrize("value,kind", [("Cher", "name"), ("J. Smith", "name"), ("a@b.example", "email"),
+                                        ("b.example", "domain"), ("  Zora   Quillfeather ", "name")])
+def test_the_kind_of_a_value_is_told_from_its_shape(value, kind):
+    from leadforge.retention import make_needle
+    assert make_needle(value).kind == kind
+
+
+def test_a_name_with_accents_is_found_in_its_json_spelling_too(tmp_path, monkeypatch):
+    """json.dumps writes the accent as \\u00eb in the database's JSON columns and in progress.jsonl."""
+    ws = tmp_path
+    name = "Zo\u00eb Quillfeather"
+    data = ws / "leadforge_data"
+    data.mkdir()
+    conn = db.connect(data / "db.sqlite3")
+    run = db.create_run(conn, "icp.yaml", "h")
+    db.upsert_business(conn, Business(id="b1", name="Some Works", name_norm="some works", dedupe_key="k1", first_run_id=run))
+    conn.execute("UPDATE businesses SET enrich_json=? WHERE id='b1'", (json.dumps({"gbp": {"owner_name": name, "x": "kept"}}),))
+    conn.commit()
+    conn.close()
+    _w(data / "progress.jsonl", json.dumps({"msg": name}) + "\n" + json.dumps({"msg": "other"}) + "\n")
+    _w(ws / "dm_batch.ndjson", json.dumps({"n": name}, ensure_ascii=False) + "\n")
+    assert "u00eb" in (data / "progress.jsonl").read_text(encoding="utf-8")        # the escaped spelling is what is on disk
+    run_forget(ws, monkeypatch, name)
+    assert (data / "progress.jsonl").read_text(encoding="utf-8") == json.dumps({"msg": "other"}) + "\n"
+    assert (ws / "dm_batch.ndjson").read_text(encoding="utf-8") == ""
+    c = db.connect(data / "db.sqlite3")
+    enrich = c.execute("SELECT enrich_json FROM businesses WHERE id='b1'").fetchone()[0]
+    c.close()
+    assert "u00eb" not in enrich and "[forgotten]" in enrich and '"kept"' in enrich
 
 
 def test_forget_in_an_old_workspace_is_refused_and_changes_nothing(tmp_path, monkeypatch):
