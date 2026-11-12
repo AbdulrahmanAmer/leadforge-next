@@ -1,6 +1,9 @@
 //! `--selftest`: the core walks the screens by itself and records what the window shows, so the real window can be
 //! checked without a person. Only on that command-line flag; the window cannot turn it on. The steps are fixed
-//! here; each `shot` line in the log is where packaging/selftest-window.ps1 takes a picture of the window.
+//! here; each `shot` line in the log is where packaging/selftest-window.ps1 takes a picture of the window. The
+//! script also gives the verdict: it fails unless this run's log shows the refusal, the campaign accepted, the run
+//! started with stream lines and stopped, and every screen's data command answered (so a walk whose form the
+//! engine refused cannot pass). A field the form requires must be typed in the step below.
 
 use std::time::Duration;
 
@@ -36,7 +39,8 @@ pub const PROBE: &str = r#"(function () {
     },
     type: function (sel, v) {
       var el = document.querySelector(sel); if (!el) return false;
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v);
+      var proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v);
       el.dispatchEvent(new Event('input', { bubbles: true })); return true;
     },
     text: function () {
@@ -60,7 +64,7 @@ fn steps() -> Vec<Step> {
         Js("submit the empty form (the stand-in answers with an error object)", "__lf.button('Check the plan')".into()),
         Wait(1600),
         Shot("02-campaign-error"),
-        Js("fill kind and place", "__lf.type('main input[placeholder=\"MOT garage\"]','MOT garage'); __lf.type('main input[placeholder=\"Bristol\"]','Bristol')".into()),
+        Js("fill kind, place and offer", "__lf.type('main input[placeholder=\"MOT garage\"]','MOT garage'); __lf.type('main input[placeholder=\"Bristol\"]','Bristol'); __lf.type('main textarea','Online booking for MOT tests')".into()),
         Wait(400),
         Js("check the plan", "__lf.button('Check the plan')".into()),
         Wait(1600),
@@ -82,7 +86,10 @@ fn steps() -> Vec<Step> {
         Shot("08-data"),
         Js("rail: keys", "__lf.rail(5)".into()),
         Wait(1600),
-        Js("type the marker key and save it", format!("__lf.type('main input','{KEY_MARKER}')")),
+        // a key already saved in this workspace shows "Replace" instead of the field (a second walk finds that)
+        Js("open the key field if a key is already saved", "__lf.button('Replace')".into()),
+        Wait(500),
+        Js("type the marker key and save it",format!("__lf.type('main input','{KEY_MARKER}')")),
         Wait(500),
         Js("save the key", "__lf.button('Save in the keyring')".into()),
         Wait(1600),

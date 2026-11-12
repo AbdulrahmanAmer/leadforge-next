@@ -218,9 +218,32 @@ test("the stand-in's settings carry no theme and no accent, whatever an old stat
   writeFileSync(join(cwd, "standin-state.json"), JSON.stringify({ settings: { theme: "dark", accent: "brass", workspace: "X:\\old", sheetFormats: ["csv"], openSheetWhenDone: false }, people: [], campaigns: [] }));
   const fresh = ok("settings_get", {}, cwd);
   assert.deepEqual(Object.keys(fresh).sort(), ["openSheetWhenDone", "sheetFormats", "sources", "workspace"]);
-  const patched = ok("settings_set", { patch: { theme: "dark", accent: "ember", openSheetWhenDone: false } }, cwd);
+  const patched = ok("settings_set", { patch: { openSheetWhenDone: false } }, cwd);
   assert.deepEqual(Object.keys(patched).sort(), ["openSheetWhenDone", "sheetFormats", "sources", "workspace"]);
   assert.equal(patched.openSheetWhenDone, false);
-  assert.ok(!JSON.stringify(ok("settings_get", {}, cwd)).match(/theme|accent/));
-  assert.ok(!Object.hasOwn(ok("about", {}, cwd), "windowVersion"));
+  assert.ok(!JSON.stringify(ok("settings_get", {}, cwd)).match(/theme|accent|windowVersion/));
+  const about = ok("about", {}, cwd);
+  assert.ok(!JSON.stringify(about).match(/theme|accent|windowVersion/), "about carries no theme, accent or windowVersion");
+});
+
+test("the stand-in refuses a campaign draft with no `offer` key at all, kind input, naming `offer`", () => {
+  const cwd = mkdtempSync(join(work, "no-offer-key-"));
+  const { offer: _gone, ...noKey } = { kinds: ["MOT garage"], places: ["Bristol"], country: "GB", source: "dvsa", offer: "x", sicCodes: [], maxLeads: 50 };
+  assert.ok(!("offer" in noKey));
+  const r = standin("campaign_create", { draft: noKey }, cwd);
+  assert.equal(r.code, 4);
+  assert.equal(r.doc.kind, "input");
+  assert.ok(r.doc.details.some((d) => d.startsWith("offer:")), `details name offer: ${JSON.stringify(r.doc.details)}`);
+});
+
+test("the stand-in refuses settings_set carrying a key the engine does not own (theme, accent, any unknown key), kind usage", () => {
+  const cwd = mkdtempSync(join(work, "foreign-keys-"));
+  for (const key of ["theme", "accent", "windowVersion", "somethingElse"]) {
+    const r = standin("settings_set", { patch: { [key]: "dark", openSheetWhenDone: false } }, cwd);
+    assert.equal(r.doc.kind, "usage", `${key}: ${JSON.stringify(r.doc)}`);
+    assert.notEqual(r.code, 0, `${key} refused with a non-zero exit`);
+    assert.ok(r.doc.details.some((d) => d.includes(key)), `${key}: details name the key`);
+  }
+  // refused whole: nothing of the patch was applied
+  assert.equal(ok("settings_get", {}, cwd).openSheetWhenDone, true);
 });

@@ -55,7 +55,7 @@ fn the_real_dev_engine_reports_the_project_version() {
 fn sample(cmd: EngineCommand) -> Value {
     match cmd {
         EngineCommand::CampaignCreate => {
-            json!({"draft": {"kinds": ["MOT garage"], "places": ["Bristol"], "country": "GB", "source": "dvsa", "maxLeads": 250}})
+            json!({"draft": {"kinds": ["MOT garage"], "places": ["Bristol"], "country": "GB", "source": "dvsa", "offer": "Online booking for MOT tests", "sicCodes": [], "maxLeads": 250}})
         }
         EngineCommand::RunStop | EngineCommand::RunStatus | EngineCommand::SheetExport => {
             json!({"runId": "r-20261103-a41c"})
@@ -72,7 +72,7 @@ fn sample(cmd: EngineCommand) -> Value {
         EngineCommand::RetentionSet => json!({"months": 6}),
         EngineCommand::KeySave => json!({"name": "opencorporates_token", "value": "made-up-value"}),
         EngineCommand::KeyRemove => json!({"name": "opencorporates_token"}),
-        EngineCommand::SettingsSet => json!({"patch": {"theme": "dark"}}),
+        EngineCommand::SettingsSet => json!({"patch": {"openSheetWhenDone": false}}),
         _ => json!({}),
     }
 }
@@ -90,9 +90,18 @@ fn the_stand_in_answers_every_window_command() {
         assert!(got.is_ok(), "{}: {got:?}", cmd.name());
     }
     // the error path: an incomplete campaign comes back as the engine's error object, untouched
-    let err = call(&p, EngineCommand::CampaignCreate, json!({"draft": {"kinds": [], "places": [], "country": "", "source": "dvsa", "maxLeads": 0}}), &dir).unwrap_err();
+    let err = call(&p, EngineCommand::CampaignCreate, json!({"draft": {"kinds": [], "places": [], "country": "", "source": "dvsa", "offer": "", "sicCodes": [], "maxLeads": 0}}), &dir).unwrap_err();
     assert_eq!(err["kind"], "input");
-    assert_eq!(err["details"].as_array().unwrap().len(), 4);
+    assert_eq!(err["details"].as_array().unwrap().len(), 5);
+    // Companies House needs SIC codes; a register draft with them is accepted
+    let ch = json!({"kinds": ["Plumbing"], "places": ["Taunton"], "country": "GB", "source": "companies_house", "offer": "Online booking", "maxLeads": 50});
+    let mut without = ch.clone();
+    without["sicCodes"] = json!([]);
+    let err = call(&p, EngineCommand::CampaignCreate, json!({"draft": without}), &dir).unwrap_err();
+    assert!(err["details"].to_string().contains("sicCodes"), "{err}");
+    let mut with = ch;
+    with["sicCodes"] = json!(["43220"]);
+    call(&p, EngineCommand::CampaignCreate, json!({"draft": with}), &dir).expect("a Companies House draft with SIC codes");
     let _ = fs::remove_dir_all(&dir);
 }
 

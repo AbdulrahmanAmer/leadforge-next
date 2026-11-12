@@ -246,9 +246,8 @@ def answer(name: str, s: dict, a: dict):  # noqa: C901 - one branch per command,
             problems.append("target.geography.country: country is required")
         if not (isinstance(d.get("maxLeads"), (int, float)) and d["maxLeads"] >= 1):
             problems.append("caps.max_leads: must be 1 or more")
-        # the three refusals of the seam decisions: each names its field. (A draft with no `offer` key at all is not
-        # refused: the core's engine_dev test sends the old draft and may not change; the window always sends the key.)
-        if "offer" in d and not str(d["offer"] or "").strip():
+        # the three refusals of the seam decisions: each names its field. A missing `offer` key is refused like a blank one.
+        if not str(d.get("offer") or "").strip():
             problems.append("offer: say in a line or two what you offer these businesses")
         if d.get("source") == "companies_house" and not any(str(c).strip() for c in d.get("sicCodes") or []):
             problems.append("sicCodes: at least one SIC code is needed for Companies House")
@@ -363,8 +362,11 @@ def answer(name: str, s: dict, a: dict):  # noqa: C901 - one branch per command,
         patch = a.get("patch") or {}
         if "sheetFormats" in patch and not patch["sheetFormats"]:
             raise Refused("usage", "The setting was not saved.", ["Keep at least one sheet format."])
-        # only the two settings a window may change; anything else (workspace, sources, a stray theme) is ignored,
-        # because the core's engine_dev test still sends {"theme": "dark"} and may not change
+        # only the two settings a window may change: any other key (theme, accent, workspace, an unknown one) refuses the whole patch
+        foreign = [str(k) for k in patch if k not in ("sheetFormats", "openSheetWhenDone")]
+        if foreign:
+            raise Refused("usage", "The setting was not saved.",
+                          [f"{k}: the engine has no such setting" for k in foreign], "nothing was changed")
         st = settings_doc(s)
         st.update({k: patch[k] for k in ("sheetFormats", "openSheetWhenDone") if k in patch})
         s["settings"] = st

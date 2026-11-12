@@ -201,7 +201,7 @@ process or file is left in `D:\Temp\lf-install`.
 - The workspace folder dialog (`Settings`): the core has no dialog; the screens show the folder as text.
 - If the run's engine dies without an end event, the screen stays on "running" (engine side, item 2 of the list above).
 - The self-test walks the seven screens, one error, one run and its stop; not the dialogs, `sheet_open`, a failed run.
-- The single-instance guard and the self-test's run stop were not each watched failing.
+- The single-instance guard was not watched failing. (The self-test's run and its stop now are: see "The self-test".)
 - No CI job (same reason as L10); the permission-check crate would be the cheap one to add.
 
 ## Results of the local runs
@@ -255,7 +255,7 @@ ABSENT from the JSON; a nullable field is PRESENT with `null` (`app/ui/tests/sea
 | `Campaign.keptUntil` | the "Kept until" row is left out: no claim about a deletion day |
 | `Person.source` | "Source not recorded" (no page address) |
 | `Person.foundAt` | "Date not recorded" |
-| `Person.campaign` | "campaign not recorded" (after the date, on the same line) |
+| `Person.campaign` | "Campaign not recorded" (after the date, on the same line) |
 
 ### Where a decision could not be taken as written
 
@@ -263,12 +263,10 @@ ABSENT from the JSON; a nullable field is PRESENT with `null` (`app/ui/tests/sea
   engine to show for a workspace with no register. It shows a fixed sentence (`NO_SOURCE_NEXT` in `NewCampaign.tsx`). Proposal:
   `Settings` gains one nullable `sourcesNext: string | null` (present, null while `sources` is not empty), which the form shows in
   the none state. It is a new field, so the engine side must agree before the window adds it; until then the sentence is the window's own.
-- **The core's own tests send the old shapes.** `app/src-tauri/tests/engine_dev.rs` sends a draft without `offer` and `sicCodes`, a
-  `settings_set` patch of `{"theme": "dark"}`, and expects four `details` for an empty draft; `app/src-tauri/src/selftest.rs`
-  fills only kind and place before it checks the plan. Both are the core and were not touched (the brief forbids it). So the stand-in
-  refuses a present-but-blank `offer` but not a missing `offer` key, and ignores unknown settings keys instead of refusing them (the mock
-  refuses both). The self-test's "check the plan" step now gets the `offer` refusal (its form has no offer), so the stand-in run
-  after it is not started by the self-test: that walk needs one more typed field in `selftest.rs`, which is the core's to change.
+- **The core's own tests sent the old shapes (settled later the same day).** `engine_dev.rs` and `selftest.rs` now send the new shapes
+  (`offer`, `sicCodes` for Companies House, no `theme`; five `details` for an empty draft). The stand-in is as strict as the real engine
+  will be: it refuses a missing `offer` key as well as a blank one, and refuses `settings_set` carrying any key but `sheetFormats` and
+  `openSheetWhenDone` (kind `usage`). See "The self-test" below for the run that said PASS without having started a run.
 - **The form fits 900 x 600 only in a denser layout.** With the offer and the SIC codes the old form (hints under each field, the register as two
   cards) was 687 px tall at 900 x 600 for two registers and 810 px with SIC codes. Without shrinking type: the hints sit on the label's
   line, the register is one row (label left, `SegmentedControl` right; one register is plain text), the form column is wider
@@ -287,5 +285,27 @@ ABSENT from the JSON; a nullable field is PRESENT with `null` (`app/ui/tests/sea
   hints moved onto the label line (the form did not fit), a wrapping label was made `nowrap`, the Keys page's first line no longer
   promises a keyring when the engine says `missing`, and the People render is scrolled to the rows whose fields are null.
 - Debug build `cargo build --locked` exit 0 (32 s, peak 480 MB) and the real-window self-test against the stand-in (`window-shots\seam\selftest\`):
-  `shots taken: 10 of 10; probe clean: True`, `SELFTEST PASS`. The log shows `cmd=campaign_create ... error kind=input` for the empty form and
-  again after "fill kind and place" (the offer refusal), and no `cmd=run_start`: see above.
+  `shots taken: 10 of 10; probe clean: True`, `SELFTEST PASS`. **That PASS was false: no run had started.** The log shows
+  `cmd=campaign_create ... error kind=input` for the empty form and again after "fill kind and place" (the offer refusal), and no
+  `cmd=run_start`. The self-test judged the pictures and the probe, never the run. Corrected below.
+
+### The self-test (corrected 2026-11-12)
+
+`packaging/selftest-window.ps1` gives the verdict from the core's own log of THIS run; `src/selftest.rs` drives the steps (it now types
+kind, place and "What you offer", which is a textarea, so the probe's `type` helper handles textareas). It fails (exit 1, one
+`SELFTEST EXPECTATION MISSED: ...` line per miss, then `expectations missed: N`) unless the log shows, in this order:
+1. `campaign_create ... error kind=input` (the incomplete form, on purpose) and the 02 screen text showing the field problem ("at least one ...");
+2. `campaign_create ... ok`; `cmd=run_start handle relayed`; `run_stop ... ok`; `run_start ... ok ... lines=2` or more (the handle line plus a stream line);
+3. after the stop, `ok` for `campaigns_list`, `people_list`, `purge_report`, `retention_get`, `keys_list`, `key_save`, `settings_get`, `about`;
+and the earlier checks still hold (10 of 10 pictures, probe clean, key marker not in the log, app exit 0).
+
+Watched fail: the assertions were added first and the old walk (no offer typed) was run against the strict stand-in. Real output
+(the run also hung at "start the run", so the app was stopped after the 3-minute bound: `shots taken: 3 of 10`):
+`SELFTEST EXPECTATION MISSED: run_start relayed its handle (log pattern: cmd=run_start handle relayed)` ... `expectations missed: 12`, `SELFTEST FAIL`.
+A second run with the offer typed was red for a new reason, `key_save answered ok` missing: the stand-in's state file keeps keys
+saved by earlier walks, so the Keys screen showed "Replace" and no field. The walk now clicks "Replace" first if it is there.
+The same run showed that the picture of step 09 was of the debug build's console window (`MainWindowHandle` may name either); the
+script now finds the visible window of the process that is not a console.
+Green (third run): `shots taken: 10 of 10; probe clean: True`, `expectations missed: 0`, `SELFTEST PASS`; log: `campaign_create ... ok out=164B`,
+`run_start handle relayed`, `run_stop ... ok`, `run_start ... ok out=22B lines=22 dropped=0`, then the eight data commands `ok`.
+Not covered: the real engine's wording of the field problem on screen (step 1 looks for "at least one"; the stand-in's text).

@@ -12,7 +12,7 @@ const SOURCES: Record<SourceId, { name: string }> = {
 };
 
 /** Said when `settings_get` lists no register. The engine's own `next` text is not part of that answer (see the slice file). */
-const NO_SOURCE_NEXT = "Turn a register on in this workspace's settings file, then open New campaign again.";
+const NO_SOURCE_NEXT = "Registers are switched on in the file leadforge.yaml in this workspace's folder: list one under discovery, providers (dvsa or companies_house), then open New campaign again.";
 
 const EXAMPLE = {
   kinds: "MOT garage", places: "Bristol", offer: "Online booking for MOT tests and services, so a garage stops losing the calls it cannot take.",

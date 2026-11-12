@@ -97,11 +97,11 @@ export function People({ engine, go, openDialog }: { engine: Engine; go: (s: Scr
                     {/* a null source, date or campaign is said in words: never an empty cell, a dash, or "Invalid Date" */}
                     {p.source !== null && p.source.trim() !== ""
                       ? <span className="lf-table__line lf-source"><Icon name="source" size={14} /><span>{p.source.split("/")[0]}<wbr />/{p.source.split("/").slice(1).join("/")}</span></span>
-                      : <span className="lf-table__line lf-source lf-source--none"><Icon name="source" size={14} /><span>Source {NOT_RECORDED}</span></span>}
+                      : <span className="lf-table__line lf-source lf-source--none"><span>Source {NOT_RECORDED}</span></span>}
                     <span className="lf-table__sub">
                       {p.foundAt !== null && formatDateOrNot(p.foundAt) !== NOT_RECORDED ? formatDate(p.foundAt) : `Date ${NOT_RECORDED}`}
                       {" · "}
-                      {p.campaign !== null && p.campaign.trim() !== "" ? p.campaign : `campaign ${NOT_RECORDED}`}
+                      {p.campaign !== null && p.campaign.trim() !== "" ? p.campaign : `Campaign ${NOT_RECORDED}`}
                     </span>
                   </td>
                   <td>
