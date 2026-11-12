@@ -798,3 +798,213 @@ version change.
 | 21 | about | none | About: engineVersion, licence, licences [{name, version, licence, notice}] (all P); windowVersion A |
 
 Every error: `{kind, message, details, next}`, `kind` one of the seven of `engine.ts` `ErrorKind`.
+
+## Built in Build 3 (commit `e217650`), and the diff read against "What must hold"
+
+| Item | State | Where | Proof (test, seen red first unless said) |
+|---|---|---|---|
+| 1, 13 run_start | as built before, unchanged | `window/run.py` | `test_run_start_streams_events_and_finishes`, `test_a_start_refused_before_a_run_exists_is_one_error_document` (green before and after: nothing changed) |
+| 2 offer required | built | `commands.campaign_create` | `test_campaign_create_refuses_..._source[change0-offer]`, `[change1-offer]`, `[no offer-offer]`; `test_campaign_create_keeps_the_offer_and_makes_a_companies_house_campaign` |
+| 3 sicCodes, source refusal, `sources` | built | `commands.campaign_create`, `workspace_sources`, `settings_get` | `[change3-sicCodes]`, `[change4-sicCodes]`, `[change5-source]`; `test_settings_carry_the_configured_sources_and_not_the_windows_own` |
+| 4 not_available -> missing | built: the case is gone with L9 in | `window/keys.py`, `commands._keys` | `test_key_commands_without_the_keyring_package_answer_environment`; `test_the_error_kinds_are_the_seven_the_screens_know` |
+| 5, 14, 6, 7 nullable | as built before (nullable, present) | | `test_command_golden_and_shape[*]`, `TYPES` in `tests/test_window.py` |
+| 8 theme, accent absent | built | `commands.settings_get`, `settings_set` | `test_command_golden_and_shape[settings_get]`, `[settings_set]`; `test_settings_carry_...` |
+| 9 windowVersion absent | built | `commands.about` | `test_command_golden_and_shape[about]` |
+| 10 people_list | as built before | | `test_command_golden_and_shape[people_list]` |
+| After L7 | built | `commands.people_list`, `_evidence_of` | `test_people_list_says_where_and_when_from_c12`; `scripts/e2e_window_run.py` "every person found by this run has source and foundAt" |
+| After L9 | built | `window/keys.py`, `commands._keys`, `_in_keyring` | `test_key_commands_keep_the_key_where_l9_reads_it` (green on the old adapter too, so a break round: below), `test_a_planted_key_appears_in_no_output_and_no_log` |
+| 11 stop between page fetches | built (contained: 7 lines in `enrich/`) | `enrich/crawler.py` `crawl`, `enrich/runner.py` `_process_one`, `_run_overlapped`, `_crawl_stage` | `tests/test_l11a_stop_between_pages.py` `[all]`, `[site]` |
+| 12 people_list search | measured, no change needed | | numbers below |
+
+All 21 commands are done: the three key commands run on L9's keyring functions.
+
+Goldens changed, each for the reason named (nothing else moved in them; `git diff` read line by line):
+- `tests/golden/window/about.json`: `windowVersion` gone (decision 9).
+- `tests/golden/window/settings_get.json`, `settings_set.json`: `theme` and `accent` gone (decision 8), `sources: ["dvsa"]` added (decision 3).
+- `tests/golden/window/campaign_create.json`: (a) L9's intake warning names the environment variable and the keyring instead of
+  `config set` (predicted in "After L9 is in" item 5); (b) `estimatedBusinesses` 120 -> 0, `estimatedSites` 77 -> 0,
+  `estimatedMinutes` 5 -> 0: the test workspace now enables `dvsa` (decision 3: a campaign must be for a configured source; before,
+  the tests ran on conftest's made-up text-search provider), and the engine's own `grid.plan_counts` (lines 371-384) estimates 120
+  results per text-search query and none for a register query. Seam change (2) 15.
+
+Test-side causes found on the way (written before the fix, no assertion loosened):
+- The first green run had `sources: []` everywhere: `tests/conftest.py` sets `LEADFORGE_DISCOVERY__PROVIDERS=[fakelist]` for every
+  test, and the environment wins over `leadforge.yaml` (`config.py` line 3: defaults, then the file, then the environment; the
+  conftest comment "leadforge.yaml still wins" says the opposite). The `ws` fixture now names `dvsa` in its file and drops that
+  variable for the window tests (none of them discovers).
+- `[change5-source]` first sent `sicCodes: []` with `companies_house`, so the (right) `sicCodes` refusal came first; the case now
+  sends a valid code, so it tests the source refusal alone.
+- The first e2e run below failed "every person ... has source and foundAt" for a register's officer: the register writes no
+  observation, only person evidence. The rule was extended (After L7, second bullet) and a register officer added to the C12 test,
+  seen red with the evidence step removed.
+
+## The upper bound of one business (decision 11), from the code and the config defaults (`config.py`)
+
+Inside one crawl worker (`enrich/runner._process_one`):
+- the crawl (`SiteCrawler.crawl`): `crawl.site_budget_s` 45 s is checked before each further page, and the last one may start just
+  before it: + `crawl.page_timeout_s` 6 s + its pacing `politeness.delay_s` 2.0 s (+30% jitter, 2.6 s) = **53.6 s**. The robots file
+  (client timeout `crawl.timeout_s` 10 s), the home page (10 s) and the sitemap probe (6 s), each paced (3 x 2.6 s), are 33.8 s and
+  fall inside the 45 s.
+- people extraction: `enrich.ner_timeout_s` 30 s per page (queue wait included), up to `crawl.pages_per_site` 6 pages = **180 s**
+  (only with the `ner` extra; the heuristics otherwise take milliseconds).
+- the rendered fallback (only with the `browser` extra, and only when the static pages gave no email and no person):
+  `enrich.rendered_pages_per_site` 2 x (2.6 s pacing + `enrich.render_timeout_s` 20 s + NER 30 s) = **105.2 s**, plus the wait for the
+  render gate (`enrich.browser_concurrency` 4), which no setting bounds.
+
+So one business can take **338.8 s** under the defaults, before render-gate waits; the registry lookup and the email checks
+(`validation.dns_timeout_s` 5 s per address) run outside the worker. Not a hard wall clock: httpx applies its timeout per phase
+(connect, read, write, pool) and a read timeout per chunk, and follows redirects, each hop paced; a server that answers slowly but
+steadily can go past the configured figure. UNPROVEN as a wall clock; it would need a total deadline per fetch.
+
+With the stop checks of this build, a stop waits only for the step in flight in each worker (the workers run side by side, so the
+longest one counts): a home page with its robots file 22.6 s, a further page 8.6 s, one page's NER 30 s, one rendered page with its
+NER **52.6 s** (+ the render-gate wait). That is inside the window's 90 s under the defaults; the two exceptions are the render-gate
+wait and the per-phase httpx timeouts above. Measured: the loopback slow site below 2.02 to 2.03 s from the stop to the end (13.41 s and
+11.28 s on the code before); the fake campaign's run 2.27 to 2.56 s from `run_stop`'s answer to the run's end (Build 2: 8.41 s).
+
+## Seam changes proposed (2) (the lead decides; nothing here changes a name or a shape)
+
+15. **A register campaign's plan estimates 0.** `CampaignPlan.estimatedBusinesses`, `estimatedSites`, `estimatedMinutes` are 0 for a
+    `dvsa` or `companies_house` campaign: `grid.plan_counts` counts 120 results per text-search query and none per register query.
+    The screen would show "0 businesses" for a campaign that will find some. Proposed: the three become `number | null` (null: the
+    engine cannot estimate a register), or an engine slice estimates register queries (e.g. from the register file's matching rows).
+16. **The keyring switch.** L9's `registry.keyring: false` stops the engine READING the keyring; `keys_list` reads through
+    `config._keyring_get`, which does not look at the switch, so with the switch off the screen says "saved" for a key the run will
+    not use. Proposed: `keys_list` answers `saved: false` while the switch is off and `key_save` says so in an error (`input`, naming
+    `registry.keyring`), or the window offers the switch. Not built (no decision covers it).
+
+## Proof (run `l11a-final`, STRIKERFORCE, Python 3.12 venv from `requirements.lock` + pytest 9.2.0, pytest-timeout 2.4.0, pytest-xdist 3.8.0 and their locked dependencies from `uv.lock`'s hashes)
+
+New and changed tests first run against the code BEFORE this build (only the tests changed; `src/` as at `51c66ca`), lines as printed:
+
+```
+FAILED tests/test_window.py::test_command_golden_and_shape[about] - assert ["...
+FAILED tests/test_window.py::test_command_golden_and_shape[campaign_create]
+FAILED tests/test_window.py::test_command_golden_and_shape[settings_get] - as...
+FAILED tests/test_window.py::test_command_golden_and_shape[settings_set] - as...
+FAILED tests/test_window.py::test_a_planted_key_appears_in_no_output_and_no_log
+FAILED tests/test_window.py::test_key_commands_without_the_keyring_package_answer_environment
+FAILED tests/test_window.py::test_each_command_answers_what_the_screens_send[campaign_create]
+FAILED tests/test_window.py::test_each_command_answers_what_the_screens_send[settings_get]
+FAILED tests/test_window.py::test_each_command_answers_what_the_screens_send[settings_set]
+FAILED tests/test_window.py::test_each_command_answers_what_the_screens_send[about]
+FAILED tests/test_window.py::test_campaign_create_refuses_a_missing_offer_sic_codes_or_an_unconfigured_source[change0-offer]
+FAILED tests/test_window.py::test_campaign_create_refuses_a_missing_offer_sic_codes_or_an_unconfigured_source[change1-offer]
+FAILED tests/test_window.py::test_campaign_create_refuses_a_missing_offer_sic_codes_or_an_unconfigured_source[no offer-offer]
+FAILED tests/test_window.py::test_campaign_create_refuses_a_missing_offer_sic_codes_or_an_unconfigured_source[change3-sicCodes]
+FAILED tests/test_window.py::test_campaign_create_refuses_a_missing_offer_sic_codes_or_an_unconfigured_source[change4-sicCodes]
+FAILED tests/test_window.py::test_campaign_create_refuses_a_missing_offer_sic_codes_or_an_unconfigured_source[change5-source]
+FAILED tests/test_window.py::test_campaign_create_keeps_the_offer_and_makes_a_companies_house_campaign
+FAILED tests/test_window.py::test_settings_carry_the_configured_sources_and_not_the_windows_own
+FAILED tests/test_window.py::test_people_list_says_where_and_when_from_c12 - ...
+FAILED tests/test_l11a_stop_between_pages.py::test_a_stop_during_a_slow_site_ends_the_enrich_within_seconds[all]
+FAILED tests/test_l11a_stop_between_pages.py::test_a_stop_during_a_slow_site_ends_the_enrich_within_seconds[site]
+21 failed, 57 passed in 44.13s
+```
+
+with, from the same run: `stage all: the stop to the end of enrich: 13.41 s (one further page takes 2.0 s, the site 5 of them)` and
+`stage site: the stop to the end of enrich: 11.28 s (...)`; the planted-key test's line
+`E   AssertionError: assert (1 == 1 and 'failed' == 'keyring'`. The two test-side fixes above came after this run; the run on the
+old code was NOT repeated after them. Green on the old code: `test_key_commands_keep_the_key_where_l9_reads_it` (the old adapter
+read and wrote through the same fake). Its break round: `keys.entry` made to answer `registry-<name>`, the test run, the file
+restored byte for byte:
+
+```
+D:\homelab-work\l11a-final\leadforge-next\tests\test_window.py:418: AssertionError: assert (0 == 0 and {'name': 'com...avedAt': None} == {'name': 'com...avedAt': None}
+FAILED tests/test_window.py::test_key_commands_keep_the_key_where_l9_reads_it
+```
+
+The register case of the C12 test, with `or _evidence_of(evidence, r)` taken out of `people_list`, then put back:
+
+```
+D:\homelab-work\l11a-final\leadforge-next\tests\test_window.py:791: AssertionError: assert (None, None) == ('https://reg...01T09:12:00Z')
+FAILED tests/test_window.py::test_people_list_says_where_and_when_from_c12 - ...
+```
+
+`python -m pytest tests/test_window.py tests/test_l11a_stop_between_pages.py -p no:cacheprovider -s` on the new code:
+
+```
+..................................................................run_stop answered to the run's end: 0.00 s; run_stop
+started to the run's end: 0.78 s
+..........stage all: the stop to the end of enrich: 2.03 s (one further page takes 2.0 s, the site 5 of them)
+.stage site: the stop to the end of enrich: 2.02 s (one further page takes 2.0 s, the site 5 of them)
+78 passed in 21.75s
+```
+
+(the C12 test gained its register case after this run; it passed alone, above, and the full gate below covers all.)
+
+`python scripts/e2e_window_run.py --out <folder>` (the real `run_start`/`run_stop`/`run_status` processes on the fake campaign's
+loopback world, every outside connection refused). First run, before the register rule (lines cut at 220 characters by the reader):
+
+```
+FAIL  every person found by this run has source and foundAt  [["Odell Prewitt", "http://kestrel-garage.example:18765/team", "2026-11-12T10:38:47Z"], ["Ysolde Fenwick", "http://millbrook-autos.example:18765/contact", "2026-11-12T10:38:47Z"], ["Hamish Larkspur", "http://northgate-tyres.example:18765/team", "2026-11-12T10:38:47Z"], ["Ottoline Fenn", null, null],
+E2E WINDOW RUN FAIL
+```
+
+Last run (`people_list` asked for all people, `limit` 500):
+
+```
+  run_stop answered to the run's end: 2.50 s
+  longest wait between two stream lines (two checks of the stop flag): 2.38 s
+  longest wait between two stream lines (two checks of the stop flag): 4.27 s
+PASS  first run ends stopped  exit 0, last {"type": "stopped", "status": {"runId": "run_20261112_10405_2000", "campaign": "bristol-garages-fixture", "state": "stopped", "stage": "enrich", "done": 1, "total": 8, "etaSecon
+PASS  run_status says stopped, stage kept  {"runId":"run_20261112_10405_2000","campaign":"bristol-garages-fixture","state":"stopped","stage":"enrich","done":1,"total":8,"etaSeconds":null,"counts":{"businesses":10,"contac
+PASS  no stop flag left
+PASS  resumed run ends finished, same run  exit 0, last {"type": "finished", "status": {"runId": "run_20261112_10405_2000", "campaign": "bristol-garages-fixture", "state": "finished", "stage": "export", "done": null, "to
+PASS  campaigns_list answers one JSON document  [{"runId":"run_20261112_10405_2000","name":"bristol-garages-fixture","kinds":["car repair"],"places":["Bristol"],"source":null,"state":"finished","stage":"export","startedA
+PASS  sheet_export answers one JSON document  {"runId":"run_20261112_10405_2000","writtenAt":"2026-11-12T10:41:17Z","leads":10,"tabs":[{"name":"Leads","rows":10},{"name":"Drafts","rows":5},{"name":"Summary","rows":31},{"
+PASS  people_list answers one JSON document  {"people":[{"id":"1","name":"Hamish Larkspur","role":"Director","business":"Northgate Tyres","domain":"northgate-tyres.example","email":null,"phone":null,"source":"http://nort
+PASS  every person found by this run has source and foundAt  [["Hamish Larkspur", "http://northgate-tyres.example:18765/team", "2026-11-12T10:41:07Z"], ["Ottoline Fenn", "https://find-and-update.company-information.servi
+PASS  no outside attempt beyond the fake campaign's known set  []
+E2E WINDOW RUN PASS
+8 8 [('Hamish Larkspur', True, True), ('Ottoline Fenn', True, True), ('Barnaby Larkin', True, True), ('Ysolde Fenwick', True, True), ('Odell Prewitt', True, True), ('Corin Ashdown', True, True), ('Tamsin Verrill', True, True), ('Linnet Aldous', True, True)]
+```
+
+(the last line: the run folder's `people_list.json` read back: 8 people listed of 8, each with source and foundAt.)
+
+### 12: people_list on 10,000 invented businesses
+
+`people_measure.py out 10000`, each call its own `python -X utf8 -I -m leadforge window people_list` process, below-normal
+priority. Before this build (`src/` at `51c66ca`):
+
+```
+workspace of 10000 businesses made in 1.1 s
+| people_list | `{"query": {"search": "", "limit": 500}}` | 0 | 150,187 B | 0.92 s | people 500, matching 10000, total 10000 |
+| people_list | `{"query": {"search": "priya", "limit": 50}}` | 0 | 15,048 B | 0.84 s | people 50, matching 1000, total 10000 |
+| people_list | `{"query": {"search": "", "limit": 500}}` | 0 | 150,187 B | 0.97 s | people 500, matching 10000, total 10000 |
+| people_list | `{"query": {"search": "priya", "limit": 50}}` | 0 | 15,048 B | 0.95 s | people 50, matching 1000, total 10000 |
+```
+
+After (`e217650`, one more read of `evidence` and of the `person.name` observations):
+
+```
+| people_list | `{"query": {"search": "", "limit": 500}}` | 0 | 150,187 B | 1.26 s | people 500, matching 10000, total 10000 |
+| people_list | `{"query": {"search": "priya", "limit": 50}}` | 0 | 15,048 B | 1.05 s | people 50, matching 1000, total 10000 |
+| people_list | `{"query": {"search": "", "limit": 500}}` | 0 | 150,187 B | 1.91 s | people 500, matching 10000, total 10000 |
+| people_list | `{"query": {"search": "priya", "limit": 50}}` | 0 | 15,048 B | 1.14 s | people 50, matching 1000, total 10000 |
+```
+
+The 13 s of Build 2 did not come back on the same generated workspace: the search took 0.84 to 0.95 s before and 1.05 to 1.14 s
+after; the search and the plain page do the same work (every person is read, then filtered), so a 13-fold gap between them is not
+in the code. No index and no query change was made. Its cause is UNPROVEN; two candidates, neither tested: the laptop's load during
+Build 2's run, or `db.readonly_view` copying a database whose WAL holds data (the generated workspace has none). The time still grows
+with the workspace (all people are read); beyond 10,000 it is UNPROVEN.
+
+## Decisions taken in this run (Build 3)
+
+- No helper agents (the brief: "You work alone"); the owner's rule of 14:35 asks for a second reader of the diff: that is the
+  independent reader who follows this run.
+- Without the `keyring` package the key commands answer `environment` (exit 3: "something on this computer is missing"), not
+  `keyring` (which `engine.ts` reserves for "could not reach the Windows keyring") and not `missing` (the command exists). A backend
+  that raises while saving or removing answers `keyring`, with the exception's type name only.
+- `keys_list` reads through L9's `config._keyring_get` (the engine's own read), not through the backend's `get_password`.
+- L9's `registry.keyring` switch is not read by the key commands (seam change 16).
+- `campaign_create` checks the draft's own fields first and the workspace's sources after (the second needs `leadforge.yaml`); a
+  draft wrong in both is told the field problems first.
+- A person with no observation takes the newest person evidence of their own page (a site page's row only when it names them);
+  every officer of one register page gets that page and the time it was read.
+- `sicCodes` is ignored, whatever it holds, for any source but `companies_house` (the decision's "ignored otherwise").
+- An existing `leadforge_data/window-settings.json` (written by Build 2) is left in place and no longer read.
+- `scripts/e2e_window_run.py` now lists all people (`limit` 500, was 5) and checks each has source and foundAt.
+- Lint with ruff 0.15.13 (already on this laptop), as Builds 1 and 2: `ruff check src tests` passes; `ruff check scripts` reports
+  one B905 in `scripts/e2e_compare.py`, a file this branch does not touch (the same with this build's changes set aside).
