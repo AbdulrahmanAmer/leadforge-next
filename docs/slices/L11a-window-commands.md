@@ -1071,3 +1071,56 @@ ubuntu-latest · py3.11  success
 The two fake-campaign jobs compare the fake campaign's run with its saved result: unchanged by the stop checks.
 
 The commit that adds this section has its own run; its result is in the pull request comment and the run report.
+
+## Review (run `l11a-read`, the independent reader, 2026-11-12, STRIKERFORCE)
+
+Verdict: PASS bba8247
+
+Read: the seam (brief `l11a-build`), the five points (`l11a-match`), the ten decisions and Part 1b (`l11a-final`), `engine.ts` and
+`engine.tauri.ts` of `origin/slice/L11-window`, and the diff `0f2d3ff..bba8247` (master 0.9.0 with L7 and L9 is the branch's base;
+`origin/master` had not moved). Checked from real `leadforge window <name>` processes in a fixture workspace of invented
+businesses (the fake campaign's loopback world, `LEADFORGE_NO_UI=1`, a fake `keyring` module on the child's path, never the
+laptop's keyring): 56 checks, 56 passed. What they settled:
+- Names: exactly the 21 of the seam (`window.NAMES`), no send or outreach command; an unknown name is `usage`.
+- Shapes, field by field against `engine.ts`: run_start's lines (RunHandle, then each RunEvent with exactly its keys), RunStatus
+  (beside a run, after a stop, after an outside kill, finished), people_list (every Person exactly its 11 keys), purge_report,
+  keys_list, about (no `windowVersion`), settings_get (`sources` present, `theme`/`accent` absent), campaigns_list, CampaignPlan.
+- stdin: the objects `engine.tauri.ts` passes for run_status (`runId: null`), campaigns_list, sheet_export, people_list, purge_report,
+  keys_list, about, settings_get, retention_get, settings_set, campaign_create, key_save, key_remove: each a result, none a usage
+  error. stdout one JSON document each, on errors too (argv argument, non-JSON stdin, unknown command); no `LF_PROGRESS` or log text.
+- run_stop from a second process: the run ended 0.42 s after run_stop answered, with `stopped`; run_status beside the run answered
+  `running`; the run's stderr has no lock error; the workspace opened cleanly after. A run whose process was ended from outside
+  (taskkill) reads `failed`, not `running`. The resumed run ended `finished`.
+- campaign_create: no offer and empty offer refused `input` naming `offer`; companies_house without sicCodes refused naming
+  `sicCodes`; a source the workspace does not enable refused naming `source`, `next` "This workspace is set to: dvsa.".
+- After L7: every person the fake run found has `source` (the page) and `foundAt`; `campaign` present.
+- After L9: key_save, keys_list, key_remove work on the fake backend; a fake key built at run time is in no stdout, stderr or
+  workspace log; a backend that quotes its input gives kind `keyring` with the exception's type only; no `missing`/`not_available`.
+- Three different error kinds made to happen: usage, input, keyring.
+- sheet_open: a workspace file outside exports, a `..` path, an absolute path outside, a symlink inside exports pointing out:
+  4 of 4 refused (`usage`), before the opener; a real sheet returns `null`.
+- person_forget with `dry_run: true`: every workspace file byte-identical (sha256); then without it: the same kind, rows (5),
+  files removed (0) and edited (0) as the dry run; after it the value is held only by `suppression.value` (L6: forgotten means
+  kept off new runs). purge_everything without confirm, with `"true"` and with `1`: each refused, workspace unchanged.
+- The stand-in and the engine: same keys at every depth for about, keys_list, purge_report.
+- Thin layer: forget, purge, export and run call `retention.forget`/`forget_report` (the same database pass on an in-memory
+  copy), `retention.purge`, `export.export_run`, `pipeline.run_pipeline`. Nothing under `app/`, no plugin contract file and no
+  existing golden is in the diff. `gitleaks` over the 17 commits: no leaks. `check_versions.py`: 0.9.0 everywhere.
+- Hosted CI of bba8247: 13 checks, 13 passed, none pending (both fake-campaign jobs, so the stop checks leave its saved result
+  unchanged). Part 1b: no index was added (db.py untouched), so the schema version and older workspaces are not touched.
+
+For the lead:
+- Nullable (present, may be null): RunStatus.campaign, done (also when finished), total, etaSeconds, reason; RunCounts.purged and
+  expiringIn30Days (null while a run is running); Campaign.name, source (null for a campaign not made by the window: seen),
+  keptUntil; Person.email, phone, source, foundAt, campaign; KeyStatus.savedAt (always null: the keyring keeps no date).
+- Absent: Settings.theme, Settings.accent, About.windowVersion.
+- `About.licence` is `string` in `engine.ts`, but `_own_licence()` returns null when the package metadata has no licence field (it
+  said "MIT" here). Not reached in an installed build; a Rust type that cannot take null would fail there.
+- Open proposals: 15 (a register campaign's plan estimates 0) and 16 (keys_list ignores `registry.keyring: false`).
+- The core must know: sheet_open refusals come as `usage`; refused starts are the error document as line 1 with no handle;
+  one business can take 338.8 s under the defaults, but with the new stop checks a stop waits for one step (52.6 s worst, plus
+  the render-gate wait, which no setting bounds); `people_list` reads every person (1.05 to 1.91 s on 10,000, more beyond).
+- Purge: purge_apply keeps L6's apply protections (the first pass only arms and reports); the more-than-half stop is L6's
+  start-of-run protection and run_start keeps it; an explicit purge_apply has no such stop, as `leadforge purge --apply`.
+- Wording: `scripts/e2e_window_run.py` line 3 names Maps in a docstring ("registers and Maps listings"); it describes the fake
+  world, which on master holds no Maps provider. Not changed by the reader (one word in a test script).
