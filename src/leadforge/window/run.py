@@ -189,7 +189,7 @@ def _start_of_run_purge(cfg: Config) -> dict:
                           "Check the date on this computer; then delete them from Data (purge), or look at the report first.")
     if res["state"] == "no_workspace":
         return {}
-    return {"purged": res["deleted"], "expiring_30d": res["expiring_30d"]}
+    return {"purged": res["deleted"], "expiring_30d": res["expiring_30d"], "armed_now": res["state"] == "armed", "expired": res["expired"]}
 
 
 def start(args: dict, out: TextIO) -> int:
@@ -227,16 +227,18 @@ def start(args: dict, out: TextIO) -> int:
         conn = db.connect(cfg.db_path)
         run_id = db.create_run(conn, str(icp_path), icp.icp_hash())
         pipeline._plan_into_db(conn, cfg, icp, run_id)
+    armed_now, expired = purge_counts.pop("armed_now", False), purge_counts.pop("expired", 0)
     db.set_run_meta(conn, run_id, window_pid=os.getpid(), window_state="running", window_reason=None, **purge_counts)
     flag = stop_file(cfg)
     flag.unlink(missing_ok=True)
 
     stream = _Stream(out)
     write_json(out, {"runId": run_id})   # the RunHandle first (see "Seam changes proposed" 1), then the events
-    if purge_counts:
-        stream.send({"type": "notice", "at": _at(),
-                     "text": f"Clean-up before the run: {purge_counts['purged']} businesses past the {cfg.retention.months}-month "
-                             f"limit were deleted. {purge_counts['expiring_30d']} more expire in the next 30 days."})
+    if purge_counts:   # the engine's own retention lines (cli._start_of_run_purge), as one notice
+        first = (f"Clean-up before the run: this is the first check of this workspace, so nothing was deleted; {expired} records "
+                 f"are past the {cfg.retention.months}-month limit and the next run deletes them." if armed_now else
+                 f"Clean-up before the run: {purge_counts['purged']} businesses past the {cfg.retention.months}-month limit were deleted.")
+        stream.send({"type": "notice", "at": _at(), "text": f"{first} {purge_counts['expiring_30d']} more expire in the next 30 days."})
     util.set_stop_file(flag)
     util.set_progress_listener(stream.progress)
     end: dict

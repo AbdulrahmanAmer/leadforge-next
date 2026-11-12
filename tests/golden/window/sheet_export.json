@@ -1,0 +1,40 @@
+{
+  "files": [
+    {
+      "kind": "csv",
+      "path": "<ws>/leadforge_data/exports/run_20261101_090000_ab12/bristol-mot-garage.csv"
+    },
+    {
+      "kind": "xlsx",
+      "path": "<ws>/leadforge_data/exports/run_20261101_090000_ab12/bristol-mot-garage.xlsx"
+    },
+    {
+      "kind": "report",
+      "path": "<ws>/leadforge_data/exports/run_20261101_090000_ab12/report.json"
+    }
+  ],
+  "highlights": [
+    "2× no online booking"
+  ],
+  "leads": 2,
+  "runId": "run_20261101_090000_ab12",
+  "tabs": [
+    {
+      "name": "Leads",
+      "rows": 2
+    },
+    {
+      "name": "Drafts",
+      "rows": 0
+    },
+    {
+      "name": "Summary",
+      "rows": 26
+    },
+    {
+      "name": "About",
+      "rows": 26
+    }
+  ],
+  "writtenAt": "<time>"
+}

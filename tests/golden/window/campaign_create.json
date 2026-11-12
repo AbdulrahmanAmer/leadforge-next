@@ -1,0 +1,12 @@
+{
+  "campaign": "bristol-mot-garage",
+  "estimatedBusinesses": 120,
+  "estimatedMinutes": 5,
+  "estimatedSites": 77,
+  "retentionMonths": 12,
+  "searches": 1,
+  "warnings": [
+    "UK campaign: a free Companies House key adds registry-verified directors — get one at https://developer.company-information.service.gov.uk then run: leadforge config set registry.companies_house_key <KEY>",
+    "seeded default need signals: website_missing, stale_site, few_reviews, weak_social_presence, no_video_presence (list 3+ soft qualifiers in answers.yaml to override)"
+  ]
+}

@@ -1,0 +1,111 @@
+[
+  {
+    "runId": "<new run>"
+  },
+  {
+    "at": "<time>",
+    "text": "Clean-up before the run: this is the first check of this workspace, so nothing was deleted; 0 records are past the 12-month limit and the next run deletes them. 0 more expire in the next 30 days.",
+    "type": "notice"
+  },
+  {
+    "at": "<time>",
+    "done": 1,
+    "etaSeconds": null,
+    "message": "discover 1",
+    "stage": "discover",
+    "total": 3,
+    "type": "progress"
+  },
+  {
+    "at": "<time>",
+    "done": 2,
+    "etaSeconds": null,
+    "message": "discover 2",
+    "stage": "discover",
+    "total": 3,
+    "type": "progress"
+  },
+  {
+    "at": "<time>",
+    "done": 3,
+    "etaSeconds": null,
+    "message": "discover 3",
+    "stage": "discover",
+    "total": 3,
+    "type": "progress"
+  },
+  {
+    "at": "<time>",
+    "stage": "discover",
+    "summary": "3 of 3",
+    "type": "stage-done"
+  },
+  {
+    "at": "<time>",
+    "done": 1,
+    "etaSeconds": null,
+    "message": "enrich 1",
+    "stage": "enrich",
+    "total": 2,
+    "type": "progress"
+  },
+  {
+    "at": "<time>",
+    "done": 2,
+    "etaSeconds": null,
+    "message": "enrich 2",
+    "stage": "enrich",
+    "total": 2,
+    "type": "progress"
+  },
+  {
+    "at": "<time>",
+    "stage": "enrich",
+    "summary": "2 of 2",
+    "type": "stage-done"
+  },
+  {
+    "at": "<time>",
+    "stage": "label",
+    "summary": "done",
+    "type": "stage-done"
+  },
+  {
+    "at": "<time>",
+    "stage": "score",
+    "summary": "done",
+    "type": "stage-done"
+  },
+  {
+    "at": "<time>",
+    "stage": "draft",
+    "summary": "done",
+    "type": "stage-done"
+  },
+  {
+    "at": "<time>",
+    "stage": "export",
+    "summary": "done",
+    "type": "stage-done"
+  },
+  {
+    "status": {
+      "campaign": "bristol-mot-garage",
+      "counts": {
+        "businesses": 0,
+        "contacts": 0,
+        "expiringIn30Days": 0,
+        "purged": 0
+      },
+      "done": null,
+      "etaSeconds": null,
+      "reason": null,
+      "runId": "<new run>",
+      "stage": "discover",
+      "startedAt": "<time>",
+      "state": "finished",
+      "total": null
+    },
+    "type": "finished"
+  }
+]

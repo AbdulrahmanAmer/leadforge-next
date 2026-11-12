@@ -1,0 +1,10 @@
+{
+  "accent": null,
+  "openSheetWhenDone": true,
+  "sheetFormats": [
+    "xlsx",
+    "csv"
+  ],
+  "theme": null,
+  "workspace": "<ws>"
+}
