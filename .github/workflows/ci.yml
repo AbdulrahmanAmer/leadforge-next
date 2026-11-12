@@ -112,3 +112,5 @@ jobs:
           done
       - name: Skill frontmatter is portable (spec fields only)
         run: python .github/scripts/check_skill_frontmatter.py
+      - name: Each skill opens every file it names when installed alone
+        run: python .github/scripts/check_skill_references.py

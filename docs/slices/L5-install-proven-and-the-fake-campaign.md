@@ -141,3 +141,36 @@ no longer measures speed. Seen red first: with the pool forced to one worker the
 failing case, not a margin. Passes in 0.35 s. With `workers = 1` forced in `validate_emails_parallel`: `1 failed ... threading.BrokenBarrierError`
 in 5.64 s (red for the right reason: the calls could not overlap); restored: `1 passed in 0.36s`. The two other wall-clock tests named in the L4
 list (`test_crawler_politeness.py::test_workers_12...`, `test_maps_list.py::test_parallel_queries_is_faster_than_serial`) are not in this brief: carried over.
+
+## Item 4 — `send-outreach` installed alone can open its guardrail files
+
+**Read first: can the skill be installed without `generate-leads`?** YES.
+- Plugin route (Claude Code, Codex): `source: "./"` / `"skills": "./skills/"` — the whole repo is the plugin, both skills ship together, so
+  `../generate-leads/references/...` resolves. Not a hole.
+- `python install.py`: installs EVERY folder under `skills/` that has a `SKILL.md` (no per-skill option), as a link/junction or a copy, so both are
+  present. Not a hole (as long as nobody deletes one by hand).
+- `npx skills add AbdulrahmanAmer/leadforge` (the "any harness" route named in README, AGENTS.md and install.py): copies skill folders into the
+  harness's skills folder; that tool is documented to take a chosen skill, and the unit it copies is the skill's own folder, so
+  `send-outreach` can land without its sibling. I could not run it (no outside call): UNPROVEN as a run, but by construction the sibling
+  path `../generate-leads/...` is outside the folder that is copied. Any hand copy of `skills/send-outreach/` has the same hole.
+So the skill points at three files (`outreach.md`, `drafting.md`, `troubleshooting.md`, five places in `SKILL.md`) that are not in its own folder.
+
+**Must do (written before the change).** Copies, not links (a link or junction does not survive a zip, a plain copy or Windows without
+rights): `skills/send-outreach/references/{outreach,drafting,troubleshooting}.md`, byte-identical to the `generate-leads` ones; the five
+places in `SKILL.md` read `references/<file>.md` (beside the skill). New check `.github/scripts/check_skill_references.py`, run by
+`check.mjs` and the manifests CI job: (1) for each skill, install it ALONE (copy only that skill's folder into an empty folder, as a skills
+tool does) and require that every `references/<file>.md` its `SKILL.md` names exists there, and that no named path climbs out with `../`;
+(2) every reference file that exists in more than one skill is byte-identical in all of them. Fails with the file and the skill named.
+Seen red first (three breaks): a path put back to `../generate-leads/...`; a copy deleted; a copy edited by one character.
+
+**Check by reading, after; red/green.** `SKILL.md` of `send-outreach` now names only `references/<file>.md` (5 places); the three files are in
+its own folder; `check.mjs` has the step `skill references` and the manifests job runs the script. Output, all three breaks seen red for the
+right reason, then restored:
+```
+break 1 (path back to ../generate-leads):  send-outreach: SKILL.md names ../generate-leads/references/outreach.md which leaves the skill's own folder   exit=1
+break 2 (a copy deleted):                  send-outreach: SKILL.md names references/drafting.md but it is not in the skill's own folder when installed alone   exit=1
+break 3 (a copy edited by one character):  references/troubleshooting.md: send-outreach differs from generate-leads (copies must be identical)   exit=1
+restored:                                  ok: 2 skills open every file they name when installed alone; shared reference copies are identical   exit=0
+```
+Not covered (carried over): `outreach.md` names two repo docs (`docs/06-token-contract.md`, `docs/07-compliance.md`) that are in no skill folder; the check
+looks at what `SKILL.md` names, as the brief says.

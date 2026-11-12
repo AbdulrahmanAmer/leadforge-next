@@ -12,8 +12,8 @@ metadata:
 
 Sending is a **bounded, audited extension** of a LeadForge lead sheet, not a separate product. It is dry-run
 everywhere by default; nothing leaves the workspace without an armed config, a named human approver, and a content
-hash matching what that human approved. Full protocol + guardrail detail: `../generate-leads/references/outreach.md` (sending) and
-`../generate-leads/references/drafting.md` (writing the two model slots of a message). Never widen these guardrails to satisfy a
+hash matching what that human approved. Full protocol + guardrail detail: `references/outreach.md` (sending) and
+`references/drafting.md` (writing the two model slots of a message). Never widen these guardrails to satisfy a
 request. **You never run `--live` yourself** — the workspace owner arms it and names the approver.
 
 This skill assumes a workspace already has a scored lead sheet from the `generate-leads` skill. Do not run
@@ -25,7 +25,7 @@ discovery/crawling here.
 2. Never read raw files under `leadforge_data/` (unbounded) except the small NDJSON draft/packet batches this skill
    itself produces and reads.
 3. Never paste message bodies, inbox replies, or bounce content back to the user — counts and classifications only
-   (`../generate-leads/references/outreach.md` "never paste message content").
+   (`references/outreach.md` "never paste message content").
 4. `outreach.armed: true` is a config change only the workspace owner makes (`leadforge config set outreach.armed
    true`) — propose it, never set it yourself.
 
@@ -49,7 +49,7 @@ leadforge outreach doctor --identity <identity-label> --json   # SPF / DKIM / DM
 ```
 
 If any check fails, report it and stop; do not enrol or draft until DNS/mailbox health is fixed
-(`../generate-leads/references/troubleshooting.md` has the common DNS failure modes).
+(`references/troubleshooting.md` has the common DNS failure modes).
 
 ## Step 3 — Enrol + draft
 
@@ -57,7 +57,7 @@ If any check fails, report it and stop; do not enrol or draft until DNS/mailbox 
 leadforge outreach plan --campaign <campaign> --tier A,B --identity <identity-label> --json   # enrol eligible leads
 leadforge draft export --campaign <campaign> --purpose client_campaign --max 40 --json
 #   only for targets with no draft yet, or to redraft one: read the packet file; write drafts.ndjson:
-#   {"target", "subject", "observation", "used_fact"} or {"target","abstain":true} — see ../generate-leads/references/drafting.md
+#   {"target", "subject", "observation", "used_fact"} or {"target","abstain":true} — see references/drafting.md
 leadforge draft apply --in drafts.ndjson --json          # mechanical no-fabrication gate; rejected drafts are counted
 leadforge draft render --campaign <campaign> --out drafts/ --json   # files for the human to read
 ```
