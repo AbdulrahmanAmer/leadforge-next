@@ -1,7 +1,8 @@
 # L11a The engine's commands for the window
 
 Started from `origin/slice/L6-the-delete-side` at `b15ef7a3e86156d63028166f1d5f67501e9a168c` (pull request 6 was still open on
-2026-11-12 09:45, run `l11a-build`). The window's side (`app/`) is not on this branch and nothing under it is edited here.
+2026-11-12 09:45, run `l11a-build`); rebased at 10:39 on `origin/master` `fd2886e` (L6 and L8 merged meanwhile; the only conflict,
+CHANGELOG, kept both sides). The window's side (`app/`) is not on this branch and nothing under it is edited here.
 
 # Spec
 
