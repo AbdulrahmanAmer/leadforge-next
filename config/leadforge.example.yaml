@@ -16,13 +16,13 @@ discovery:
   timeout_min: 30                 # hard cap per query
   stall_s: 180                    # kill gosom when its results file stops growing this long (v1.17.4 hangs after finishing; written listings are salvaged)
   proxies: []                     # e.g. ["socks5://user:pass@host:port"] — passthrough to the engine
-  email_crawl: false              # gosom -email (slow); we do our own site crawl instead
 
 crawl:
   pages_per_site: 6
   headed_browser: false           # true = browser escalation opens a VISIBLE browser window (debug; renders sites that refuse plain HTTP). No stealth flags ever (icm/SCOPE.md)
   timeout_s: 15
   max_text_bytes: 400000
+  decode_protected_emails: false  # true = decode Cloudflare "[email protected]" spans; off by default (an anti-harvesting measure)
 
 enrich:                            # crawl-time enrichment throughput/quality knobs (Layer 3)
   ner: true                        # GLiNER zero-shot people extraction; false = heuristic extractor only

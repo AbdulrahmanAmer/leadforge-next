@@ -858,6 +858,8 @@ def render_check(ctx: typer.Context, url: str = typer.Argument(..., help="one si
         html = ""
         if res.ok and not force:
             html = res.pages[0].html if res.pages else ""
+        elif res.refused:  # C9: a 403 or 429 is final — not even --force starts a browser after it
+            warns.append("the site refused the plain client (403/429) — no browser is started")
         elif not browser.is_available():
             warns.append("browser extra not installed — pip install -e .[browser] && crawl4ai-setup")
         elif res.needs_browser or force:
@@ -868,7 +870,7 @@ def render_check(ctx: typer.Context, url: str = typer.Argument(..., help="one si
         if html:
             text = SiteCrawler.extract_text(html)
             region = cfg.default_region
-            counts["emails"] = len(extract_emails(html, text))
+            counts["emails"] = len(extract_emails(html, text, cfg.crawl.decode_protected_emails))
             counts["phones"] = len(extract_phones(html, text, region))
             counts["people"] = len(extract_people(text, url))
             counts["bytes"] = len(html)

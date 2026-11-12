@@ -72,7 +72,7 @@ def test_rendered_fixture_yields_contact():
 
 
 def test_http_blocked_site_gets_browser_fallback(monkeypatch, tmp_path):
-    """A site that 403s the plain client is retried with a real browser (like a person opening it)."""
+    """A site that blocks the plain client with a status other than 403/429 (C9) is retried with a real browser."""
     from leadforge.config import load_config
     from leadforge.enrich import runner
     from leadforge.enrich.crawler import CrawlResult

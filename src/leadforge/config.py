@@ -13,7 +13,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 CH_BASE_DEFAULT = "https://api.company-information.service.gov.uk"
 
@@ -59,7 +59,6 @@ class DiscoveryCfg(BaseModel):
     timeout_min: int = 30
     stall_s: float = 180.0  # kill gosom when results stop growing this long (v1.17.4 hangs after finishing)
     proxies: list[str] = Field(default_factory=list)
-    email_crawl: bool = False
     # v0.3 coverage: explicit [minLng, minLat, maxLng, maxLat] per area label bypasses the geocoder
     area_bbox: dict[str, list[float]] = Field(default_factory=dict)
     subdivide_at: int = 100        # a tiled query returning >= this many listings is split into 4 child tiles
@@ -71,6 +70,17 @@ class DiscoveryCfg(BaseModel):
     dvsa: DvsaCfg = Field(default_factory=DvsaCfg)
     companies_house: CompaniesHouseDiscoveryCfg = Field(default_factory=CompaniesHouseDiscoveryCfg)
     maps_list: MapsListCfg = Field(default_factory=MapsListCfg)
+    # C10: the helper's `-email` switch made it fetch business sites with no robots.txt check; the key is refused.
+    @model_validator(mode="before")
+    @classmethod
+    def _refuse_email_crawl(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "email_crawl" in data:
+            raise ValueError(
+                "discovery.email_crawl was removed: the helper program's -email switch fetches business sites "
+                "without LeadForge's robots.txt check, so it is never used. Delete the key; LeadForge reads "
+                "e-mail addresses from the sites itself, after the robots.txt check")
+        return data
+
     # speed unit: fan discover queries across N provider-chain instances (each its own browser/subprocess
     # pool); ==1 keeps the original strictly-serial loop. See pipeline.run_discover.
     parallel_queries: int = 1
@@ -91,6 +101,8 @@ class CrawlCfg(BaseModel):
     page_timeout_s: float = 6.0      # secondary/candidate page + sitemap-probe fetch timeout
     site_budget_s: float = 45.0      # per-site wall-clock budget across the whole crawl() call
     max_text_bytes: int = 400_000
+    # C11: Cloudflare's "protected" e-mail addresses are an anti-harvesting measure; they are not decoded unless asked
+    decode_protected_emails: bool = False
 
 
 class PolitenessCfg(BaseModel):
@@ -319,6 +331,10 @@ class Config(BaseModel):
     @property
     def cache_dir(self) -> Path:
         return self._dir("cache")
+
+    @property
+    def browser_profiles_dir(self) -> Path:
+        return self._dir("browser-profiles")
 
     @property
     def exports_dir(self) -> Path:

@@ -59,8 +59,6 @@ class GosomProvider(DiscoveryProvider):
             "-lang", d.lang,
             "-exit-on-inactivity", "3m",
         ]
-        if d.email_crawl:
-            args.append("-email")
         if d.proxies:
             args += ["-proxies", ",".join(d.proxies)]
         if query.tile is not None and d.grid_mode == "auto":

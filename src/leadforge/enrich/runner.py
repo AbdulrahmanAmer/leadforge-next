@@ -126,7 +126,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
         if not res.ok:
             # site refused the plain HTTP client: try a real browser (same as a person opening it);
             # robots-disallowed sites never reach here (needs_browser stays False for those)
-            if res.needs_browser and browser.is_available():
+            if res.needs_browser and not res.refused and browser.is_available():  # C9: a refusal is final
                 rendered = browser.fetch_rendered(b["website"], cfg, throttle)
                 if rendered:
                     rendered = rendered[: cfg.crawl.max_text_bytes]  # same bound as the static path
@@ -134,7 +134,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
                     page = Page(b["website"], rendered, text)
                     region = _region_for_business(b, cfg.default_region)
                     people_fn = _people_fn(cfg)
-                    for email, label in extract_emails(rendered, text).items():
+                    for email, label in extract_emails(rendered, text, cfg.crawl.decode_protected_emails).items():
                         out["emails"].setdefault(email, {"label": label, "url": b["website"],
                                                           "context": _email_evidence(rendered, text, email)})
                     for phone in extract_phones(rendered, text, region):
@@ -164,7 +164,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
         # U4.7: GLiNER zero-shot people extraction when the [ner] extra is installed, else heuristic.
         people_fn = _people_fn(cfg)
         for page in res.pages:
-            for email, label in extract_emails(page.html, page.text).items():
+            for email, label in extract_emails(page.html, page.text, cfg.crawl.decode_protected_emails).items():
                 out["emails"].setdefault(email, {"label": label, "url": page.url,
                                                   "context": _email_evidence(page.html, page.text, email)})
             for phone in extract_phones(page.html, page.text, region):
@@ -182,7 +182,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
         except Exception as e:  # noqa: BLE001 — profiling is additive, never blocks enrichment
             LOG.warning("profile build failed for %s: %s", b["id"], type(e).__name__)
         # U4.5: browser escalation — only when static found nothing and the extra is installed.
-        if res.needs_browser and browser.is_available() and not out["emails"] and not out["people"]:
+        if res.needs_browser and not res.refused and browser.is_available() and not out["emails"] and not out["people"]:
             rendered_cap = cfg.enrich.rendered_pages_per_site
             urls = [p.url for p in res.pages[:rendered_cap]] or [b["website"]]
             rendered_any = False
@@ -194,7 +194,7 @@ def _process_one(cfg: Config, throttle: HostThrottle, b) -> dict:
                     continue
                 rendered_any = True
                 text = SiteCrawler.extract_text(rendered)
-                for email, label in extract_emails(rendered, text).items():
+                for email, label in extract_emails(rendered, text, cfg.crawl.decode_protected_emails).items():
                     out["emails"].setdefault(email, {"label": label, "url": url,
                                                       "context": _email_evidence(rendered, text, email)})
                 for cand in people_fn(text, url):

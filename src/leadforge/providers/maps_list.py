@@ -56,6 +56,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from leadforge import __version__ as LEADFORGE_VERSION
+from leadforge.browser_profile import free_slot, prepare_profile, take_slot
 from leadforge.config import Config
 from leadforge.grid import PlannedQuery, Tile
 from leadforge.models import RawListing
@@ -385,6 +386,7 @@ class MapsListProvider(DiscoveryProvider):
         self._pw = None
         self._browser = None
         self._context = None
+        self._slot: int | None = None
         self._page = None
         self._consent_done = False
         self._last_search_at: float | None = None
@@ -415,9 +417,12 @@ class MapsListProvider(DiscoveryProvider):
         proxies = self.cfg.discovery.proxies
         if proxies:  # Playwright's own proxy option — no fingerprint/stealth changes (icm/SCOPE.md #1)
             launch_kwargs["proxy"] = {"server": proxies[0]}
-        self._browser = self._pw.chromium.launch(**launch_kwargs)
-        self._context = self._browser.new_context(
-            locale="en-GB", viewport={"width": 1280, "height": 900}, user_agent=ua,
+        # L7 (risk 15): the profile folder comes from the one profile function; one folder per live provider
+        # instance (a browser keeps its folder locked), the same folders again on the next run.
+        self._slot = take_slot("maps-list")
+        profile = prepare_profile(self.cfg.browser_profiles_dir, f"maps-list-{self._slot}")
+        self._context = self._pw.chromium.launch_persistent_context(
+            str(profile), locale="en-GB", viewport={"width": 1280, "height": 900}, user_agent=ua, **launch_kwargs,
         )
         self._page = self._context.new_page()
 
@@ -438,6 +443,9 @@ class MapsListProvider(DiscoveryProvider):
                 except Exception:  # noqa: BLE001
                     pass
             self._page = self._context = self._browser = self._pw = None
+            if self._slot is not None:
+                free_slot("maps-list", self._slot)
+                self._slot = None
 
     def __del__(self):  # noqa: D105
         try:

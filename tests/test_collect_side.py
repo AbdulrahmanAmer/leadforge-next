@@ -187,3 +187,167 @@ def test_c8_cross_site_redirect_hop_is_checked_against_the_other_sites_robots(tm
         c.close()
     assert (there, "/private/x") not in log  # the forbidden path was never requested
     assert (there, "/robots.txt") in log  # the other site's own robots.txt was read at the hop
+
+
+# ------------------------------------------------------------------------- C9: a refusal is final (zero starts)
+class _FakeStarter:
+    """Stands in for the one function that opens a browser. Counts starts; checks the profile folder it is given."""
+
+    def __init__(self):
+        self.starts: list[str] = []
+        self.state_seen_at_start: list[bool] = []
+
+    def __call__(self, url, cfg, profile_dir):
+        from leadforge.browser_profile import LOCAL_STATE
+
+        self.starts.append(url)
+        self.state_seen_at_start.append((profile_dir / LOCAL_STATE).is_file())
+        return "<html><body>rendered by the fake: <a href='mailto:hi@rendered.example'>hi</a></body></html>"
+
+
+@pytest.fixture
+def fake_browser(monkeypatch):
+    from leadforge.enrich import browser
+
+    starter = _FakeStarter()
+    monkeypatch.setattr(browser, "is_available", lambda: True)
+    monkeypatch.setattr(browser, "_render_with_crawl4ai", starter)
+    return starter
+
+
+def _business(website):
+    return {"id": 1, "website": website, "domain": "garage.example", "category": "car garage", "address_country": "GB"}
+
+
+def _process(tmp_path, monkeypatch, website):
+    from leadforge.enrich import runner
+    from leadforge.util import HostThrottle
+
+    monkeypatch.chdir(tmp_path)
+    cfg = load_config(tmp_path)
+    return runner._process_one(cfg, HostThrottle(0), _business(website))
+
+
+@pytest.mark.parametrize("status", [403, 429])
+def test_c9_a_refusal_starts_zero_browsers(tmp_path, monkeypatch, loopback, fake_browser, status):
+    port, sites, log = loopback
+    host = f"127.0.0.1:{port}"
+    sites[host] = {"/robots.txt": (404, {}, b""), "/": (status, {}, b"no")}
+    out = _process(tmp_path, monkeypatch, f"http://{host}/")
+    assert fake_browser.starts == []  # ZERO browser starts
+    assert out["ok"] is False and out["needs_browser"] is False
+    assert f"status:{status}" in out["error"]
+
+
+@pytest.mark.parametrize("status", [406, 503])
+def test_c9_other_block_shaped_statuses_still_get_the_browser(tmp_path, monkeypatch, loopback, fake_browser, status):
+    """'Other cases unchanged' - and the control that makes the zero above mean something: the fake starter works."""
+    port, sites, log = loopback
+    host = f"127.0.0.1:{port}"
+    sites[host] = {"/robots.txt": (404, {}, b""), "/": (status, {}, b"no")}
+    out = _process(tmp_path, monkeypatch, f"http://{host}/")
+    assert len(fake_browser.starts) == 1
+    assert fake_browser.state_seen_at_start == [True]  # the profile folder held its seeded file at the first start
+    assert out["ok"] is True and "hi@rendered.example" in out["emails"]
+
+
+@pytest.mark.parametrize("status,starts", [(403, 0), (429, 0), (200, 1)])
+def test_c9_render_check_force_does_not_go_round_a_refusal(tmp_path, monkeypatch, loopback, fake_browser, status, starts):
+    from typer.testing import CliRunner
+
+    from leadforge.cli import app
+
+    port, sites, log = loopback
+    host = f"127.0.0.1:{port}"
+    sites[host] = {"/robots.txt": (404, {}, b""), "/": (status, {"Content-Type": "text/html"}, HTML)}
+    monkeypatch.chdir(tmp_path)
+    CliRunner().invoke(app, ["render-check", f"http://{host}/", "--force"])
+    assert len(fake_browser.starts) == starts
+
+
+# -------------------------------------------------------------- C10: no crawl that skips the robots check
+@pytest.mark.parametrize("value", ["true", "false"])
+def test_c10_the_email_crawl_key_is_refused_with_a_message(tmp_path, monkeypatch, value):
+    from pydantic import ValidationError
+
+    (tmp_path / "leadforge.yaml").write_text(f"discovery:\n  email_crawl: {value}\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match=r"discovery\.email_crawl was removed.*robots\.txt"):
+        load_config(tmp_path)
+
+
+def test_c10_the_environment_cannot_set_it_either(tmp_path, monkeypatch):
+    from pydantic import ValidationError
+
+    monkeypatch.setenv("LEADFORGE_DISCOVERY__EMAIL_CRAWL", "true")
+    with pytest.raises(ValidationError, match="email_crawl was removed"):
+        load_config(tmp_path)
+
+
+def test_c10_the_helper_never_gets_the_email_argument(tmp_path, monkeypatch):
+    from leadforge.grid import PlannedQuery
+    from leadforge.providers import gosom as gosom_mod
+    from leadforge.providers.gosom import GosomProvider
+
+    monkeypatch.chdir(tmp_path)
+    cfg = load_config(tmp_path)
+    captured: dict = {}
+
+    def fake_run(args, out, t, **kw):
+        captured["args"] = args
+        out.write_text("", encoding="utf-8")
+        return {"returncode": 0, "stderr": ""}, False
+
+    monkeypatch.setattr(gosom_mod, "gosom_path", lambda cfg: "gosom-fake")
+    monkeypatch.setattr(GosomProvider, "_run_with_watchdog", staticmethod(fake_run))
+    GosomProvider(cfg).fetch(PlannedQuery(text="x in y", category="", area="", tile=None))
+    assert captured["args"] and "-email" not in captured["args"]
+
+
+# --------------------------------------------------------------- C11: protected e-mail addresses
+def _cfemail(addr, key=0x42):
+    return f"{key:02x}" + "".join(f"{ord(c) ^ key:02x}" for c in addr)
+
+
+def test_c11_a_protected_address_is_not_stored_by_default(tmp_path, monkeypatch, loopback):
+    port, sites, log = loopback
+    host = f"127.0.0.1:{port}"
+    page = f'<html><body><p>Contact us</p><span class="__cf_email__" data-cfemail="{_cfemail("owner@garage.example")}">[email&#160;protected]</span></body></html>'
+    sites[host] = {"/robots.txt": (404, {}, b""), "/": _html(page.encode())}
+    out = _process(tmp_path, monkeypatch, f"http://{host}/")
+    assert out["ok"] is True and out["emails"] == {}  # the address is not stored
+
+
+def test_c11_decoding_is_on_request_only(tmp_path, monkeypatch, loopback):
+    from leadforge.enrich import runner
+    from leadforge.util import HostThrottle
+
+    port, sites, log = loopback
+    host = f"127.0.0.1:{port}"
+    page = f'<html><body><span data-cfemail="{_cfemail("owner@garage.example")}">[email&#160;protected]</span></body></html>'
+    sites[host] = {"/robots.txt": (404, {}, b""), "/": _html(page.encode())}
+    monkeypatch.chdir(tmp_path)
+    cfg = load_config(tmp_path)
+    cfg.crawl.decode_protected_emails = True
+    out = runner._process_one(cfg, HostThrottle(0), _business(f"http://{host}/"))
+    assert "owner@garage.example" in out["emails"]
+
+
+@pytest.mark.parametrize("status,eligible,refused", [(403, False, True), (429, False, True), (406, True, False), (401, True, False)])
+def test_c9_the_crawler_marks_a_refusal_and_does_not_offer_the_browser(tmp_path, monkeypatch, loopback, status, eligible, refused):
+    port, sites, log = loopback
+    host = f"127.0.0.1:{port}"
+    sites[host] = {"/robots.txt": (404, {}, b""), "/": (status, {}, b"no")}
+    _, c = _crawler(tmp_path, monkeypatch)
+    try:
+        res = c.crawl(f"http://{host}/")
+    finally:
+        c.close()
+    assert (res.needs_browser, res.refused) == (eligible, refused)
+
+
+def test_c11_the_extractor_does_not_decode_unless_told_to():
+    from leadforge.enrich.extract import extract_emails
+
+    html = f'<span data-cfemail="{_cfemail("owner@garage.example")}">[email&#160;protected]</span>'
+    assert extract_emails(html, "") == {}
+    assert "owner@garage.example" in extract_emails(html, "", decode_protected=True)
