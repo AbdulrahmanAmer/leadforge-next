@@ -1,12 +1,24 @@
 # Changelog
 
-## [Unreleased]
+## [0.9.0] — 2026-11-12
 
-Collect side, stage A (slice L7). A site's robots.txt answer is used for at most 24 hours and at least 500 KiB of the file is read; a redirect
-to another site is checked against that site's robots.txt (tested against a loopback server). A 403 or 429 is final: no browser is started
-after it, also not with `render-check --force`. The helper program's `-email` switch is gone and the config key `discovery.email_crawl` is
-refused with a message. Protected (Cloudflare) e-mail addresses are no longer decoded unless `crawl.decode_protected_emails` is set. Every
-browser the product starts takes its profile folder from one function, which seeds a new folder before the first start.
+The collect side. A site's robots.txt answer is used for at most 24 hours and at least 500 KiB of the file is read; a redirect to another site
+is checked against that site's robots.txt. A 403 or 429 is final: no browser is started after it, also not with `render-check --force`. The
+helper program's `-email` switch is gone and the config key `discovery.email_crawl` is refused with a message. Protected (Cloudflare) e-mail
+addresses are no longer decoded unless `crawl.decode_protected_emails` is set. Every browser the product starts takes its profile folder from one
+function, which seeds a new folder before the first start.
+
+**Sheet contract change.** Every exported e-mail address and phone number now carries where it came from (the page address, or the list's address
+for the business's own number) and the day it was seen: eight columns at the end of the Leads sheet and the CSV (`Email Source`, `Email Date`,
+`Email (Inferred) Source`, `Email (Inferred) Date`, `Phone Source`, `Phone Date`, `DM Phone Page`, `DM Phone Date`) and `To Source`, `To Date` at the end of
+the Drafts tab. No column moved and no table changed. "source not recorded" / "date not recorded" say that the workspace holds no record. The Summary
+sheet carries the Open Government Licence sentence when a row comes from the DVSA list.
+
+**Send rules by country.** The business's own country now decides whether the tool will e-mail it: `US` as before (opt-out), `GB` corporate
+subscribers as before but a sole trader or partnership (registry looked, no company found) needs consent, `DE` needs consent, any other country and an
+unknown one: no send (reasons `country_no_rule`, `country_unknown`, `consent_required`). The tool records no consent, so those leads show
+"not eligible" on the sheet, in `outreach plan` and in the re-check inside `outreach send`. A business with no country, which was mailable before,
+is not mailable now: add the country to it, or re-run discovery.
 
 ## [0.8.0] — 2026-11-12
 
