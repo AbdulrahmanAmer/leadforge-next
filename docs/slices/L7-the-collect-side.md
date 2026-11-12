@@ -304,3 +304,74 @@ the control leads are eligible. The tests' older fixtures that had no country ge
 - C13 moves NO cell: every row is `GB` or `United Kingdom`, and every `Lawful Basis (Email)` is already `none` (the one address, Harbour Motors', has tier `unknown`).
 - C11/C8/C9 (stage A) move no cell either; the requests the fake web server sees are unchanged (no new request is made by an export).
 - The date cells are normalised by one new rule in the script's normaliser (a bare `YYYY-MM-DD` becomes `<DATE>`); the saved result is regenerated only for the cells above.
+
+### Checks by reading, after the code (stage B, each item against its "Must hold")
+
+- **Item 6 (C12).** `SOURCE_COLUMNS` is appended last to `DEFAULT_COLUMNS` and `ACCOUNT_COLUMNS` (`export.py`); no earlier column moved (`tests/golden/sheet_columns.json`
+  shows only added entries at the end). `_row_for` fills the eight cells before the account_fit early return, so both profiles carry them, and `setdefault("-")` gives a
+  row without such a value `-`. `_contact_origin` orders: newest observation of the very value that has a page address, else the contact's `*_found` evidence url, else the
+  newest observation's source name (an imported list), else `source not recorded`; the date is that record's day, else the contact's `verified_at` day, else `date not recorded`.
+  The Phone cell's origin mirrors the Phone cell's own fallback (listing number, else raw listing string, else first phone contact). `_best_dm_phone` returns the picked
+  observation's page and day. The Drafts tab looks the `To` contact up by (business, email, value). The masker still runs over every cell, so a suppressed address leaves
+  the new cells too (tested). The DVSA licence sentence is added to the Summary tab when any exported row's `Source` is `dvsa`; an About line explains the columns.
+  Not done, said plainly: a `dvsa` row gives the list address configured *at export time*, and a Maps row without a Maps address gives the provider's name, not an address
+  fixed at collection time (the tables hold no per-row address of the listing; changing them is forbidden here).
+- **Item 7 (C13).** `send_rules.check` is pure; `compliance.email_eligibility` calls it after the address rules, so `export` (Lawful Basis, Next Action), `score` (contactability),
+  `draft/service`, `outreach/plan` (enrolment) and `outreach/send._recompute_eligibility` (the live re-check, also used by `dry_run` and `live_send`) all get it with no edit of
+  their own. It can only turn `eligible` False (`no_send` sets basis `none`; `consent` replaces any basis except `none` by `consent_required`), never True. `country_code` reads the
+  names `COUNTRY_TO_REGION` knows and a two-letter code; everything else is unknown. No consent is recorded anywhere, so DE and a UK sole trader are never eligible: said in the README.
+- **Item 10.** See "The fake campaign" below.
+
+### What the new tests are, and the red of each (a line broken, the test run, the line restored)
+
+| mutation | test that went red | first failing line |
+|---|---|---|
+| C13: the `no_send` branch of the country rule disabled (`if rule["outcome"] == "no_send":` -> `if False:`) | `test_send_rules.py::test_c13_unknown_country_means_no_send[None]` | `assert (not True)` |
+| C13: the `consent` branch disabled (`elif ...consent...` -> `elif False:`) | `test_send_rules.py::test_c13_germany_needs_consent_in_every_campaign_region[uk-Germany]` | `assert (not True)` (8 earlier tests of the file passed, so the red is the consent branch only) |
+| C12: `_contact_origin` finds no record (`with_page = next(...)` -> `obs = []; ev = []; with_page = None`) | `test_export_sources.py::test_c12_where_each_value_came_from` | `At index 0 diff: 'source not recorded' != 'https://p1.example/contact'` |
+
+Per the owner's word of 14:35 (less tests, more checked code) one red per new guard was made, not one per line. Not red-tested: the Drafts-tab cells, the account_fit columns, the
+Summary sentence, the live re-check and `dry_run` cases of C13 (each is asserted by a test that reads the real output, but a break of its own line was not made).
+
+Old tests changed, with cause: four fixtures were built before a country mattered and now get one (`tests/outreach_helpers.make_scored_business` `GB`, `test_compliance._row` `GB`,
+the two "Mail Garage" businesses of `test_export_columns` `GB`, `test_score._seed_business` `US`); `test_export_drafts` expects the two new Drafts columns. No assertion was loosened.
+The first run of the older tests after C13 failed in exactly these four places (`country_unknown` made a country-less fixture "not eligible"); read, cause written, fixtures fixed.
+
+### The fake campaign (item 10)
+
+Run twice, one process each, belownormal. **The first run was contaminated and is not used:** another run's fake web server was listening on the same fixed port (18765, `world.json`)
+at that moment, so my requests went to it and my `requests.log` stayed empty (0 of 45 lines). That process was gone a minute later; the second run's `requests.log` has 45 lines.
+The second run against the saved result of `master`, compared with `scripts/e2e_compare.py`:
+- Leads tab: columns only in new = the 8 C12 columns; **changed cells in the old columns: 0** (so C13 moved no cell, as predicted: every row is GB / United Kingdom and every
+  `Lawful Basis (Email)` was already `none`). Drafts tab: columns only in new = `To Source`, `To Date`; rows identical. Summary: one row more (`Source notice`, the DVSA licence sentence). About: one row more.
+  `report.json`: identical. Refused outside calls: the same 3. Requests the fake server saw: the same set.
+- Prediction wrong in one cell, corrected: I wrote that Harbour Motors' `Email Source` would be the crawled page. It is `byol_csv`: the only address of that row was imported by the BYOL step (its
+  `Email Tier` `unknown` in the saved result was the sign I overlooked), and the crawl recorded no observation of it. The other predicted cells held: `Phone Source` is the Maps address for the
+  `gosom` rows and `http://127.0.0.1:18765/dvsa/active-mot-stations.csv` for the two `dvsa` rows, `Phone Date` is `<DATE>`, the inferred and DM-phone cells are `-` for all ten rows.
+  The date cells normalise with the existing `<DATE>` rule (no change to the script; my earlier sentence that a new rule would be added was wrong).
+- `tests/fixtures/e2e/expected.json` was rewritten from that second run's `result.json` (228 lines added, 28 changed only by a trailing comma); `git diff` shows nothing else.
+
+### Plan and code disagree (stage B: 5 more, 8 in all)
+
+4. **C13 "a rules module exists; nothing calls it".** *Plan:* a module exists. *Code:* there is no per-country rules module; `compliance.py` has region rules chosen by the *campaign*
+   (`us`/`uk`/`eu`), and they are called everywhere. The behaviour the row spells out (unknown country: no send; Germany: consent; UK sole trader: consent) is clear, so I built it as a new
+   `send_rules.py` called from `email_eligibility` instead of leaving it. Not guessed: which other countries are mailable. Only US, GB, DE have a rule; any other country is `country_no_rule`.
+   **The owner may want more countries (the EU states, Canada, Ireland): each is one line in `send_rules.RULES` once the footing is decided.**
+5. **C13 against owner decision 5 (docs/09): "a plausibly-linked address of an unmatched business is mailable".** Row C13 says a UK sole trader needs consent; an `unmatched` entity is the code's
+   proxy for a sole trader ("likely sole trader/partnership", `compliance.py`). The row wins: a UK business the registry could not match is no longer mailable. A business with **no country**
+   (mailable before) is not mailable now. Both narrow, never widen. The proxy can wrongly treat a registered company that the name match missed as a sole trader: UNPROVEN how often.
+6. **C12 "source address" for the business's own phone number.** The tables hold no per-row address of the listing. Built: the row's Maps address, else the DVSA list's configured address at export time, else
+   the provider's name. Not the address at collection time.
+7. **My own prediction (above)** was wrong in one cell; the saved result carries the true value.
+8. **Stage A's DVSA condition A (the licence sentence).** Nothing in the repository carried it. Now the Summary sheet does when a DVSA row is exported; `docs/COMPLIANCE.md` (L12) is not mine and does not exist yet.
+
+### Decisions taken on my own (stage B)
+
+- The new columns go at the END, so no existing column changes position (a script indexing by position keeps working).
+- The date is the day (`YYYY-MM-DD`), not the time.
+- A page address beats a source name; an observation with no page does not beat evidence that has one.
+- Only US, GB and DE have a send rule; the rest are "no rule: no send" (the conservative reading of "unknown country means no send").
+- The hand-off files for the agent (`dm export`, draft packets) are not sheets and carry no address cell as far as I read `draft/packet.py` (the contact's local part is only used to check a name); not changed. UNPROVEN by a test.
+- `uv.lock` still names version 0.6.14 for `leadforge` (stale before this slice; PR 7 regenerates the locks): not touched.
+- Dev tools for this run's own venv (`pytest 9.2.0`, `pytest-timeout 2.4.0`, `ruff 0.17.3`, with `pluggy 1.7.0`, `iniconfig 2.3.1`, `packaging 26.3`) were installed with `pip install --uploaded-prior-to 2026-11-05` (all
+  at least 7 days old, from PyPI, not hash-locked: the repo has no dev lock); the project's own pins come from `requirements.lock` with `--require-hashes`.
