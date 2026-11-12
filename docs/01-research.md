@@ -1,5 +1,7 @@
 # Research Digest — verified 2026-08-31
 
+> **Slice L8 note:** Google Maps and the social provider left this repository (they live in a private add-on). Where this page names them it describes the earlier design; slice L12 rewrites these pages.
+
 Findings that drive the architecture. Every claim was verified against live sources on 2026-08-31; URLs inline. Items that could not be
 fully verified are marked **UNVERIFIED**.
 

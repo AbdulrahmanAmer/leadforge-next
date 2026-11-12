@@ -95,9 +95,9 @@ REQUIRED_KEYS = {"ok", "cmd", "run", "counts", "warnings", "artifacts", "next"}
 def offline(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("leadforge.pipeline.ensure_ready", lambda cfg: None)
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.available", lambda self: (True, "mock"))
-    monkeypatch.setattr("leadforge.providers.gosom.GosomProvider.fetch", lambda self, q, limit=None: [
-        RawListing(provider="gosom", fetched_at=now_iso(), data={
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.available", lambda self: (True, "mock"))
+    monkeypatch.setattr("tests.fakeprov.FakeProvider.fetch", lambda self, q, limit=None: [
+        RawListing(provider="fakelist", fetched_at=now_iso(), data={
             "title": "Gamma Garage", "address": "3 C St, Houston, TX 77003", "phone": "713-555-0300",
             "web_site": "http://gamma-garage.test", "review_rating": "4.1", "review_count": "15",
             "place_id": "PID_GAMMA"})])

@@ -40,15 +40,15 @@ def test_config_never_prints_a_key_through_its_parent_or_a_proxy_address(tmp_pat
     set at once (also as unparseable YAML), and when it sits in a proxy address as user:password."""
     monkeypatch.chdir(tmp_path)
     runner = CliRunner()
-    proxy = f"http://user:{FAKE}@proxy.example:8080"
+    proxy = f"http://user:{FAKE}@upstream.example:8080"
     calls = [
         ["config", "set", "registry.companies_house_key", FAKE],
         ["config", "get", "registry"],
         ["config", "set", "registry", "{opencorporates_token: " + FAKE + "}"],
         ["config", "get", "registry"],
         ["config", "set", "registry", "{opencorporates_token: " + FAKE],
-        ["config", "set", "discovery.proxies", f"['{proxy}']"],
-        ["config", "get", "discovery.proxies"],
+        ["config", "set", "discovery.upstreams", f"['{proxy}']"],
+        ["config", "get", "discovery.upstreams"],
         ["config", "get", "discovery"],
     ]
     for args in calls:
@@ -56,18 +56,18 @@ def test_config_never_prints_a_key_through_its_parent_or_a_proxy_address(tmp_pat
         assert FAKE not in _out(res), f"{' '.join(args[:3])} printed the key: {_out(res)}"
     res = runner.invoke(app, ["config", "get", "registry"])
     assert "opencorporates_token" in _out(res) and "hidden" in _out(res)
-    assert "proxy.example:8080" in _out(runner.invoke(app, ["config", "get", "discovery.proxies"]))
+    assert "upstream.example:8080" in _out(runner.invoke(app, ["config", "get", "discovery.upstreams"]))
 
 
 def test_config_hides_every_shape_of_proxy_password_and_plural_key_names(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     runner = CliRunner()
-    proxies = [f"http://user:{FAKE}@x@proxy.example:8080", f"user:{FAKE}@proxy.example:8080",
-               f"http://user:{FAKE.replace('-', '/')}@proxy.example:8080"]
-    res = runner.invoke(app, ["config", "set", "discovery.proxies", str(proxies)])
+    addresses = [f"http://user:{FAKE}@x@upstream.example:8080", f"user:{FAKE}@upstream.example:8080",
+               f"http://user:{FAKE.replace('-', '/')}@upstream.example:8080"]
+    res = runner.invoke(app, ["config", "set", "discovery.upstreams", str(addresses)])
     assert res.exit_code == 0, _out(res)
     out = _out(runner.invoke(app, ["config", "get", "discovery"]))
-    assert "proxy.example:8080" in out
+    assert "upstream.example:8080" in out
     for secret in (FAKE, FAKE.replace("-", "/"), "not-real", "not/real"):
         assert secret not in out, out
     (tmp_path / "leadforge.yaml").write_text(f"registry:\n  extra_tokens: [{FAKE}]\n", encoding="utf-8")

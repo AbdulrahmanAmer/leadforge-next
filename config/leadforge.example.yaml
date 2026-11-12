@@ -7,16 +7,9 @@ progress_window: true             # headless runs pop a console with the live pr
 default_region: US                # ISO2 fallback for phone parsing when a listing has no country
 
 discovery:
-  providers: [gosom]              # order matters
-  grid_mode: "off"                # off | auto  (auto = gosom -grid-bbox tiling; flag formats not yet live-verified — deferred to v0.2)
+  providers: [dvsa]               # dvsa | companies_house, or a name an installed add-on provides; order matters
+  grid_mode: "off"                # off | auto  (tiled queries; only a provider that supports tiles uses it)
   grid_cell_km: 3.0
-  depth: 10                       # gosom scroll depth per query (auto-capped to 1 when `--limit <= 20` — smoke runs shouldn't scrape for 30 min)
-  concurrency: 2                  # keep low; raise only with proxies
-  lang: en
-  timeout_min: 30                 # hard cap per query
-  stall_s: 180                    # kill gosom when its results file stops growing this long (v1.17.4 hangs after finishing; written listings are salvaged)
-  proxies: []                     # e.g. ["socks5://user:pass@host:port"] — passthrough to the engine
-  email_crawl: false              # gosom -email (slow); we do our own site crawl instead
 
 crawl:
   pages_per_site: 6
@@ -47,14 +40,6 @@ registry:                         # optional free-registration keys; leave empty
   # companies_house_url: only the default address or a loopback one is accepted (the key goes with every request)
   opencorporates_token: ""
 
-social:                           # social/video presence signals (unit U4.8)
-  enabled: true                   # on by default; silently skipped when the tooling is absent
-  networks: [youtube]             # only youtube has a real logged-out backend (yt-dlp) today; linkedin is rejected even if you list it (icm/SCOPE.md)
-  max_networks: 3                 # per business, to keep runs cheap and polite
-  stale_months: 6                 # "stale_social" threshold
-  timeout_s: 30
-  max_calls_per_min: 20
-
 agent:                             # v0.4 headless agent runner (ADR-015): your own Claude Code, no API key
   command: null                    # null = auto-detect `claude` on PATH; [] = disabled (deterministic fallbacks only)
   model: sonnet                    # used only for the auto-detected command
@@ -63,6 +48,9 @@ agent:                             # v0.4 headless agent runner (ADR-015): your 
   max_batches: 50                  # hard stop per stage per run
   isolate: true                    # auto-detected command only: add --strict-mcp-config + disable hooks (~3x faster, no operator MCP/hook noise); ignored when `command` is set explicitly
   max_concurrent: 2                # process-level cap on simultaneous `claude` invocations
+
+retention:
+  months: 12                      # a business and everything attached to it expires this many months after the run that first found it (1 to 12: shorten only)
 
 export:
   formats: [xlsx, csv]

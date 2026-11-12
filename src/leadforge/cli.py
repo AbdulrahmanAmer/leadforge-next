@@ -59,7 +59,7 @@ def _root(
         ctx.obj = {"cfg": None, "json_only": json_only,
                    "cfg_error": f"leadforge.yaml invalid: {type(e).__name__}: {str(e)[:100]}"}
         return
-    setup_logging(cfg.logs_dir, verbose=verbose)
+    setup_logging(Path(cfg.workspace) / cfg.data_dir / "logs", verbose=verbose)  # not cfg.logs_dir: that creates the folder
     ctx.obj = {"cfg": cfg, "json_only": json_only}
 
 
@@ -435,7 +435,7 @@ def _detached_run_cmd(python: str, icp: str, *, limit: int | None, skip_dm: bool
                       autopilot: bool | None, from_stage: str | None) -> list[str]:
     """The foreground `run --resume` the detached child executes — every run option must be carried
     over (a dropped --from-stage once made the child silently resume the wrong stage)."""
-    cmd = [python, "-m", "leadforge", "--json", "run", "--icp", icp, "--resume"]
+    cmd = [python, "-m", "leadforge", "--json", "run", "--icp", icp, "--resume", "--retention-checked"]
     if limit:
         cmd += ["--limit", str(limit)]
     if skip_dm:
@@ -486,6 +486,9 @@ def run(
     detach: bool = typer.Option(
         False, "--detach",
         help="start the run in a background process and return immediately with its run id/pid/log"),
+    retention_checked: bool = typer.Option(
+        False, "--retention-checked", hidden=True,
+        help="the detached child: its parent already made this run's retention pass"),
 ):
     """Orchestrated, resumable pipeline: discover -> enrich -> (autopilot: label -> score -> draft, or
     pause for DM) -> export."""
@@ -505,6 +508,9 @@ def run(
         emit_digest(False, "run", warnings=[str(e)[:120]], next_="leadforge doctor --fix")
         raise typer.Exit(e.exit_code) from e
 
+    # one pass per run: a second pass in the detached child would delete right after the parent's report-only first pass
+    purge_counts = {} if retention_checked else _start_of_run_purge(cfg, quiet=bool(ctx.obj.get("json_only")))
+
     if detach:
         import sys as _sys
 
@@ -523,7 +529,7 @@ def run(
         conn = db.connect(cfg.db_path)
         db.set_run_meta(conn, run_id, pid=pid, log_path=str(log_path.resolve()), detached=True)
         _say(ctx, f"detached: run={run_id} pid={pid} log={log_path}")
-        emit_digest(True, "run", run=run_id, counts={"pid": pid, "detached": True},
+        emit_digest(True, "run", run=run_id, counts={"pid": pid, "detached": True, **purge_counts},
                     artifacts=[str(log_path.resolve())],
                     next_=f"leadforge status --run {run_id} --json")
         raise typer.Exit(0)
@@ -537,8 +543,131 @@ def run(
         emit_digest(False, "run", warnings=[str(e)[:120]], next_="leadforge doctor --fix")
         raise typer.Exit(e.exit_code) from e
     _say(ctx, f"stage={result['stage']} " + " ".join(f"{k}={v}" for k, v in result["counts"].items()))
-    emit_digest(result["ok"], "run", run=result["run"], counts={"stage": result["stage"], **result["counts"]},
+    emit_digest(result["ok"], "run", run=result["run"], counts={"stage": result["stage"], **result["counts"], **purge_counts},
                 warnings=result["warnings"], artifacts=result.get("artifacts", []), next_=result["next"])
+
+
+# ----------------------------------------------------------------------------- forget / purge (L6, C4 and C5)
+def _start_of_run_purge(cfg: Config, quiet: bool = False) -> dict:
+    """Retention runs at the start of every `run` (C5). Stops the run, exit 4, when the workspace is half upgraded or when
+    the purge would delete more than half of it; the first pass after the upgrade only reports."""
+    from leadforge import util
+    from leadforge.retention import purge
+
+    try:
+        res = purge(cfg, util.utcnow(), "auto")
+    except LeadForgeError as e:
+        emit_digest(False, "run", warnings=[str(e)[:300]], next_="nothing was changed")
+        raise typer.Exit(e.exit_code) from e
+    state = res["state"]
+    if state == "stopped_over_half":
+        emit_digest(False, "run", counts={"expired": res["expired"], "total": res["total"],
+                                          "files_expired": res["files_expired"], "files_total": res["files_total"]},
+                    warnings=[f"{res['expired']} of {res['total']} businesses and {res['files_expired']} of {res['files_total']} files in "
+                              f"exports and cache are past the {res['months']}-month limit: more than half of the workspace, so nothing "
+                              "was deleted and the run stopped (a wrong clock looks like this)"],
+                    next_="check the date, then `leadforge purge --apply` to delete them, or `leadforge purge` to look first")
+        raise typer.Exit(4)
+    if state == "no_workspace":
+        return {}
+    if not quiet:   # --json: the digest line only
+        files = res["files_expired"]
+        if state == "armed":
+            typer.echo(f"retention: first check of this workspace, nothing deleted. {res['expired']} records"
+                       + (f" and {files} sheets or cached pages" if files else "")
+                       + f" are past the {res['months']}-month limit; the next run deletes them.", err=True)
+        elif state == "purged":
+            typer.echo(f"retention: deleted {res['deleted']} businesses past the {res['months']}-month limit"
+                       + (f" and {res['files_deleted']} sheets or cached pages that held them" if res["files_deleted"] else "") + ".", err=True)
+        elif state == "files_locked":
+            typer.echo("retention: nothing was deleted from the database: these files could not be deleted (is another program holding "
+                       f"them open?): {', '.join(res['files_failed'])}. The next run tries again.", err=True)
+        typer.echo(f"retention: {res['expiring_30d']} records expire in the next 30 days.", err=True)
+        if res["files_expiring_30d"]:
+            typer.echo(f"retention: {res['files_expiring_30d']} files (sheets or cached pages) hold them.", err=True)
+    counts = {"purged": res["deleted"], "expiring_30d": res["expiring_30d"]}
+    for key in ("files_deleted", "files_expiring_30d"):   # only when above 0: a campaign with no old files keeps its digest as it was
+        if res[key]:
+            counts[key] = res[key]
+    return counts
+
+
+@app.command()
+def forget(ctx: typer.Context, value: str = typer.Argument(..., help="an email address, a domain or a name")):
+    """Remove a person from this workspace: every table, the cache, logs, progress file, outbox and inbox, hand-off files,
+    draft packets and the sheets in exports; then keep them off future runs."""
+    from leadforge.retention import forget as do_forget
+
+    cfg = _cfg(ctx)
+    try:
+        res = do_forget(cfg, value)
+    except LeadForgeError as e:
+        emit_digest(False, "forget", warnings=[str(e)[:300]], next_="nothing was changed")
+        raise typer.Exit(e.exit_code) from e
+    rows = sum(res["rows"].values())
+    if res["files_failed"]:   # never "forgot" while a file still holds the value, or could not be checked
+        emit_digest(False, "forget", counts={"kind": res["kind"], "rows": rows, "files_removed": len(res["files_removed"]),
+                                             "files_edited": len(res["files_edited"]), "files_failed": len(res["files_failed"])},
+                    artifacts=res["files_failed"],
+                    warnings=["these files may still hold it, they could not be cleaned or checked: " + ", ".join(res["files_failed"])
+                              + f". The database part is done ({rows} rows). Close whatever holds them open and run the same command again."],
+                    next_="close the program that holds those files, then run `leadforge forget` with the same value")
+        raise typer.Exit(4)
+    _say(ctx, f"forgot that {res['kind']}: {rows} database rows, {len(res['files_removed'])} files deleted, "
+              f"{len(res['files_edited'])} files with lines taken out. They are on the suppression list, so a new run skips them.",
+         "Sheets and files you already handed to someone else, or wrote outside this folder with --out, cannot be reached from here.")
+    emit_digest(True, "forget", counts={"kind": res["kind"], "rows": rows, "files_removed": len(res["files_removed"]),
+                                        "files_edited": len(res["files_edited"])},
+                artifacts=res["files_removed"] + res["files_edited"],
+                warnings=["sheets already handed out cannot be reached"])
+
+
+@app.command()
+def purge(ctx: typer.Context,
+          apply: bool = typer.Option(False, "--apply", help="delete what is past the limit (without it: only report)"),
+          everything: bool = typer.Option(False, "--everything", help="delete this workspace's data without opening the database"),
+          yes: bool = typer.Option(False, "--yes", help="with --everything: confirm")):
+    """Report, or delete, the businesses past the retention limit (retention.months, default 12)."""
+    from leadforge import retention, util
+
+    cfg = _cfg(ctx)
+    if everything:
+        if not yes:
+            emit_digest(False, "purge", warnings=["--everything deletes the data folder's contents (database, cache, exports, logs) and the "
+                                                   "hand-off and draft files here; add --yes to do it"], next_="leadforge purge --everything --yes")
+            raise typer.Exit(2)
+        res = retention.purge_everything(cfg)
+        _say(ctx, f"deleted {res['files_removed']} files")
+        emit_digest(True, "purge", counts={"files_removed": res["files_removed"], "everything": True})
+        return
+    try:
+        res = retention.purge(cfg, util.utcnow(), "apply" if apply else "report")
+    except LeadForgeError as e:
+        emit_digest(False, "purge", warnings=[str(e)[:300]], next_="nothing was changed")
+        raise typer.Exit(e.exit_code) from e
+    state = res["state"]
+    counts = {k: v for k, v in res.items() if k in ("deleted", "expired", "expiring_30d", "total")}
+    counts.update({k: v for k, v in res.items() if k in ("files_expired", "files_expiring_30d", "files_deleted") and v})
+    if state == "files_locked":
+        emit_digest(False, "purge", counts={"state": state, **counts}, artifacts=res["files_failed"],
+                    warnings=["these files could not be deleted, so nothing was deleted from the database: " + ", ".join(res["files_failed"])
+                              + ". Close whatever holds them open and run `leadforge purge --apply` again."],
+                    next_="leadforge purge --apply")
+        raise typer.Exit(4)
+    if state == "no_workspace":
+        _say(ctx, "no workspace database here")
+    elif state == "armed":
+        _say(ctx, f"first check of this workspace: nothing deleted. {res['expired']} records and {res['files_expired']} files are past the limit; "
+                  "run `leadforge purge --apply` again to delete them.")
+    elif state == "purged":
+        _say(ctx, f"deleted {res['deleted']} businesses and everything attached, and {res['files_deleted']} sheets or cached pages that held them",
+             "Files you wrote outside this folder with --out are yours and were not touched.")
+    else:
+        _say(ctx, f"{res['expired']} of {res['total']} past the {res['months']}-month limit ({res['files_expired']} sheets or cached pages hold them), "
+                  f"{res['expiring_30d']} more in the next 30 days ({res['files_expiring_30d']} files)"
+                  + ("" if res.get("armed") else " (this workspace has not had its first check yet: the next run only reports)"))
+    emit_digest(True, "purge", counts={"state": state, **counts},
+                next_="leadforge purge --apply" if state in ("report", "armed") and res.get("expired") else None)
 
 
 # ----------------------------------------------------------------------------- status / suppress
@@ -639,7 +768,7 @@ _URL_USERINFO_RE = re.compile(r"^((?:[a-z][a-z0-9+.-]*://)?)[^\s/@:]*:\S*@", re.
 
 def _redacted(name: str, value):
     """`value` with every secret inside it hidden: a section is walked key by key, and the user:password
-    part of an address (a proxy) is cut."""
+    part of any address is cut."""
     if isinstance(value, dict):
         return {k: _redacted(str(k), v) for k, v in value.items()}
     if isinstance(value, list):

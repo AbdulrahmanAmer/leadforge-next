@@ -271,12 +271,12 @@ def test_resolve_rejects_a_page_without_any_match_and_records_tried(tmp_path, mo
 
 
 def test_run_resolve_only_touches_company_mode_businesses(tmp_path, monkeypatch, cfg):
-    """A local_business (source='gosom') row must never get domain-guessed."""
+    """A local_business (source='fakelist') row must never get domain-guessed."""
     from leadforge.enrich import resolve_domain
     from leadforge.models import Business
 
     conn = db.connect(cfg.db_path)
-    db.upsert_business(conn, Business(id="g1", name="Joe's Garage", source="gosom", dedupe_key="na:g1"))
+    db.upsert_business(conn, Business(id="g1", name="Joe's Garage", source="fakelist", dedupe_key="na:g1"))
     db.upsert_business(conn, Business(id="c1", name="ACME CONSULTING LIMITED", source="companies_house",
                                       dedupe_key="na:c1", address_postal="SK1 1AA"))
     fake = _FakeCrawler({})  # nothing resolves; we only care what gets ATTEMPTED
@@ -376,7 +376,7 @@ def test_local_business_scoring_is_untouched_by_registration(conn, sample_icp):
     run_id = db.create_run(conn, "icp.yaml", sample_icp.icp_hash())
     db.upsert_business(conn, Business(id="biz_local", name="Indie Auto", name_norm="indie auto",
                                       dedupe_key="pid:X", place_id="X", category="auto repair shop",
-                                      categories=["auto repair shop"], source="gosom",
+                                      categories=["auto repair shop"], source="fakelist",
                                       phone_e164="+17135550100", address_city="Houston"))
     counts_before = score_run(conn, sample_icp, run_id)
     company_icp = _company_icp()

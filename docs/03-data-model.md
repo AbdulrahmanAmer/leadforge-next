@@ -1,5 +1,7 @@
 # Data Model
 
+> **Slice L8 note:** Google Maps and the social provider left this repository (they live in a private add-on). Where this page names them it describes the earlier design; slice L12 rewrites these pages.
+
 Single canonical schema. Providers, enrichers, scorers and exporters all speak these shapes (`src/leadforge/models.py` = source of truth;
 this doc mirrors it).
 

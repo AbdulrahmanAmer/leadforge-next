@@ -12,7 +12,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import phonenumbers
 
 from leadforge.models import ICP, Business, RawListing
-from leadforge.providers.gosom import GOSOM_FIELD_MAP
+from leadforge.providers.base import DEFAULT_FIELD_MAP
 from leadforge.util import apex_domain, now_iso, sha1_hex, social_network
 
 _LEGAL_SUFFIX = re.compile(
@@ -170,7 +170,7 @@ def map_category(raw_cat: str | None, raw_cats, icp: ICP | None) -> tuple[str | 
 
 
 def _appointments_from_about(about) -> str:
-    """"about" is gosom's Google Business Profile attribute list: [{id,name,options:[{name,enabled}]}].
+    """"about" is a listing source's business-profile attribute list: [{id,name,options:[{name,enabled}]}].
     The 'Planning' group's option text ("Appointments recommended"/"Appointment required") is the
     only signal for this; anything else defaults to 'none' rather than guessing.
 
@@ -188,7 +188,7 @@ def _appointments_from_about(about) -> str:
             continue
         for opt in grp.get("options") or []:
             opt = opt or {}
-            if opt.get("enabled") is False:  # explicit False only — absent/None still counts (gosom's default)
+            if opt.get("enabled") is False:  # explicit False only — absent/None still counts (the source's default)
                 continue
             label = str(opt.get("name") or "").casefold()
             if "required" in label:
@@ -284,7 +284,7 @@ def gbp_facts(d: dict, g: dict, business_name: str = "") -> dict:
     """Business.enrich["gbp"] (A5, docs/09): Google Business Profile facts the raw provider payload
     already carries. Empty defaults, never None, so export/scoring never has to null-check this.
 
-    `status` is UNRELIABLE (docs/09 item 4, measured 2026-09-02 against gosom v1.17.4 live cache):
+    `status` is UNRELIABLE (docs/09 item 4, measured 2026-09-02 against a listing source's live cache):
     it is '' for 1335 of 1339 live places and a subtitle-like string (not a fixed vocabulary of
     "OPERATIONAL"/"CLOSED"/etc.) for the rest. It is kept here as raw evidence only — never gate a
     scoring hook, an export column's meaning, or any other decision on this field's value or presence."""
@@ -317,7 +317,7 @@ def region_for(data_country: str | None, default_region: str) -> str:
 def to_business(raw: RawListing, run_id: str, icp: ICP | None, default_region: str = "US") -> Business | None:
     d = raw.data
     from leadforge.providers.base import get_field_map
-    g = {**GOSOM_FIELD_MAP, **(get_field_map(raw.provider) or {})}  # v0.3: per-provider field names
+    g = {**DEFAULT_FIELD_MAP, **(get_field_map(raw.provider) or {})}  # v0.3: per-provider field names
     name = _pick(d, g["name"]) or d.get("name")
     if not name:
         return None
@@ -341,10 +341,10 @@ def to_business(raw: RawListing, run_id: str, icp: ICP | None, default_region: s
     if place_id:
         dedupe_key = f"pid:{place_id}"
     elif cid:
-        # v0.3 speed unit: maps_list carries no place_id (list view never exposes one) but every
+        # v0.3 speed unit: a list-view source carries no place_id but every
         # card has a stable CID — a far better dedupe anchor than name+street across re-runs of
-        # the same query. A gosom-found business (place_id dedupe key) merges with the matching
-        # maps_list row later via db.upsert_business's phone fallback (_phone_match), not here.
+        # the same query. A business found with a place_id (place_id dedupe key) merges with the matching
+        # list-view row later via db.upsert_business's phone fallback (_phone_match), not here.
         dedupe_key = f"cid:{cid}"
     else:
         street_city = f"{(addr['address_street'] or address_full or '')}|{addr['address_city'] or ''}".casefold()

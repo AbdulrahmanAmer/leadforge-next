@@ -131,7 +131,7 @@
     "No social profile is linked from their website — presence-building angle",
     "registry-corroborated, site crawled, place_id; need signals: weak_social_presence; category adjacent to ICP targets (shared token)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-04",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -183,7 +183,7 @@
     "No social profile is linked from their website — presence-building angle",
     "need signals: weak_social_presence; category adjacent to ICP targets (shared token); site crawled, place_id",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-02",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -235,7 +235,7 @@
     "No social profile is linked from their website — presence-building angle",
     "need signals: weak_social_presence; category adjacent to ICP targets (shared token); site crawled, place_id",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-03",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -287,7 +287,7 @@
     "No social profile is linked from their website — presence-building angle",
     "need signals: weak_social_presence; category adjacent to ICP targets (shared token); site crawled, place_id",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-08",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -339,7 +339,7 @@
     "-",
     "category adjacent to ICP targets (shared token); 48 reviews within target band; inside target area (Bristol)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-05",
-    "gosom",
+    "fixture_list",
     "-",
     "never verified",
     "-",
@@ -391,7 +391,7 @@
     "-",
     "category adjacent to ICP targets (shared token); 55 reviews within target band; inside target area (Bristol)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-06",
-    "gosom",
+    "fixture_list",
     "-",
     "never verified",
     "-",
@@ -443,7 +443,7 @@
     "-",
     "category adjacent to ICP targets (shared token); 62 reviews within target band; inside target area (Bristol)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-07",
-    "gosom",
+    "fixture_list",
     "-",
     "never verified",
     "-",
@@ -579,114 +579,6 @@
   [
    "sendto",
    "1.1.1.1",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "1.1.1.1",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "1.1.1.1",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "1.1.1.1",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "1.1.1.1",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "1.1.1.1",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "1.1.1.1",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "1.1.1.1",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "1.1.1.1",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "1.1.1.1",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "8.8.8.8",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "8.8.8.8",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "8.8.8.8",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "8.8.8.8",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "8.8.8.8",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "8.8.8.8",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "8.8.8.8",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "8.8.8.8",
-   53,
-   "dns"
-  ],
-  [
-   "sendto",
-   "8.8.8.8",
    53,
    "dns"
   ],
@@ -834,37 +726,6 @@
    "argv": [
     "-m",
     "leadforge",
-    "run",
-    "--icp",
-    "icp.yaml"
-   ],
-   "digest": {
-    "artifacts": [],
-    "cmd": "run",
-    "counts": {},
-    "next": "leadforge doctor --fix",
-    "ok": false,
-    "run": null,
-    "warnings": [
-     "environment not ready: gosom-binary (leadforge doctor --fix)"
-    ]
-   },
-   "exit": 3,
-   "step": "run-unstamped"
-  },
-  {
-   "argv": [
-    "-c",
-    "import json,time;from leadforge import GOSOM_VERSION;from pathlib import Path;p=Path('leadforge_data');p.mkdir(exist_ok=True);(p/'.doctor_ok.json').write_text(json.dumps({'at':'harness','t':time.time(),'gosom':GOSOM_VERSION}))"
-   ],
-   "digest": null,
-   "exit": 0,
-   "step": "env-stamp"
-  },
-  {
-   "argv": [
-    "-m",
-    "leadforge",
     "discover",
     "--icp",
     "icp.yaml"
@@ -975,7 +836,9 @@
      "drafts_by_author": {
       "template": 5
      },
+     "expiring_30d": 0,
      "leads": 10,
+     "purged": 0,
      "runner": "none",
      "stage": "exported",
      "tier_a": 2,
@@ -1124,7 +987,7 @@
    ],
    [
     "Source",
-    "which engine discovered the business (gosom = Google Maps)"
+    "which engine discovered the business"
    ],
    [
     "",
@@ -1400,7 +1263,7 @@
     "No social profile is linked from their website — presence-building angle",
     "registry-corroborated, site crawled, place_id; need signals: weak_social_presence; category adjacent to ICP targets (shared token)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-04",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -1452,7 +1315,7 @@
     "No social profile is linked from their website — presence-building angle",
     "need signals: weak_social_presence; category adjacent to ICP targets (shared token); site crawled, place_id",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-02",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -1504,7 +1367,7 @@
     "No social profile is linked from their website — presence-building angle",
     "need signals: weak_social_presence; category adjacent to ICP targets (shared token); site crawled, place_id",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-03",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -1556,7 +1419,7 @@
     "No social profile is linked from their website — presence-building angle",
     "need signals: weak_social_presence; category adjacent to ICP targets (shared token); site crawled, place_id",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-08",
-    "gosom",
+    "fixture_list",
     "<TS>",
     "-",
     "-",
@@ -1608,7 +1471,7 @@
     "-",
     "category adjacent to ICP targets (shared token); 48 reviews within target band; inside target area (Bristol)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-05",
-    "gosom",
+    "fixture_list",
     "-",
     "never verified",
     "-",
@@ -1660,7 +1523,7 @@
     "-",
     "category adjacent to ICP targets (shared token); 55 reviews within target band; inside target area (Bristol)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-06",
-    "gosom",
+    "fixture_list",
     "-",
     "never verified",
     "-",
@@ -1712,7 +1575,7 @@
     "-",
     "category adjacent to ICP targets (shared token); 62 reviews within target band; inside target area (Bristol)",
     "https://www.google.com/maps/place/?q=place_id:fixture-place-07",
-    "gosom",
+    "fixture_list",
     "-",
     "never verified",
     "-",

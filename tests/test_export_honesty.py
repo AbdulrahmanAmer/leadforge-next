@@ -23,10 +23,10 @@ def _seeded_run(tmp_path, monkeypatch):
     cfg = load_config(tmp_path)
     conn = db.connect(cfg.db_path)
     rid = db.create_run(conn, "icp.yaml", "h")
-    db.upsert_business(conn, Business(id="real", run_id=rid, name="Real Garage", source="gosom",
+    db.upsert_business(conn, Business(id="real", run_id=rid, name="Real Garage", source="fakelist",
                                       website="https://real.example", phone_e164="+441483123456",
                                       dedupe_key="dk-real"))
-    db.upsert_business(conn, Business(id="bare", run_id=rid, name="Bare Garage", source="gosom",
+    db.upsert_business(conn, Business(id="bare", run_id=rid, name="Bare Garage", source="fakelist",
                                       dedupe_key="dk-bare"))
     db.add_person(conn, Person(business_id="real", name="Sean Vincent Murphy", title="Director",  # as the registry provider stores it
                                labeled_by="registry", is_dm=1, dm_confidence=0.9))
@@ -79,9 +79,9 @@ def test_export_neutralizes_formula_injection_and_control_chars(tmp_path, monkey
     cfg = load_config(tmp_path)
     conn = db.connect(cfg.db_path)
     rid = db.create_run(conn, "icp.yaml", "h")
-    db.upsert_business(conn, Business(id="evil", run_id=rid, source="gosom", dedupe_key="dk-evil",
+    db.upsert_business(conn, Business(id="evil", run_id=rid, source="fakelist", dedupe_key="dk-evil",
                                       name='=HYPERLINK("http://evil.example","click")'))
-    db.upsert_business(conn, Business(id="ctrl", run_id=rid, source="gosom", dedupe_key="dk-ctrl",
+    db.upsert_business(conn, Business(id="ctrl", run_id=rid, source="fakelist", dedupe_key="dk-ctrl",
                                       name="Null\x00 Garage\x07"))
     for bid in ("evil", "ctrl"):
         db.save_score(conn, Score(business_id=bid, run_id=rid, total=60, tier="B",
@@ -114,7 +114,7 @@ def test_tier_d_is_counted_not_dropped(tmp_path, monkeypatch):
     cfg = load_config(tmp_path)
     conn = db.connect(cfg.db_path)
     rid = db.create_run(conn, "icp.yaml", "h")
-    db.upsert_business(conn, Business(id="d1", run_id=rid, name="Grade D Garage", source="gosom",
+    db.upsert_business(conn, Business(id="d1", run_id=rid, name="Grade D Garage", source="fakelist",
                                       dedupe_key="dk-d1"))
     db.save_score(conn, Score(business_id="d1", run_id=rid, total=30, tier="D",
                               factors=[ScoreFactor(factor="x", group="fit", weight=1, score=1,
@@ -135,7 +135,7 @@ def test_stale_flag_and_call_readiness_tell_the_truth(tmp_path, monkeypatch):
     cfg = load_config(tmp_path)
     conn = db.connect(cfg.db_path)
     rid = db.create_run(conn, "icp.yaml", "h")
-    db.upsert_business(conn, Business(id="raw", run_id=rid, name="Raw Phone Garage", source="gosom",
+    db.upsert_business(conn, Business(id="raw", run_id=rid, name="Raw Phone Garage", source="fakelist",
                                       dedupe_key="dk-raw", phone_raw="Call us: O800-CARS"))
     db.save_score(conn, Score(business_id="raw", run_id=rid, total=60, tier="B",
                               factors=[ScoreFactor(factor="x", group="fit", weight=1, score=1,
@@ -178,7 +178,7 @@ def test_inferred_email_never_masquerades_as_a_found_one(tmp_path, monkeypatch):
     cfg = load_config(tmp_path)
     conn = db.connect(cfg.db_path)
     rid = db.create_run(conn, "icp.yaml", "h")
-    db.upsert_business(conn, Business(id="g", run_id=rid, name="Guessed Garage", source="gosom",
+    db.upsert_business(conn, Business(id="g", run_id=rid, name="Guessed Garage", source="fakelist",
                                       dedupe_key="dk-g", website="https://g.example", domain="g.example"))
     db.add_person(conn, Person(business_id="g", name="Jane Smith", title="Director",
                                labeled_by="registry", is_dm=1, dm_confidence=0.9))

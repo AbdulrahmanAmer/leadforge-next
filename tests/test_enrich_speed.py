@@ -152,14 +152,14 @@ def _seed_fixture(conn) -> None:
     registry, so it must get NO registry write at all (in either path)."""
     db.upsert_business(conn, Business(id="b1", name="Alpha Auto", name_norm="alpha auto",
                                        domain="alpha.test", website="http://alpha.test",
-                                       address_country="GB", source="gosom", dedupe_key="dk:b1"))
+                                       address_country="GB", source="fakelist", dedupe_key="dk:b1"))
     db.upsert_business(conn, Business(id="b2", name="Beta Motors", name_norm="beta motors",
                                        domain="beta.test", website="http://beta.test",
-                                       address_country="GB", source="gosom", dedupe_key="dk:b2"))
+                                       address_country="GB", source="fakelist", dedupe_key="dk:b2"))
     db.upsert_business(conn, Business(id="b3", name="Siteless One", name_norm="siteless one",
-                                       address_country="GB", source="gosom", dedupe_key="dk:b3"))
+                                       address_country="GB", source="fakelist", dedupe_key="dk:b3"))
     db.upsert_business(conn, Business(id="b4", name="Siteless Two", name_norm="siteless two",
-                                       address_country="US", source="gosom", dedupe_key="dk:b4"))
+                                       address_country="US", source="fakelist", dedupe_key="dk:b4"))
     conn.commit()
 
 
@@ -273,7 +273,7 @@ def test_overlap_single_writer_no_database_locked(tmp_path, monkeypatch):
         website = f"http://site{i}.test" if domain else None
         db.upsert_business(conn, Business(
             id=f"biz{i}", name=f"Business {i}", name_norm=f"business {i}", domain=domain,
-            website=website, address_country="GB", source="gosom", dedupe_key=f"dk:biz{i}"))
+            website=website, address_country="GB", source="fakelist", dedupe_key=f"dk:biz{i}"))
     conn.commit()
 
     def slow_crawl(self, website, business_domain=None):
@@ -324,9 +324,9 @@ def test_single_stage_runs_unaffected_by_overlap_flag(tmp_path, monkeypatch):
         conn = db.connect(cfg.db_path)
         db.upsert_business(conn, Business(id="b1", name="Alpha Auto", name_norm="alpha auto",
                                           domain="alpha.test", website="http://alpha.test",
-                                          address_country="GB", source="gosom", dedupe_key="dk:b1"))
+                                          address_country="GB", source="fakelist", dedupe_key="dk:b1"))
         db.upsert_business(conn, Business(id="b2", name="Siteless Co", name_norm="siteless co",
-                                          address_country="GB", source="gosom", dedupe_key="dk:b2"))
+                                          address_country="GB", source="fakelist", dedupe_key="dk:b2"))
         conn.commit()
         runner.run_enrich(conn, cfg, 10, stage="site")
         contacts = conn.execute("SELECT business_id, kind, value FROM contacts ORDER BY value").fetchall()
