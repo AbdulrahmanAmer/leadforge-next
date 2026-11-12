@@ -152,6 +152,43 @@ restored all
 - The exception is raised `from None`, so a traceback logged at debug level (`exc_info=True` in the callers) does not carry
   `TimeoutExpired`, whose text holds the whole argv.
 
+**Check by reading (after the code).** The four `raise AgentFailed` in `run_agent` are the only places the argv met a message
+(`grep -n "join(cmd)" src/leadforge/agent_runner.py`: none left). `_shown_command` prints `cmd[0]` and the count; `_without_arguments`
+cuts every argument of 4+ characters and the part after its first `=`, longest first (so a whole `--api-key=...` goes before its
+value). The stderr cut applies to the last 2,000 characters only, as before. `from None` on the two `except` paths; the exit and
+empty paths raise outside any `except`. `_log_invocation` already wrote `cmd[0]` only (unchanged). The callers (`enrich/dm.py:190`,
+`draft/service.py:367,394`) log `%s` of the exception and, at debug, its traceback: both now free of the argv. Not covered: an
+argument shorter than 4 characters (no key is that short), and a key the program prints in another form (encoded, or split).
+The program path itself (`cmd[0]`) is still shown: a path is not a key.
+
+**Proof.** `tests/test_l9_agent_failed_redacts.py`, 4 cases (`exit` with a program that echoes its arguments on stderr, `empty`,
+`timeout`, `cannot start`): `52 passed in 19.44s` with `tests/test_agent_runner.py`, `tests/test_autopilot_integration.py`,
+`tests/test_c1_no_tools.py`. Seen red first, each case broken on its own (`breakrun.py`, file restored after each):
+```
+### exit message prints the argv (broken: src/leadforge/agent_runner.py)
+E       AssertionError: agent command exited 3: D:\homelab-work\l9\venv\Scripts\python.exe C:\Users\DELL\AppData\Local\Temp\pytest-of-DELL\pytest-846\test_agent_failed_never_holds_0\fake_agent.py --api-key=FAKE-agent-planted-for-the-scan-not-real FAKE-agent-pl
+1 failed in 0.25s
+### stderr kept as it is (broken: src/leadforge/agent_runner.py)
+E       AssertionError: agent command exited 3: D:\homelab-work\l9\venv\Scripts\python.exe <3 arguments hidden>
+E         usage error, I was given: --api-key=FAKE-agent-planted-for-the-scan-not-real FAKE-agent-planted-for-the-scan-not-real and FAKE-agent-planted-for-the-scan-not-real
+1 failed in 0.23s
+### empty-stdout message prints the argv (broken: src/leadforge/agent_runner.py)
+E       AssertionError: agent command produced empty stdout: D:\homelab-work\l9\venv\Scripts\python.exe C:\Users\DELL\AppData\Local\Temp\pytest-of-DELL\pytest-849\test_agent_failed_never_holds_0\fake_agent.py --api-key=FAKE-agent-planted-for-the-scan-not-real 
+1 failed in 0.31s
+### timeout chained to TimeoutExpired (broken: src/leadforge/agent_runner.py)
+E       AssertionError: agent command timed out after 1.2s (limit 1s): D:\homelab-work\l9\venv\Scripts\python.exe <3 arguments hidden>
+E         Traceback (most recent call last):
+E           File "D:\homelab-work\l9\leadforge-next\src\leadforge\agent_runner.py", line 213, in run_agent
+E             stdout, stderr = proc.communicate(input=prompt, timeout=effective_timeout)
+1 failed in 1.49s
+### could-not-start message prints the argv (broken: src/leadforge/agent_runner.py)
+E       AssertionError: agent command could not be started: C:\Users\DELL\AppData\Local\Temp\pytest-of-DELL\pytest-852\test_agent_failed_never_holds_0\no-such-program.exe --api-key=FAKE-agent-planted-for-the-scan-not-real FAKE-agent-planted-for-the-scan-not-re
+1 failed in 0.16s
+restored all
+```
+(The timeout case fails on the same first assertion, `FAKE not in text`: the message is clean, the chained `TimeoutExpired` in the
+traceback is not.)
+
 ### Item 4 — `--tools ""` through an npm `claude.cmd` shim
 
 **Must hold (written before the code).** On Windows, a fake `claude.cmd` (same last line as npm's shim: it starts an interpreter with
