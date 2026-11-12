@@ -202,3 +202,20 @@ three runs: `wrote 4800 lines, file holds 4160 / 4186 / 4133`. Adding the Compan
 raised the contention enough to show it on a busy runner. It is a defect of the harness, not of the tool: the page was fetched, its log line was lost.
 **Fix at the cause.** The log writes take a module lock (`_LOG_LOCK` in `scripts/e2e_fake_campaign.py`); the same measurement with the lock: `wrote 4800, file holds 4800` ×3.
 Not done: widening or ignoring the requests list. Whether the golden is now stable on a busy Windows runner is UNPROVEN until the CI run of the last commit.
+
+## Carried over (noticed, not done)
+- `doctor --fix` / `--fix --full` installing from hashed locks with `--require-hashes` (needs a hashed extras lock for torch, GLiNER, crawl4ai, yt-dlp generated from `uv.lock`).
+- The NER job (L5 plan): not this slice.
+- The company-mode discovery provider (`companies_house` discovery, a second company-mode ICP) is not in the fake campaign; only the registry lookup is.
+- Tool behaviour seen in the fake-campaign run, unchanged: a registry hit is accepted at name similarity >= 0.45, and the lookup `continue`s past a dissolved company to the
+  next hit. In the first run "Pennine Motors" matched "HARBOUR MOTORS LTD" (0.46, same city) and received its director. The code's own comment calls a wrong match worse than none.
+- `outreach.md` names two repo docs (`docs/06-token-contract.md`, `docs/07-compliance.md`) that are in no skill folder.
+- The two other wall-clock tests of the L4 list: `test_crawler_politeness.py::test_workers_12...`, `test_maps_list.py::test_parallel_queries_is_faster_than_serial`.
+- `uv lock --check --offline` already reports `uv.lock` out of date on `master` (the project's own entry; the L4 list item "uv.lock's own entry to the real version").
+- The socket guard still does not cover asyncio's Windows `ConnectEx` / native sockets (from the starting list).
+- Item 4: `npx skills add ... --skill send-outreach` was not run (no outside call).
+
+## Results of the local runs
+- Whole suite, once, below-normal priority, serial, at the end: `846 passed, 6 skipped in 364.14s (0:06:04)`.
+- `ruff check src tests`: `All checks passed!`; `check_versions.py`: all six places `0.7.3`; `check_skill_frontmatter.py`, `check_skill_references.py`, `check_digest.py`: ok; `gitleaks` on every commit: `no leaks found`.
+- Fake campaign on Windows (this laptop), compared with the saved result: `PASS - result equals tests/fixtures/e2e/expected.json (21 refused-call entries, as saved)`; probe: `PROBE PASS`.
