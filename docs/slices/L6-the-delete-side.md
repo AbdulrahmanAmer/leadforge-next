@@ -215,3 +215,13 @@ Domain-suppressed businesses are already out of the sheet (`scores_for_run`); un
 - `retention.months` is 1 to 12 (shorten only); `leadforge.example.yaml` lists it.
 - The log folder and file are created at the first record, so a refused command leaves the workspace unchanged.
 - `uv.lock`'s own entry still says 0.6.14 (an L4 debt that `check_versions.py` does not read); left as is.
+
+## Item 8 — the fake campaign (G2): prediction written before the run
+
+At the end of items 1 to 7, before `scripts/e2e_fake_campaign.py` is run on the finished code. Compared cell by cell with the baseline `result.json` of Item 1 (not with
+`expected.json`, which this laptop already misses by the DNS-retry count).
+- Predicted to move: the count of `["sendto", "1.1.1.1", 53, "dns"]` entries (timing), as in the baseline, in either direction by one or two; nothing else in `refused`.
+- Predicted to move: in the digest of each `run` step that finds an existing database, `counts` gains two keys, `purged` (0) and `expiring_30d` (0), because `run` now
+  starts with the retention check (`cli._start_of_run_purge`). The first `run` step, which creates the database, gets none.
+- Predicted NOT to move: the request log, the four tabs, the CSV, `report.json`, the digest numbers of every other step. A schema is unchanged (SCHEMA_VERSION stays 7, no
+  table or column added), so the workspace golden stays; no `first_run_id` is touched.
