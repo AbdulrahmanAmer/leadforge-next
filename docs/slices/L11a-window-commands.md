@@ -222,16 +222,17 @@ L9 (`origin/slice/L9-keys-and-the-agent-call`) puts `KEYRING_SERVICE = "leadforg
 - `ruff 0.17.4` (the version in `uv.lock`) was uploaded 7 days ago, at the line of the 7-day rule; the lint ran with the `ruff 0.15.13`
   already on this laptop instead of installing it.
 
+
 ## Proof (run `l11a-build`, 2026-11-12, STRIKERFORCE, Python 3.12 venv from `requirements.lock` + the hashed pytest set of `uv.lock`)
 
 What each piece should do is written above ("What must hold"); the code was read against it before these ran.
 
-`python -m pytest tests/test_window.py -p no:cacheprovider -rs` (33 tests: one golden and one shape check per command, run_start's
+`python -m pytest tests/test_window.py -p no:cacheprovider -rs` (34 tests: one golden and one shape check per command, run_start's
 stream, the seam's rules):
 
 ```
-.................................                                        [100%]
-33 passed in 5.77s
+..................................                                       [100%]
+34 passed in 5.72s
 ```
 
 The guard and key tests, each against a break of the code it covers (`breakrun.py` in the run folder: apply the break, run that
@@ -289,14 +290,14 @@ The shape and golden tests were not given a break round (the owner's rule of 14:
 loopback world, every outside connection refused by its harness:
 
 ```
-run_stop exit=0 {"runId":"run_20261112_08294_0e60","campaign":"bristol-garages-fixture","state":"running","stage":"enrich","done":3,"total":8,"etaSeconds":0.5,"counts":{"businesses":10,"contacts":0,"purged":null,"exp
-PASS  first run ends stopped  exit 0, last {"type": "stopped", "status": {"runId": "run_20261112_08294_0e60", "campaign": "bristol-garages-fixture", "state": "stopped", "stage": "enrich", "done": null, "total": null, "etaSeconds": ...
-PASS  run_status says stopped, stage kept  {"runId":"run_20261112_08294_0e60","campaign":"bristol-garages-fixture","state":"stopped","stage":"enrich","done":null,"total":null,"etaSeconds":null,"counts":{"businesses":10,"contacts": ...
+run_stop exit=0 {"runId":"run_20261112_08410_a7ee","campaign":"bristol-garages-fixture","state":"running","stage":"enrich","done":1,"total":8,"etaSeconds":null,"counts":{"businesses":10,"contacts":0,"purged":null,"ex
+PASS  first run ends stopped  exit 0, last {"type": "stopped", "status": {"runId": "run_20261112_08410_a7ee", "campaign": "bristol-garages-fixture", "state": "stopped", "stage": "enrich", "done": null, "total": null, "etaSeconds": ...
+PASS  run_status says stopped, stage kept  {"runId":"run_20261112_08410_a7ee","campaign":"bristol-garages-fixture","state":"stopped","stage":"enrich","done":null,"total":null,"etaSeconds":null,"counts":{"businesses":10,"contacts": ...
 PASS  no stop flag left  
-PASS  resumed run ends finished, same run  exit 0, last {"type": "finished", "status": {"runId": "run_20261112_08294_0e60", "campaign": "bristol-garages-fixture", "state": "finished", "stage": "export", "done": null, "total": null ...
-PASS  campaigns_list answers one JSON document  [{"runId":"run_20261112_08294_0e60","name":"bristol-garages-fixture","kinds":["car repair"],"places":["Bristol"],"source":null,"state":"finished","stage":"export","startedAt":"2026-1 ...
-PASS  sheet_export answers one JSON document  {"runId":"run_20261112_08294_0e60","writtenAt":"2026-11-12T08:30:13Z","leads":10,"tabs":[{"name":"Leads","rows":10},{"name":"Drafts","rows":5},{"name":"Summary","rows":29},{"name":"Abo ...
-PASS  people_list answers one JSON document  {"people":[{"id":"1","name":"Odell Prewitt","role":"Owner","business":"Kestrel Garage","domain":"kestrel-garage.example","email":null,"phone":null,"source":"http://kestrel-garage.exampl ...
+PASS  resumed run ends finished, same run  exit 0, last {"type": "finished", "status": {"runId": "run_20261112_08410_a7ee", "campaign": "bristol-garages-fixture", "state": "finished", "stage": "export", "done": null, "total": null ...
+PASS  campaigns_list answers one JSON document  [{"runId":"run_20261112_08410_a7ee","name":"bristol-garages-fixture","kinds":["car repair"],"places":["Bristol"],"source":null,"state":"finished","stage":"export","startedAt":"2026-1 ...
+PASS  sheet_export answers one JSON document  {"runId":"run_20261112_08410_a7ee","writtenAt":"2026-11-12T08:41:26Z","leads":10,"tabs":[{"name":"Leads","rows":10},{"name":"Drafts","rows":5},{"name":"Summary","rows":29},{"name":"Abo ...
+PASS  people_list answers one JSON document  {"people":[{"id":"1","name":"Hamish Larkspur","role":"Director","business":"Northgate Tyres","domain":"northgate-tyres.example","email":null,"phone":null,"source":"http://northgate-tyre ...
 PASS  no outside attempt beyond the fake campaign's known set  []
 E2E WINDOW RUN PASS
 ```
@@ -305,4 +306,14 @@ Two earlier runs of that proof are part of the record: the first failed its "no 
 email check (`enrich.validate`), which the fake campaign itself expects (its `expected.json` lists them); the check now uses that same
 known set. The second failed "first run ends stopped": the `run_stop` child started seconds late on this loaded laptop, after the
 run's last check, and the run finished (as built: a stop after the last check does not stop). The proof now starts the stopper early
-and releases it on the second enrich event.
+and releases it on the second enrich event. The third failed after the rebase on `master`: `run_stop` answered `PermissionError`
+while the run went. Cause (from the logged traceback): `db.readonly_view` copies the database when its WAL holds data, and on Windows
+the running run's SQLite locks refuse that copy; so every read command could fail during a live run, `run_stop` among them, and the
+earlier passes were timing. Fixed: `reading()` falls back to SQLite's read-only mode on the live file when the copy is refused, and
+the forget dry run answers `input` ("in use by a running run") instead. `test_read_commands_answer_while_a_run_holds_the_database`
+forces the refusal; seen red with the fallback broken (`assert (1 == 0)` on run_status) and red on the dry run before
+`check_schema_before_write` moved inside the `try` (it reads through `readonly_view` too). The run above is after the fix.
+
+Found on the way, for L6's owners (not changed here): `forget`, `purge` and every command that calls `db.check_schema_before_write`
+on Windows fail with `PermissionError` while another process has the database open with data in its WAL (the same refused copy in
+`peek_schema_version`, which catches only `sqlite3.DatabaseError`). Not reproduced on the command line in this run.

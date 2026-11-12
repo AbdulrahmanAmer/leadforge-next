@@ -424,3 +424,21 @@ def test_licence_notices_are_not_older_than_the_lock():
     notices = json.loads((root / "src" / "leadforge" / "data" / "licences.json").read_text(encoding="utf-8"))
     assert notices["lock_sha256"] == mod.lock_hash(lock), "licences.json is older than requirements.lock: run scripts/make_licence_notices.py"
     assert [(p["name"], p["version"]) for p in notices["packages"]] == mod.locked(lock)
+
+
+def test_read_commands_answer_while_a_run_holds_the_database(ws, monkeypatch):
+    """On Windows a running run's locks refuse the copy db.readonly_view makes of a busy database (seen in the loopback proof:
+    run_stop answered PermissionError). The read commands then read the live database instead; the dry run of forget says so."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def refused(path):
+        raise PermissionError(13, "Permission denied")
+        yield
+
+    monkeypatch.setattr(db, "readonly_view", refused)
+    code, out = call("run_status", {"runId": RID})
+    assert code == 0 and one_doc(out)["runId"] == RID
+    code, out = call("person_forget", {"value": "Harbourside Motors", "dry_run": True})
+    doc = one_doc(out)
+    assert code == 4 and doc["kind"] == "input" and "running run" in doc["details"][0]

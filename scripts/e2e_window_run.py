@@ -17,7 +17,6 @@ import shutil
 import subprocess
 import sys
 import threading
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -75,9 +74,6 @@ def main() -> int:
     try:
         env = fake.child_env(ws, out / "guard.log")
         (ws / "leadforge.yaml").write_text(fake.CONFIG_YAML, encoding="utf-8", newline="\n")
-        (ws / "leadforge_data").mkdir()
-        from leadforge import GOSOM_VERSION  # the same environment stamp the fake campaign writes
-        (ws / "leadforge_data" / ".doctor_ok.json").write_text(json.dumps({"at": "harness", "t": time.time(), "gosom": GOSOM_VERSION}))
         cdir = ws / "campaigns" / CAMPAIGN
         cdir.mkdir(parents=True)
         shutil.copyfile(fake.FIX / "answers.yaml", cdir / "answers.yaml")

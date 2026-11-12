@@ -5,8 +5,10 @@ Result shapes are those of `app/ui/src/engine.ts`; a field the engine cannot sup
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
+import sqlite3
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -52,7 +54,14 @@ def reading(cfg: Config) -> Iterator[Any]:
     if not path.is_file():
         yield None
         return
-    with db.readonly_view(path) as conn:
+    with contextlib.ExitStack() as stack:
+        try:
+            conn = stack.enter_context(db.readonly_view(path))
+        except PermissionError:
+            # db.readonly_view copies the database when its WAL holds data; on Windows the locks of a run that has it open
+            # refuse that copy. Then the live database is read in SQLite's read-only mode, sharing the run's WAL.
+            conn = stack.enter_context(contextlib.closing(sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=10)))
+            conn.row_factory = sqlite3.Row
         if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='runs'").fetchone():
             yield None
             return

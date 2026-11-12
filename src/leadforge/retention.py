@@ -275,15 +275,19 @@ def forget_report(cfg: Config, value: str) -> dict:
     path = _db_path(cfg)
     counts: dict[str, int] = {}
     if path.exists():
-        db.check_schema_before_write(path)
-        with db.readonly_view(path) as src:
-            mem = sqlite3.connect(":memory:")
-            mem.row_factory = sqlite3.Row
-            try:
-                src.backup(mem)
-                counts = forget_in_database(mem, needle)
-            finally:
-                mem.close()
+        try:
+            db.check_schema_before_write(path)   # it reads through readonly_view too
+            with db.readonly_view(path) as src:
+                mem = sqlite3.connect(":memory:")
+                mem.row_factory = sqlite3.Row
+                try:
+                    src.backup(mem)
+                    counts = forget_in_database(mem, needle)
+                finally:
+                    mem.close()
+        except PermissionError as e:   # Windows: a running run's locks refuse the copy readonly_view makes of a busy database
+            raise InputError("the database is in use by a running run, so it cannot be read without changing it; stop the run, "
+                             "then try again. Nothing was changed.") from e
     edited: list[str] = []
     removed: list[str] = []
     failed: list[str] = []
