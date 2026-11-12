@@ -39,6 +39,20 @@ leadforge doctor --fix --full  # installs deps AND the quality extras (GLiNER NE
 Requires **Python 3.11+**. No compiler needed — every default dependency is a pure-python wheel.
 Windows, macOS and Linux are equal citizens.
 
+### Registry keys in the OS keyring (optional)
+
+The plugin installs from `requirements.lock` only, so a plugin user's registry keys come from the environment
+(`LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY`, `LEADFORGE_REGISTRY__OPENCORPORATES_TOKEN`). To keep them in the OS keyring
+instead, install the `keyring` extra from its own hashed lock into the same environment, then store a key:
+
+```bash
+python -m pip install --require-hashes --only-binary :all: -r requirements.lock -r requirements-keyring.lock
+keyring set leadforge registry.companies_house_key
+```
+
+That one command, both files, is also the install line of the window's bundle. Both locks are made from `uv.lock` by
+`python scripts/make_plugin_lock.py`.
+
 ### Upgrade an older or customized LeadForge copy
 
 If you already have a LeadForge copy with local changes, do not overwrite it with a fresh checkout. Clone the

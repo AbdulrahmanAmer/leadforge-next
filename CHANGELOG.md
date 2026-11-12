@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+The keyring extra has its own hashed lock (slice keyring-lock, no version): `requirements-keyring.lock` holds `keyring` 25.7.0
+and its whole dependency closure for Windows and Linux, wheels only, on top of `requirements.lock` (which is unchanged). The
+window's bundle installs both with one command: `python -m pip install --require-hashes --only-binary :all: -r requirements.lock
+-r requirements-keyring.lock`. `uv.lock` lists the extra; `scripts/make_plugin_lock.py` writes both locks. The plugin launcher
+still installs `requirements.lock` only: a plugin user's keys come from the environment.
+
 Keys and the agent call (slice L9, no version yet). **Registry keys are no longer read from `leadforge.yaml`:** set
 `LEADFORGE_REGISTRY__COMPANIES_HOUSE_KEY` / `LEADFORGE_REGISTRY__OPENCORPORATES_TOKEN` in the environment, or store them in the OS
 keyring (the optional `keyring` extra, `pip install -e .[keyring]`; then `keyring set leadforge registry.companies_house_key`; the plugin's locked install does not carry it). A workspace whose

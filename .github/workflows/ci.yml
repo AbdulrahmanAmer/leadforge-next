@@ -74,6 +74,16 @@ jobs:
           python scripts/e2e_fake_campaign.py | tee e2e.out
           if grep -E '^FAIL' e2e.out; then exit 1; fi
 
+      # The window's bundle installs both hashed locks in one command (slice keyring-lock). A fresh environment, wheels only:
+      # with --require-hashes a package of the keyring extra's closure missing from requirements-keyring.lock fails the install.
+      - name: Install the keyring lock (fresh environment, both locks, wheels only)
+        shell: bash
+        run: |
+          python -m venv .kr
+          py=.kr/bin/python; [ -x "$py" ] || py=.kr/Scripts/python.exe
+          "$py" -m pip install --disable-pip-version-check --require-hashes --only-binary :all: -r requirements.lock -r requirements-keyring.lock
+          "$py" -c "import keyring, importlib.metadata as m; print('keyring', m.version('keyring'))"
+
   versions:
     name: Version strings agree
     runs-on: ubuntu-latest
