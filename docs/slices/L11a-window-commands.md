@@ -1008,3 +1008,66 @@ with the workspace (all people are read); beyond 10,000 it is UNPROVEN.
 - `scripts/e2e_window_run.py` now lists all people (`limit` 500, was 5) and checks each has source and foundAt.
 - Lint with ruff 0.15.13 (already on this laptop), as Builds 1 and 2: `ruff check src tests` passes; `ruff check scripts` reports
   one B905 in `scripts/e2e_compare.py`, a file this branch does not touch (the same with this build's changes set aside).
+  `check.mjs` runs `python -m ruff` from the venv, so ruff 0.15.13 (PyPI, 2026-05-14) was installed into the run's venv pinned to
+  PyPI's sha256 of its Windows wheel; `uv.lock`'s ruff 0.17.4 (uploaded 2026-11-05 18:51 UTC) was 6 days 16 hours old: refused by
+  the 7-day rule.
+
+## Gate and hosted CI (Build 3)
+
+`node check.mjs` on `fb354ff` (the venv's Scripts first on PATH, below-normal priority). Three attempts, said plainly:
+1. Stopped at lint after 8 s: ruff was not yet in the venv (`No module named ruff`, `CHECK FAIL sha=fb354ff tree=clean steps=4`).
+   No test ran.
+2. Stopped from outside by this run's own tool limit (10 minutes, too short for this loaded laptop) during the tests, at
+   `[ 82%]`, every test until then passing (2 skipped). No result line.
+3. The run that counts:
+
+```
+ok  versions agree  0.4
+ok  skill frontmatter  0.3
+ok  skill references  0.3
+All checks passed!
+ok  lint  0.3
++++++++++++++++++++++++++++++++++++ Timeout +++++++++++++++++++++++++++++++++++
+  File "D:\homelab-work\l11a-final\leadforge-next\tests\test_draft_cli.py", line 325, in test_worked_example_registry_matched_ltd_with_own_domain_email
+FAIL  tests  347.9
+CHECK FAIL sha=fb354ff tree=clean steps=5 skipped=0 secs=352
+```
+
+**The local gate is RED: CHECK FAIL, by a timeout.** pytest-timeout (60 s per test, `pyproject.toml` line 68) stopped the whole
+pytest process inside `tests/test_draft_cli.py::test_worked_example_registry_matched_ltd_with_own_domain_email`, while its child
+`python -m leadforge draft render` ran; so no summary line was printed and the tests after it did not run in this attempt. Cause, by
+reading: the test drives `draft render`, which this branch does not change (`git diff origin/master --stat` touches no draft code);
+the laptop's processor read 100% load at the time (other sessions' processes). Re-run once alone, at normal priority:
+
+```
+.                                                                        [100%]
+1 passed in 9.09s
+```
+
+The full gate was not run a fourth time (one per run). Locally the whole suite is therefore NOT proven on `fb354ff`: attempt 2
+passed its first 82%, attempt 3 stopped at the timeout, and the tail after 82% did not run locally. The full suite's verdict is
+hosted CI's, below. `tests/test_window.py` and `tests/test_l11a_stop_between_pages.py` ran on their own (78 passed, above) and the C12
+test alone after its last change.
+
+Hosted CI, run 43203210807 on `fb354ff` (pull request 14), read with `gh run view`: 13 jobs, 13 success, none pending (`gh pr checks
+14`: 13 checks):
+
+```
+claude plugin validate  success
+fake campaign · ubuntu-latest  success
+Validate plugin manifests  success
+windows-latest · py3.14  success
+ubuntu-latest · py3.12  success
+Version strings agree  success
+windows-latest · py3.11  success
+fake campaign · windows-latest  success
+windows-latest · py3.12  success
+ubuntu-latest · py3.14  success
+ubuntu-latest · py3.13  success
+windows-latest · py3.13  success
+ubuntu-latest · py3.11  success
+```
+
+The two fake-campaign jobs compare the fake campaign's run with its saved result: unchanged by the stop checks.
+
+The commit that adds this section has its own run; its result is in the pull request comment and the run report.
