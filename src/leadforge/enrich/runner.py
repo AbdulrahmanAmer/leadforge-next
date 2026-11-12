@@ -38,7 +38,7 @@ from leadforge.enrich.extract import (
 from leadforge.enrich.validate import validate_email, validate_emails_parallel
 from leadforge.models import Contact, EnrichmentObservation, Evidence, Person
 from leadforge.normalize import COUNTRY_TO_REGION, to_e164
-from leadforge.util import LOG, HostThrottle, emit_progress, now_iso, progress_in_pool
+from leadforge.util import LOG, HostThrottle, RunStopped, emit_progress, now_iso, progress_in_pool
 
 
 def _record_observation(conn: sqlite3.Connection, observation: EnrichmentObservation, *, fresh_days: int) -> None:
@@ -392,6 +392,8 @@ def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: d
                 if any(getattr(reg, "disabled", False) for reg in registries):
                     LOG.warning("registry disabled mid-stage (rate limit); stopping registry backlog")
                     return
+        except RunStopped as e:   # the window asked the run to stop: not a failure
+            errors.append(e)
         except Exception as e:  # noqa: BLE001 — a driver thread must never hang the run silently
             LOG.exception("registry driver failed")
             errors.append(e)
@@ -424,6 +426,8 @@ def _run_overlapped(conn: sqlite3.Connection, cfg: Config, limit: int, counts: d
                         if res["needs_browser"] and not browser_ok:
                             counts["needs_browser"] += 1
                     wq.put(_do_persist)
+        except RunStopped as e:
+            errors.append(e)
         except Exception as e:  # noqa: BLE001
             LOG.exception("crawl driver failed")
             errors.append(e)
