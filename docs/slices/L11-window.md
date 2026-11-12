@@ -634,3 +634,23 @@ nothing edited by hand), then under the heavy lock `run-measured.ps1` ran `tauri
 `leadforge-window.exe` holds no `leadforge_window_standin` (byte search 0), and `target\release\engine` holds `python` only.
 **The install proof, for the orchestrator with the normal token** (this session is elevated):
 `powershell -NoProfile -ExecutionPolicy Bypass -File D:\LeadForge\wt\window\app\src-tauri\packaging\install-proof.ps1 -Setup D:\LeadForge\wt\target\release\bundle\nsis\LeadForge_0.9.0_x64-setup.exe`
+
+## Review of the whole tool (independent reviewer, 2026-11-12, before the window and the pages merge)
+
+Fixed here, each with a test seen red first:
+- `sheet_open` started any file inside `exports` with its default program (a planted `run-me.cmd` was handed to the opener: `assert (0 == 2)`
+  for `.cmd`, `.exe`, `.html`, `.lnk`, `.xlsx.bat`). It now opens `.xlsx`, `.csv` and `report.json` only.
+- `agent_runner.resolve_command` took `.\claude.CMD` from the current folder (Windows' `which` searches it first), and with no `PATH` (the core
+  passes none) Python searched `.;C:\bin`. Probe with the bundled `python.exe` and the core's exact variable list: `which claude: .\claude.CMD`.
+  Now no `PATH` means no search, and a hit in the current folder is refused.
+- The Keys screen's title line said "Kept in the Windows keyring" while the bundled engine answers `environment` (no keyring package).
+
+Probes, loopback only, not fixed (engine changes larger than a review fix; proposals in `docs/limits.md`):
+- A business site's `302` to another loopback port was followed and read: `redirect followed to: http://127.0.0.1:65233/admin | body: <html>router
+  admin page: admin@router-probe.lan</html>`.
+- A 65,271-byte gzip page was read into memory whole: `read into memory: 67108877 bytes; crawl.max_text_bytes: 400000`.
+- Forget, on the test workspace of `tests/test_window.py` with Priya's address added to `contacts`: forgetting the address left `people` = `['Priya Nair',
+  ...]`; forgetting the name left `contacts` holding `priya@harbourside-motors.example`.
+
+Correction to L11a: `purge_report` has 600 s in `engine.rs` `timeout()` (with export, apply, everything and forget), not the 120 s its proof table and
+"Plan and code disagree" say; `docs/window-actions.md` already says 600 s.
