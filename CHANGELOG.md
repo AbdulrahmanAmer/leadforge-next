@@ -6,6 +6,10 @@
   command, `engine_version`, and no permission to start a program, open a file or reach the network (a Rust test reads the permission
   files and fails on anything outside its list). The engine ships as python.org's embeddable Python with its packages beside it
   (measured against one PyInstaller file: `docs/slices/L10-shell.md`). Placeholder page only; the screens come with `app/ui`.
+- The screens of the window (`app/ui`, React and TypeScript): new campaign, run with live progress, results, people (forget and
+  suppress), data and retention, keys, settings and about. They talk to the engine only through `app/ui/src/engine.ts`; until the
+  shell exists they run on made-up data. No send or outreach action. The tool's behaviour is unchanged.
+- `docs/window-actions.md`: every action of the window, the engine command behind it, and what the engine does not have yet.
 
 ## [0.7.3] — 2026-11-12
 
